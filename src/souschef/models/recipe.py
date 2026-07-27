@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Enum, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from souschef.models.base import Base, TimestampMixin
+from souschef.models.base import Base, OwnedMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from souschef.models.ingredient import CanonicalIngredient
@@ -22,10 +22,15 @@ class RecipeSource(enum.StrEnum):
     SPOONACULAR = "spoonacular"  # discovery result, saved
 
 
-class Recipe(Base, TimestampMixin):
+class Recipe(Base, OwnedMixin, TimestampMixin):
     __tablename__ = "recipe"
     __table_args__ = (
-        UniqueConstraint("source", "external_id", name="uq_recipe_source_external"),
+        # Scoped to the owner: two users importing the same NYT recipe each get
+        # their own copy, with their own rating and cook history. Sharing one
+        # row would mean one user's "I cooked this" moved the other's rankings.
+        UniqueConstraint(
+            "user_id", "source", "external_id", name="uq_recipe_user_source_external"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

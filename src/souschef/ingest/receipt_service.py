@@ -96,14 +96,20 @@ def store_upload(data: bytes, filename: str) -> tuple[Path, str]:
     return destination, digest
 
 
-def create_receipt(session: Session, data: bytes, filename: str) -> Receipt:
+def create_receipt(session: Session, user_id: int, data: bytes, filename: str) -> Receipt:
     path, digest = store_upload(data, filename)
 
-    existing = session.scalar(select(Receipt).where(Receipt.image_sha256 == digest))
+    # Scoped to the owner: the image file is content-addressed and therefore
+    # shared, but the receipt row must not be. An unscoped lookup would hand a
+    # second user the first user's receipt, review state and all.
+    existing = session.scalar(
+        select(Receipt).where(Receipt.user_id == user_id, Receipt.image_sha256 == digest)
+    )
     if existing is not None:
         return existing
 
     receipt = Receipt(
+        user_id=user_id,
         image_path=path.name,
         image_sha256=digest,
         status=ReceiptStatus.UPLOADED,
@@ -243,6 +249,10 @@ def apply_receipt(
         try:
             record_event(
                 session,
+                # Taken from the receipt itself rather than passed in: the owner
+                # of the receipt is by definition whose pantry it credits, and
+                # deriving it here makes a mismatch unrepresentable.
+                receipt.user_id,
                 ingredient,
                 reason=EventReason.PURCHASE,
                 delta=quantity,

@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from souschef.core.inventory import record_event
+from souschef.core.inventory import get_or_create_item, record_event
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
 from souschef.ingest.recipes.jsonld import extract_recipe
 from souschef.ingest.recipes.parsing import parse_line
@@ -33,10 +33,10 @@ def recipe_html() -> str:
 
 
 @pytest.fixture
-def imported(seeded_session: Session, recipe_html: str) -> Recipe:
+def imported(seeded_session: Session, recipe_html: str, owner: int) -> Recipe:
     raw = extract_recipe(recipe_html, source_url="https://example.com/r/1")
     assert raw is not None
-    return save_imported_recipe(seeded_session, raw, source=RecipeSource.URL)
+    return save_imported_recipe(seeded_session, owner, raw, source=RecipeSource.URL)
 
 
 def ing(session: Session, name: str) -> CanonicalIngredient:
@@ -45,8 +45,12 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
     return found
 
 
-def stock(session: Session, name: str, qty: float, unit: str | None = None) -> None:
-    record_event(session, ing(session, name), reason=EventReason.PURCHASE, delta=qty, unit=unit)
+def stock(
+    session: Session, owner: int, name: str, qty: float, unit: str | None = None
+) -> None:
+    record_event(
+        session, owner, ing(session, name), reason=EventReason.PURCHASE, delta=qty, unit=unit
+    )
 
 
 # ---------------------------------------------------------------- JSON-LD
@@ -124,7 +128,7 @@ def test_requirements_scale_with_servings(seeded_session: Session, imported: Rec
     assert b["chicken thigh"] == pytest.approx(a["chicken thigh"] * 2)
 
 
-def test_duplicate_lines_are_summed_not_overwritten(seeded_session: Session) -> None:
+def test_duplicate_lines_are_summed_not_overwritten(seeded_session: Session, owner: int) -> None:
     """"2 tbsp oil, divided" plus "1 tbsp oil for the pan" is three tablespoons."""
     from souschef.ingest.recipes.jsonld import RawRecipe
 
@@ -133,7 +137,7 @@ def test_duplicate_lines_are_summed_not_overwritten(seeded_session: Session) -> 
         ingredients=["2 tablespoons olive oil", "1 tablespoon olive oil"],
         source_url="https://example.com/oil",
     )
-    recipe = save_imported_recipe(seeded_session, raw, source=RecipeSource.URL)
+    recipe = save_imported_recipe(seeded_session, owner, raw, source=RecipeSource.URL)
     totals = recipe_requirements(seeded_session, recipe).as_map()
     oil_id = ing(seeded_session, "olive oil").id
     assert totals[oil_id] == pytest.approx(44.4, rel=0.02)  # 3 tbsp
@@ -151,35 +155,35 @@ def test_staples_can_be_excluded_from_totals(seeded_session: Session, imported: 
 
 
 def test_reimport_updates_in_place_without_duplicating(
-    seeded_session: Session, recipe_html: str
-) -> None:
+    seeded_session: Session, recipe_html: str,
+    owner: int) -> None:
     raw = extract_recipe(recipe_html, source_url="https://example.com/r/1")
-    first = save_imported_recipe(seeded_session, raw, source=RecipeSource.URL)
-    second = save_imported_recipe(seeded_session, raw, source=RecipeSource.URL)
+    first = save_imported_recipe(seeded_session, owner, raw, source=RecipeSource.URL)
+    second = save_imported_recipe(seeded_session, owner, raw, source=RecipeSource.URL)
 
     assert first.id == second.id
     assert len(seeded_session.scalars(select(Recipe)).all()) == 1
 
 
 def test_reimported_recipe_keeps_its_ingredients(
-    seeded_session: Session, recipe_html: str
-) -> None:
+    seeded_session: Session, recipe_html: str,
+    owner: int) -> None:
     """Regression: rebuilding lines left the loaded collection empty.
 
     An empty ingredient list makes a recipe look perfectly cookable, so this
     failure was silent and would have put un-shoppable meals on the plan.
     """
     raw = extract_recipe(recipe_html, source_url="https://example.com/r/1")
-    save_imported_recipe(seeded_session, raw, source=RecipeSource.URL)
-    again = save_imported_recipe(seeded_session, raw, source=RecipeSource.URL)
+    save_imported_recipe(seeded_session, owner, raw, source=RecipeSource.URL)
+    again = save_imported_recipe(seeded_session, owner, raw, source=RecipeSource.URL)
 
     assert len(again.ingredients) == 9
     assert recipe_requirements(seeded_session, again).requirements
 
 
-def test_recipe_with_no_ingredients_is_never_cook_now(seeded_session: Session) -> None:
+def test_recipe_with_no_ingredients_is_never_cook_now(seeded_session: Session, owner: int) -> None:
     """Absence of evidence is not evidence you have everything."""
-    empty = Recipe(title="Mystery", source=RecipeSource.MANUAL, servings=4)
+    empty = Recipe(user_id=owner, title="Mystery", source=RecipeSource.MANUAL, servings=4)
     seeded_session.add(empty)
     seeded_session.flush()
 
@@ -191,83 +195,91 @@ def test_recipe_with_no_ingredients_is_never_cook_now(seeded_session: Session) -
 # ---------------------------------------------------------------- suggestion
 
 
-def test_fully_stocked_recipe_is_cook_now(seeded_session: Session, imported: Recipe) -> None:
-    stock(seeded_session, "chicken thigh", 1000)
-    stock(seeded_session, "yellow onion", 3)
-    stock(seeded_session, "garlic", 10)
-    stock(seeded_session, "canned crushed tomatoes", 2)
-    stock(seeded_session, "heavy cream", 500)
-    stock(seeded_session, "spaghetti", 500)
+def test_fully_stocked_recipe_is_cook_now(
+    seeded_session: Session, imported: Recipe, owner: int
+) -> None:
+    stock(seeded_session, owner, "chicken thigh", 1000)
+    stock(seeded_session, owner, "yellow onion", 3)
+    stock(seeded_session, owner, "garlic", 10)
+    stock(seeded_session, owner, "canned crushed tomatoes", 2)
+    stock(seeded_session, owner, "heavy cream", 500)
+    stock(seeded_session, owner, "spaghetti", 500)
 
-    top = suggest(seeded_session)[0]
+    top = suggest(seeded_session, owner)[0]
     assert top.surface == Surface.COOK_NOW
     assert top.missing == []
     assert top.reason == "You have everything"
 
 
 def test_partially_stocked_recipe_lists_what_is_missing(
-    seeded_session: Session, imported: Recipe
-) -> None:
-    stock(seeded_session, "yellow onion", 3)
-    stock(seeded_session, "garlic", 10)
-    stock(seeded_session, "heavy cream", 400)
+    seeded_session: Session, imported: Recipe,
+    owner: int) -> None:
+    stock(seeded_session, owner, "yellow onion", 3)
+    stock(seeded_session, owner, "garlic", 10)
+    stock(seeded_session, owner, "heavy cream", 400)
 
-    top = suggest(seeded_session)[0]
+    top = suggest(seeded_session, owner)[0]
     assert top.surface == Surface.NEARLY_THERE
     assert {m.ingredient.name for m in top.missing} == {
         "chicken thigh", "canned crushed tomatoes", "spaghetti"
     }
 
 
-def test_staples_never_count_as_missing(seeded_session: Session, imported: Recipe) -> None:
+def test_staples_never_count_as_missing(
+    seeded_session: Session, imported: Recipe, owner: int
+) -> None:
     """Nobody wants "you can't cook this, you need salt"."""
-    stock(seeded_session, "chicken thigh", 1000)
-    stock(seeded_session, "yellow onion", 3)
-    stock(seeded_session, "garlic", 10)
-    stock(seeded_session, "canned crushed tomatoes", 2)
-    stock(seeded_session, "heavy cream", 500)
-    stock(seeded_session, "spaghetti", 500)
+    stock(seeded_session, owner, "chicken thigh", 1000)
+    stock(seeded_session, owner, "yellow onion", 3)
+    stock(seeded_session, owner, "garlic", 10)
+    stock(seeded_session, owner, "canned crushed tomatoes", 2)
+    stock(seeded_session, owner, "heavy cream", 500)
+    stock(seeded_session, owner, "spaghetti", 500)
     # Deliberately no olive oil or salt in the pantry at all.
 
-    top = suggest(seeded_session)[0]
+    top = suggest(seeded_session, owner)[0]
     assert top.surface == Surface.COOK_NOW
 
 
 def test_expiring_ingredients_raise_a_recipe_up_the_list(
-    seeded_session: Session, imported: Recipe
-) -> None:
-    stock(seeded_session, "chicken thigh", 1000)
-    stock(seeded_session, "yellow onion", 3)
-    stock(seeded_session, "garlic", 10)
-    stock(seeded_session, "canned crushed tomatoes", 2)
-    stock(seeded_session, "heavy cream", 500)
-    stock(seeded_session, "spaghetti", 500)
+    seeded_session: Session, imported: Recipe,
+    owner: int) -> None:
+    stock(seeded_session, owner, "chicken thigh", 1000)
+    stock(seeded_session, owner, "yellow onion", 3)
+    stock(seeded_session, owner, "garlic", 10)
+    stock(seeded_session, owner, "canned crushed tomatoes", 2)
+    stock(seeded_session, owner, "heavy cream", 500)
+    stock(seeded_session, owner, "spaghetti", 500)
 
-    baseline = suggest(seeded_session)[0].score
+    baseline = suggest(seeded_session, owner)[0].score
 
     cream = ing(seeded_session, "heavy cream")
-    cream.pantry_item.expires_on = date.today() + timedelta(days=2)
+    get_or_create_item(seeded_session, owner, cream).expires_on = (
+        date.today() + timedelta(days=2)
+    )
     seeded_session.flush()
 
-    boosted = suggest(seeded_session)[0]
+    boosted = suggest(seeded_session, owner)[0]
     assert boosted.score > baseline
     assert "heavy cream" in [i.name for i in boosted.uses_expiring]
     assert "before it goes off" in boosted.reason
 
 
-def test_recently_cooked_recipes_are_penalized(seeded_session: Session, imported: Recipe) -> None:
-    stock(seeded_session, "chicken thigh", 1000)
-    stock(seeded_session, "yellow onion", 3)
-    stock(seeded_session, "garlic", 10)
-    stock(seeded_session, "canned crushed tomatoes", 2)
-    stock(seeded_session, "heavy cream", 500)
-    stock(seeded_session, "spaghetti", 500)
+def test_recently_cooked_recipes_are_penalized(
+    seeded_session: Session, imported: Recipe, owner: int
+) -> None:
+    stock(seeded_session, owner, "chicken thigh", 1000)
+    stock(seeded_session, owner, "yellow onion", 3)
+    stock(seeded_session, owner, "garlic", 10)
+    stock(seeded_session, owner, "canned crushed tomatoes", 2)
+    stock(seeded_session, owner, "heavy cream", 500)
+    stock(seeded_session, owner, "spaghetti", 500)
 
-    baseline = suggest(seeded_session)[0].score
+    baseline = suggest(seeded_session, owner)[0].score
     imported.last_cooked_at = datetime.now(UTC) - timedelta(days=1)
     seeded_session.flush()
 
-    assert suggest(seeded_session)[0].score < baseline
+    assert suggest(seeded_session, owner)[0].score < baseline
 
 
 # ---------------------------------------------------------------- shopping
@@ -292,19 +304,27 @@ def test_countable_items_are_expressed_as_counts(seeded_session: Session) -> Non
     assert (qty, unit) == (3.0, "count")
 
 
-def test_shopping_list_covers_the_gap_only(seeded_session: Session, imported: Recipe) -> None:
-    stock(seeded_session, "yellow onion", 3)
-    stock(seeded_session, "garlic", 10)
-    stock(seeded_session, "heavy cream", 400)
+def test_shopping_list_covers_the_gap_only(
+    seeded_session: Session, imported: Recipe, owner: int
+) -> None:
+    stock(seeded_session, owner, "yellow onion", 3)
+    stock(seeded_session, owner, "garlic", 10)
+    stock(seeded_session, owner, "heavy cream", 400)
 
     today = date.today()
     seeded_session.add(
-        MealPlanEntry(plan_date=today, slot=MealSlot.DINNER, recipe_id=imported.id, servings=4)
+        MealPlanEntry(
+            user_id=owner,
+            plan_date=today,
+            slot=MealSlot.DINNER,
+            recipe_id=imported.id,
+            servings=4,
+        )
     )
     seeded_session.flush()
 
     shopping = build_shopping_list(
-        seeded_session, covers_from=today, covers_to=today + timedelta(days=7)
+        seeded_session, owner, covers_from=today, covers_to=today + timedelta(days=7)
     )
     labels = {item.label for item in shopping.items}
 
@@ -315,25 +335,34 @@ def test_shopping_list_covers_the_gap_only(seeded_session: Session, imported: Re
 
 
 def test_shopping_list_records_why_each_item_is_there(
-    seeded_session: Session, imported: Recipe
-) -> None:
+    seeded_session: Session, imported: Recipe,
+    owner: int) -> None:
     today = date.today()
     seeded_session.add(
-        MealPlanEntry(plan_date=today, slot=MealSlot.DINNER, recipe_id=imported.id, servings=4)
+        MealPlanEntry(
+            user_id=owner,
+            plan_date=today,
+            slot=MealSlot.DINNER,
+            recipe_id=imported.id,
+            servings=4,
+        )
     )
     seeded_session.flush()
 
     shopping = build_shopping_list(
-        seeded_session, covers_from=today, covers_to=today + timedelta(days=7)
+        seeded_session, owner, covers_from=today, covers_to=today + timedelta(days=7)
     )
     assert all(item.driven_by == imported.title for item in shopping.items)
     assert all(item.aisle for item in shopping.items)
 
 
-def test_cooked_meals_do_not_drive_shopping(seeded_session: Session, imported: Recipe) -> None:
+def test_cooked_meals_do_not_drive_shopping(
+    seeded_session: Session, imported: Recipe, owner: int
+) -> None:
     today = date.today()
     seeded_session.add(
         MealPlanEntry(
+            user_id=owner,
             plan_date=today,
             slot=MealSlot.DINNER,
             recipe_id=imported.id,
@@ -344,6 +373,6 @@ def test_cooked_meals_do_not_drive_shopping(seeded_session: Session, imported: R
     seeded_session.flush()
 
     shopping = build_shopping_list(
-        seeded_session, covers_from=today, covers_to=today + timedelta(days=7)
+        seeded_session, owner, covers_from=today, covers_to=today + timedelta(days=7)
     )
     assert shopping.items == []

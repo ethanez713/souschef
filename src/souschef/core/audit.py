@@ -133,6 +133,7 @@ def score_candidate(
 
 def build_audit(
     session: Session,
+    user_id: int,
     requirements: dict[int, float],
     *,
     settings: Settings | None = None,
@@ -147,7 +148,9 @@ def build_audit(
     settings = settings or get_settings()
     limit = limit if limit is not None else settings.audit_max_items
 
-    views = {v.ingredient.id: v for v in pantry_view(session, include_empty=True)}
+    views = {
+        v.ingredient.id: v for v in pantry_view(session, user_id, include_empty=True)
+    }
     candidates: list[AuditCandidate] = []
 
     for ingredient_id, required in requirements.items():

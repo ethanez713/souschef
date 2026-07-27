@@ -128,26 +128,37 @@ def recipe_requirements(
 
 def save_imported_recipe(
     session: Session,
+    user_id: int,
     raw: RawRecipe,
     *,
     source: RecipeSource,
     external_id: str | None = None,
     learn_aliases: bool = True,
 ) -> Recipe:
-    """Persist an imported recipe, parsing and matching its ingredient lines.
+    """Persist an imported recipe into one user's library.
 
-    Re-importing the same source recipe updates the existing row rather than
-    creating a duplicate.
+    Re-importing the same source recipe updates that user's existing row rather
+    than creating a duplicate. The de-duplication lookups are scoped to the
+    owner: unscoped, a second user importing a recipe someone else already has
+    would silently edit the first user's copy instead of getting their own.
     """
     existing = None
     if external_id:
         existing = session.scalar(
-            select(Recipe).where(Recipe.source == source, Recipe.external_id == external_id)
+            select(Recipe).where(
+                Recipe.user_id == user_id,
+                Recipe.source == source,
+                Recipe.external_id == external_id,
+            )
         )
     if existing is None and raw.source_url:
-        existing = session.scalar(select(Recipe).where(Recipe.source_url == raw.source_url))
+        existing = session.scalar(
+            select(Recipe).where(
+                Recipe.user_id == user_id, Recipe.source_url == raw.source_url
+            )
+        )
 
-    recipe = existing or Recipe()
+    recipe = existing or Recipe(user_id=user_id)
     recipe.title = raw.title
     recipe.source = source
     recipe.source_url = raw.source_url

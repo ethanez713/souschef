@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Date, Enum, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from souschef.models.base import Base, TimestampMixin
+from souschef.models.base import Base, OwnedMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from souschef.models.ingredient import CanonicalIngredient
@@ -29,13 +29,19 @@ class OcrEngine(enum.StrEnum):
     MANUAL = "manual"
 
 
-class Receipt(Base, TimestampMixin):
+class Receipt(Base, OwnedMixin, TimestampMixin):
     __tablename__ = "receipt"
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     # Path relative to the receipt directory. Images stay on our own disk; they
     # are transaction data revealing spend, location and habits.
+    #
+    # The filename is content-addressed, so two users who upload byte-identical
+    # images share one file. That leaks nothing -- each already holds those
+    # bytes -- but it does mean the de-duplication lookup on `image_sha256` has
+    # to be scoped to the owner, or one user's upload would hand back the
+    # other's receipt row.
     image_path: Mapped[str] = mapped_column(String(500))
     image_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
 

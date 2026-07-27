@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import enum
-from typing import TYPE_CHECKING
 
 from sqlalchemy import Enum, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from souschef.models.base import Base, TimestampMixin
-
-if TYPE_CHECKING:
-    from souschef.models.inventory import PantryItem
 
 
 class TrackingMode(enum.StrEnum):
@@ -98,9 +94,11 @@ class CanonicalIngredient(Base, TimestampMixin):
     aliases: Mapped[list[IngredientAlias]] = relationship(
         back_populates="ingredient", cascade="all, delete-orphan"
     )
-    pantry_item: Mapped[PantryItem | None] = relationship(
-        back_populates="ingredient", uselist=False, cascade="all, delete-orphan"
-    )
+
+    # There is deliberately no `pantry_item` relationship back from the catalog.
+    # An ingredient is shared by every user, so a reverse link would either
+    # return some arbitrary user's level or invite a cross-user aggregate.
+    # Pantry rows are always reached through a user-scoped query instead.
 
     def __repr__(self) -> str:
         return f"<CanonicalIngredient {self.id} {self.name!r}>"

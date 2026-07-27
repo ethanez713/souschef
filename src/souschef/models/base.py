@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, MetaData
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import DateTime, ForeignKey, MetaData
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 # Explicit naming convention so Alembic can autogenerate reversible constraint
 # migrations -- SQLite in particular needs named constraints to alter tables.
@@ -31,3 +31,21 @@ class Base(DeclarativeBase):
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+
+class OwnedMixin:
+    """Marks a table as belonging to exactly one user.
+
+    Every row a user creates -- pantry levels, recipes, plans, receipts -- hangs
+    off this column, and every query that reads them must filter on it. The
+    column is non-nullable on purpose: a nullable owner invites a query that
+    forgets the filter and quietly returns another user's kitchen.
+
+    Cascade on delete, because a deleted account should take its data with it
+    rather than leave orphans pointing at a missing user.
+    """
+
+    @declared_attr
+    @classmethod
+    def user_id(cls) -> Mapped[int]:
+        return mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)

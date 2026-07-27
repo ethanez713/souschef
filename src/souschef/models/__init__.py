@@ -23,10 +23,13 @@ from souschef.models.planning import (
 from souschef.models.receipt import Receipt, ReceiptLine, ReceiptStatus
 from souschef.models.recipe import Recipe, RecipeIngredient, RecipeSource
 from souschef.models.settings import AppSetting, StoredCredential
+from souschef.models.user import Invite, User
 
 __all__ = [
     "AppSetting",
     "Base",
+    "Invite",
+    "User",
     "CanonicalIngredient",
     "EventReason",
     "IngredientAlias",

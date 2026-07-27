@@ -81,24 +81,31 @@ def collect_requirements(
     return needs
 
 
-def apply_pantry(session: Session, needs: dict[int, NeedLine]) -> dict[int, NeedLine]:
+def apply_pantry(
+    session: Session, user_id: int, needs: dict[int, NeedLine]
+) -> dict[int, NeedLine]:
     """Fill in believed pantry levels for each needed ingredient."""
     if not needs:
         return needs
     rows = session.scalars(
-        select(PantryItem).where(PantryItem.ingredient_id.in_(needs.keys()))
+        select(PantryItem).where(
+            PantryItem.user_id == user_id,
+            PantryItem.ingredient_id.in_(needs.keys()),
+        )
     ).all()
     for item in rows:
         needs[item.ingredient_id].have = item.quantity
     return needs
 
 
-def add_restock_candidates(session: Session, needs: dict[int, NeedLine]) -> dict[int, NeedLine]:
+def add_restock_candidates(
+    session: Session, user_id: int, needs: dict[int, NeedLine]
+) -> dict[int, NeedLine]:
     """Add anything sitting below its restock floor, even if unplanned."""
     rows = session.execute(
         select(PantryItem, CanonicalIngredient)
         .join(CanonicalIngredient, PantryItem.ingredient_id == CanonicalIngredient.id)
-        .where(PantryItem.restock_threshold.isnot(None))
+        .where(PantryItem.user_id == user_id, PantryItem.restock_threshold.isnot(None))
     ).all()
 
     for item, ingredient in rows:
@@ -153,26 +160,32 @@ def to_purchase_quantity(
 
 def build_shopping_list(
     session: Session,
+    user_id: int,
     *,
     covers_from: date,
     covers_to: date,
     name: str = "Weekly shop",
     include_restock: bool = True,
 ) -> ShoppingList:
-    """Generate a shopping list for a date range of planned meals."""
+    """Generate a shopping list for a date range of one user's planned meals."""
     entries = session.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe).selectinload(Recipe.ingredients))
-        .where(MealPlanEntry.plan_date >= covers_from, MealPlanEntry.plan_date <= covers_to)
+        .where(
+            MealPlanEntry.user_id == user_id,
+            MealPlanEntry.plan_date >= covers_from,
+            MealPlanEntry.plan_date <= covers_to,
+        )
         .order_by(MealPlanEntry.plan_date)
     ).all()
 
     needs = collect_requirements(session, entries)
-    needs = apply_pantry(session, needs)
+    needs = apply_pantry(session, user_id, needs)
     if include_restock:
-        needs = add_restock_candidates(session, needs)
+        needs = add_restock_candidates(session, user_id, needs)
 
     shopping_list = ShoppingList(
+        user_id=user_id,
         name=name,
         status=ShoppingListStatus.DRAFT,
         covers_from=covers_from,
@@ -210,7 +223,7 @@ def build_shopping_list(
 
 
 def requirements_for_audit(
-    session: Session, covers_from: date, covers_to: date
+    session: Session, user_id: int, covers_from: date, covers_to: date
 ) -> dict[int, float]:
     """Plan requirements in the shape the audit engine expects.
 
@@ -221,7 +234,11 @@ def requirements_for_audit(
     entries = session.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe).selectinload(Recipe.ingredients))
-        .where(MealPlanEntry.plan_date >= covers_from, MealPlanEntry.plan_date <= covers_to)
+        .where(
+            MealPlanEntry.user_id == user_id,
+            MealPlanEntry.plan_date >= covers_from,
+            MealPlanEntry.plan_date <= covers_to,
+        )
     ).all()
     needs = collect_requirements(session, entries)
     return {ingredient_id: line.needed for ingredient_id, line in needs.items()}

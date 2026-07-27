@@ -37,18 +37,21 @@ from souschef.ingest.receipt_service import (
 )
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
 from souschef.models import (
-    AppSetting,
     CanonicalIngredient,
     EventReason,
+    Invite,
     MealPlanEntry,
     MealSlot,
     Receipt,
     ReceiptLine,
     Recipe,
     ShoppingList,
+    ShoppingListItem,
     ShoppingListStatus,
     StoredCredential,
+    User,
 )
+from souschef.models.base import Base
 from souschef.models.ingredient import AliasSource
 from souschef.models.settings import CredentialKind
 from souschef.planning.shopping import build_shopping_list, requirements_for_audit
@@ -70,10 +73,13 @@ async def lifespan(_app: FastAPI):  # noqa: ANN201
     log.info("SousChef shutting down")
 
 
-app = FastAPI(title="SousChef", docs_url=None, redoc_url=None, lifespan=lifespan)
+# openapi_url is disabled alongside the docs UIs: with only those two off,
+# /openapi.json still served the full route schema to anonymous callers, which
+# on an internet-facing box is a free map of every endpoint and parameter.
+app = FastAPI(
+    title="SousChef", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
+)
 app.mount("/static", StaticFiles(directory=str(WEB_DIR.parent / "static")), name="static")
-
-PASSWORD_HASH_KEY = "auth.password_hash"
 
 # Requests slower than this are logged as a warning. Everything here is a
 # handful of SQLite reads except receipt OCR, so a slow page means something
@@ -151,6 +157,10 @@ async def security_headers(request: Request, call_next):  # noqa: ANN001, ANN201
 
 
 def _render(request: Request, template: str, **context) -> HTMLResponse:
+    # `user` is injected rather than passed by each route: the nav and sign-out
+    # control need it on every authenticated page, and a route that forgot it
+    # would silently render the signed-out chrome to a signed-in user.
+    context.setdefault("user", getattr(request.state, "user", None))
     return templates.TemplateResponse(request, template, context)
 
 
@@ -158,19 +168,31 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
 
 
+def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str):  # noqa: ANN201
+    """Fetch a user-owned row by id, or 404.
+
+    "Belongs to someone else" and "does not exist" deliberately return the same
+    404. Distinguishing them would let one user probe which ids are real in
+    another user's kitchen, and there is nothing useful to do with the
+    difference anyway.
+    """
+    obj = db.get(model, obj_id)
+    if obj is None or obj.user_id != user.id:
+        raise HTTPException(status_code=404, detail=f"No such {what}")
+    return obj
+
+
 # --------------------------------------------------------------------------
 # Auth routes
 # --------------------------------------------------------------------------
 
 
-def _stored_password_hash(db: Session) -> str | None:
-    setting = db.get(AppSetting, PASSWORD_HASH_KEY)
-    return setting.value if setting else None
-
-
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    if _stored_password_hash(db) is None:
+    # An empty database means nobody has claimed this instance yet. Whoever
+    # reaches it first becomes the admin -- which is why the deployment runbook
+    # says to visit the site immediately after starting it.
+    if auth.user_count(db) == 0:
         return _render(request, "setup.html")
     return _render(request, "login.html")
 
@@ -178,24 +200,66 @@ def login_form(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 @app.post("/setup")
 def setup(
     request: Request,
+    username: str = Form(...),
     password: str = Form(...),
     confirm: str = Form(...),
     db: Session = Depends(get_db),
 ) -> Response:
-    if _stored_password_hash(db) is not None:
+    """Claim an unclaimed instance, creating the admin account."""
+    if auth.user_count(db) > 0:
         raise HTTPException(status_code=400, detail="Already set up")
     if password != confirm:
-        return _render(request, "setup.html", error="Passwords do not match.")
+        return _render(request, "setup.html", error="Passwords do not match.", username=username)
     try:
-        hashed = auth.hash_password(password)
+        user = auth.create_user(db, username, password, is_admin=True)
     except ValueError as exc:
-        return _render(request, "setup.html", error=str(exc))
-
-    db.add(AppSetting(key=PASSWORD_HASH_KEY, value=hashed))
-    db.flush()
+        return _render(request, "setup.html", error=str(exc), username=username)
 
     response = RedirectResponse("/", status_code=303)
-    _set_session_cookie(request, response)
+    _set_session_cookie(request, response, user)
+    return response
+
+
+@app.get("/join", response_class=HTMLResponse)
+def join_form(request: Request, code: str = "", db: Session = Depends(get_db)) -> HTMLResponse:
+    """Redeem an invite. The code is the only thing gating this page."""
+    if auth.user_count(db) == 0:
+        return RedirectResponse("/login", status_code=303)
+    invite = auth.find_usable_invite(db, code) if code else None
+    return _render(
+        request,
+        "join.html",
+        code=code,
+        invite_ok=invite is not None,
+        error=None if invite or not code else "That invite is invalid, already used, or expired.",
+    )
+
+
+@app.post("/join")
+def join(
+    request: Request,
+    code: str = Form(...),
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm: str = Form(...),
+    db: Session = Depends(get_db),
+) -> Response:
+    if password != confirm:
+        return _render(
+            request, "join.html", code=code, invite_ok=True,
+            username=username, error="Passwords do not match.",
+        )
+    try:
+        user = auth.redeem_invite(db, code, username, password)
+    except ValueError as exc:
+        return _render(
+            request, "join.html", code=code,
+            invite_ok=auth.find_usable_invite(db, code) is not None,
+            username=username, error=str(exc),
+        )
+
+    response = RedirectResponse("/", status_code=303)
+    _set_session_cookie(request, response, user)
     return response
 
 
@@ -214,10 +278,14 @@ def _is_secure_request(request: Request) -> bool:
     return request.url.scheme == "https"
 
 
-def _set_session_cookie(request: Request, response: Response) -> None:
+def _set_session_cookie(request: Request, response: Response, user: User) -> None:
+    # Issuing a session *is* a sign-in, so record it here rather than only in
+    # the login route -- otherwise an account created via /setup or /join reads
+    # as "last login: never" while plainly being signed in.
+    user.last_login_at = datetime.now(UTC)
     response.set_cookie(
         auth.SESSION_COOKIE,
-        auth.issue_session(),
+        auth.issue_session(user),
         max_age=auth.SESSION_MAX_AGE,
         httponly=True,
         samesite="lax",
@@ -228,23 +296,30 @@ def _set_session_cookie(request: Request, response: Response) -> None:
 @app.post("/login")
 def login(
     request: Request,
+    username: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
 ) -> Response:
-    key = auth.client_key(request)
-    if auth.is_locked_out(key):
+    ip = auth.client_key(request)
+    if auth.is_locked_out(ip, username):
         return _render(
-            request, "login.html", error="Too many attempts. Try again in a few minutes."
+            request, "login.html", username=username,
+            error="Too many attempts. Try again in a few minutes.",
         )
 
-    stored = _stored_password_hash(db)
-    if stored is None or not auth.verify_password(stored, password):
-        auth.record_failure(key)
-        return _render(request, "login.html", error="Incorrect password.")
+    user = auth.authenticate(db, username, password)
+    if user is None:
+        auth.record_failure(ip, username)
+        # One message for both "no such user" and "wrong password": telling
+        # them apart is a free list of who has an account here.
+        return _render(
+            request, "login.html", username=username,
+            error="Incorrect username or password.",
+        )
 
-    auth.clear_failures(key)
+    auth.clear_failures(ip, username)
     response = RedirectResponse("/", status_code=303)
-    _set_session_cookie(request, response)
+    _set_session_cookie(request, response, user)
     return response
 
 
@@ -260,21 +335,29 @@ def logout() -> Response:
 # --------------------------------------------------------------------------
 
 
-@app.get("/", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    suggestions = suggest(db, limit=12)
+@app.get("/", response_class=HTMLResponse)
+def dashboard(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    suggestions = suggest(db, user.id, limit=12)
     grouped = by_surface(suggestions)
 
     today = date.today()
     upcoming = db.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe))
-        .where(MealPlanEntry.plan_date >= today, MealPlanEntry.cooked_at.is_(None))
+        .where(
+            MealPlanEntry.user_id == user.id,
+            MealPlanEntry.plan_date >= today,
+            MealPlanEntry.cooked_at.is_(None),
+        )
         .order_by(MealPlanEntry.plan_date)
         .limit(7)
     ).all()
 
-    pantry = pantry_view(db)
+    pantry = pantry_view(db, user.id)
     expiring = sorted(
         (v for v in pantry if v.item.expires_on and (v.item.expires_on - today).days <= 5),
         key=lambda v: v.item.expires_on,
@@ -290,7 +373,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         expiring=expiring[:5],
         stale=stale,
         pantry_count=len(pantry),
-        recipe_count=db.scalar(select(func.count()).select_from(Recipe)) or 0,
+        recipe_count=db.scalar(
+            select(func.count()).select_from(Recipe).where(Recipe.user_id == user.id)
+        )
+        or 0,
     )
 
 
@@ -299,11 +385,14 @@ def dashboard(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
 # --------------------------------------------------------------------------
 
 
-@app.get("/pantry", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
+@app.get("/pantry", response_class=HTMLResponse)
 def pantry_page(
-    request: Request, q: str = "", db: Session = Depends(get_db)
+    request: Request,
+    q: str = "",
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    views = pantry_view(db, include_empty=True)
+    views = pantry_view(db, user.id, include_empty=True)
     if q:
         needle = q.lower()
         views = [v for v in views if needle in v.ingredient.name.lower()]
@@ -315,37 +404,43 @@ def pantry_page(
     return _render(request, "pantry.html", by_location=by_location, query=q)
 
 
-@app.post("/pantry/{ingredient_id}/level", dependencies=[Depends(auth.require_session)])
+@app.post("/pantry/{ingredient_id}/level")
 def update_level(
     request: Request,
     ingredient_id: int,
     quantity: float = Form(...),
     unit: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    # The ingredient catalog is shared, so no ownership check applies to it --
+    # the scoping happens on the pantry row `set_level` writes.
+    ingredient = db.get(CanonicalIngredient, ingredient_id)
+    if ingredient is None:
+        raise HTTPException(status_code=404, detail="No such ingredient")
+    set_level(db, user.id, ingredient, quantity, unit=unit or None)
+    return RedirectResponse("/pantry", status_code=303)
+
+
+@app.post("/pantry/{ingredient_id}/confirm")
+def confirm_item(
+    ingredient_id: int,
+    user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     ingredient = db.get(CanonicalIngredient, ingredient_id)
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
-    set_level(db, ingredient, quantity, unit=unit or None)
+    confirm_level(db, user.id, ingredient)
     return RedirectResponse("/pantry", status_code=303)
 
 
-@app.post("/pantry/{ingredient_id}/confirm", dependencies=[Depends(auth.require_session)])
-def confirm_item(
-    ingredient_id: int, db: Session = Depends(get_db)
-) -> Response:
-    ingredient = db.get(CanonicalIngredient, ingredient_id)
-    if ingredient is None:
-        raise HTTPException(status_code=404, detail="No such ingredient")
-    confirm_level(db, ingredient)
-    return RedirectResponse("/pantry", status_code=303)
-
-
-@app.post("/pantry/add", dependencies=[Depends(auth.require_session)])
+@app.post("/pantry/add")
 def add_to_pantry(
     name: str = Form(...),
     quantity: float = Form(...),
     unit: str = Form(""),
+    user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     match = IngredientMatcher(db).match(name)
@@ -353,7 +448,8 @@ def add_to_pantry(
         raise HTTPException(status_code=400, detail=f"Unknown ingredient: {name}")
     ingredient = db.get(CanonicalIngredient, match.ingredient_id)
     record_event(
-        db, ingredient, reason=EventReason.PURCHASE, delta=quantity, unit=unit or None
+        db, user.id, ingredient, reason=EventReason.PURCHASE,
+        delta=quantity, unit=unit or None,
     )
     return RedirectResponse("/pantry", status_code=303)
 
@@ -363,55 +459,60 @@ def add_to_pantry(
 # --------------------------------------------------------------------------
 
 
-@app.get("/recipes", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def recipes_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    suggestions = suggest(db, limit=200)
+@app.get("/recipes", response_class=HTMLResponse)
+def recipes_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    suggestions = suggest(db, user.id, limit=200)
     return _render(request, "recipes.html", grouped=by_surface(suggestions))
 
 
-@app.get(
-    "/recipes/{recipe_id}",
-    response_class=HTMLResponse,
-    dependencies=[Depends(auth.require_session)],
-)
+@app.get("/recipes/{recipe_id}", response_class=HTMLResponse)
 def recipe_detail(
-    request: Request, recipe_id: int, db: Session = Depends(get_db)
+    request: Request,
+    recipe_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    recipe = db.get(Recipe, recipe_id)
-    if recipe is None:
-        raise HTTPException(status_code=404, detail="No such recipe")
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
     requirements = recipe_requirements(db, recipe)
-    pantry = {v.ingredient.id: v for v in pantry_view(db)}
+    pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
     return _render(
         request, "recipe_detail.html", recipe=recipe, requirements=requirements, pantry=pantry
     )
 
 
-@app.post("/recipes/import", dependencies=[Depends(auth.require_session)])
+@app.post("/recipes/import")
 def import_recipe(
-    request: Request, url: str = Form(...), db: Session = Depends(get_db)
+    request: Request,
+    url: str = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
 ) -> Response:
     try:
-        result = import_from_url(db, url)
+        result = import_from_url(db, user.id, url)
     except ImportError_ as exc:
         return _render(request, "import_result.html", error=str(exc))
 
     recipe = save_imported_recipe(
-        db, result.recipe, source=result.source, external_id=result.external_id
+        db, user.id, result.recipe, source=result.source, external_id=result.external_id
     )
     return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
 
 
-@app.post("/recipes/{recipe_id}/cooked", dependencies=[Depends(auth.require_session)])
+@app.post("/recipes/{recipe_id}/cooked")
 def mark_cooked(
-    recipe_id: int, servings: int = Form(0), db: Session = Depends(get_db)
+    recipe_id: int,
+    servings: int = Form(0),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
 ) -> Response:
-    recipe = db.get(Recipe, recipe_id)
-    if recipe is None:
-        raise HTTPException(status_code=404, detail="No such recipe")
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
 
     requirements = recipe_requirements(db, recipe, servings=servings or None)
-    consume_for_recipe(db, requirements.as_map(), recipe_id=recipe.id)
+    consume_for_recipe(db, user.id, requirements.as_map(), recipe_id=recipe.id)
 
     recipe.times_cooked += 1
     recipe.last_cooked_at = datetime.now(UTC)
@@ -424,14 +525,22 @@ def mark_cooked(
 # --------------------------------------------------------------------------
 
 
-@app.get("/plan", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def plan_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+@app.get("/plan", response_class=HTMLResponse)
+def plan_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
     today = date.today()
     week_end = today + timedelta(days=7)
     entries = db.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe))
-        .where(MealPlanEntry.plan_date >= today, MealPlanEntry.plan_date <= week_end)
+        .where(
+            MealPlanEntry.user_id == user.id,
+            MealPlanEntry.plan_date >= today,
+            MealPlanEntry.plan_date <= week_end,
+        )
         .order_by(MealPlanEntry.plan_date)
     ).all()
 
@@ -442,20 +551,26 @@ def plan_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         request,
         "plan.html",
         by_day=by_day,
-        suggestions=suggest(db, limit=10),
+        suggestions=suggest(db, user.id, limit=10),
         week_end=week_end,
     )
 
 
-@app.post("/plan/add", dependencies=[Depends(auth.require_session)])
+@app.post("/plan/add")
 def add_to_plan(
     recipe_id: int = Form(...),
     plan_date: str = Form(...),
     servings: int = Form(4),
+    user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    # Validate the recipe is theirs before planning it: without this, posting an
+    # arbitrary id would put another user's recipe on your calendar, and the
+    # plan page would then render its title.
+    _owned(db, Recipe, recipe_id, user, "recipe")
     db.add(
         MealPlanEntry(
+            user_id=user.id,
             plan_date=date.fromisoformat(plan_date),
             slot=MealSlot.DINNER,
             recipe_id=recipe_id,
@@ -466,22 +581,30 @@ def add_to_plan(
     return RedirectResponse("/plan", status_code=303)
 
 
-@app.post("/plan/{entry_id}/remove", dependencies=[Depends(auth.require_session)])
-def remove_from_plan(entry_id: int, db: Session = Depends(get_db)) -> Response:
+@app.post("/plan/{entry_id}/remove")
+def remove_from_plan(
+    entry_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
     entry = db.get(MealPlanEntry, entry_id)
-    if entry is not None:
+    if entry is not None and entry.user_id == user.id:
         db.delete(entry)
         db.flush()
     return RedirectResponse("/plan", status_code=303)
 
 
-@app.get("/audit", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def audit_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+@app.get("/audit", response_class=HTMLResponse)
+def audit_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
     """The pre-shop check: the few things worth physically verifying."""
     today = date.today()
     week_end = today + timedelta(days=7)
-    requirements = requirements_for_audit(db, today, week_end)
-    candidates = build_audit(db, requirements)
+    requirements = requirements_for_audit(db, user.id, today, week_end)
+    candidates = build_audit(db, user.id, requirements)
     return _render(
         request,
         "audit.html",
@@ -491,10 +614,11 @@ def audit_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     )
 
 
-@app.post("/audit/{ingredient_id}", dependencies=[Depends(auth.require_session)])
+@app.post("/audit/{ingredient_id}")
 def resolve_audit_item(
     ingredient_id: int,
     quantity: str = Form(""),
+    user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     ingredient = db.get(CanonicalIngredient, ingredient_id)
@@ -503,16 +627,23 @@ def resolve_audit_item(
 
     # An empty box means "the estimate was right", which still restores
     # confidence -- that is the whole point of asking.
-    confirm_level(db, ingredient, float(quantity) if quantity.strip() else None)
+    confirm_level(db, user.id, ingredient, float(quantity) if quantity.strip() else None)
     return RedirectResponse("/audit", status_code=303)
 
 
-@app.get("/shopping", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def shopping_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+@app.get("/shopping", response_class=HTMLResponse)
+def shopping_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
     active = db.scalars(
         select(ShoppingList)
         .options(selectinload(ShoppingList.items))
-        .where(ShoppingList.status != ShoppingListStatus.ARCHIVED)
+        .where(
+            ShoppingList.user_id == user.id,
+            ShoppingList.status != ShoppingListStatus.ARCHIVED,
+        )
         .order_by(ShoppingList.created_at.desc())
     ).first()
 
@@ -524,19 +655,27 @@ def shopping_page(request: Request, db: Session = Depends(get_db)) -> HTMLRespon
     return _render(request, "shopping.html", shopping_list=active, by_aisle=by_aisle)
 
 
-@app.post("/shopping/generate", dependencies=[Depends(auth.require_session)])
-def generate_shopping(db: Session = Depends(get_db)) -> Response:
+@app.post("/shopping/generate")
+def generate_shopping(
+    user: User = Depends(auth.current_user), db: Session = Depends(get_db)
+) -> Response:
     today = date.today()
-    build_shopping_list(db, covers_from=today, covers_to=today + timedelta(days=7))
+    build_shopping_list(
+        db, user.id, covers_from=today, covers_to=today + timedelta(days=7)
+    )
     return RedirectResponse("/shopping", status_code=303)
 
 
-@app.post("/shopping/item/{item_id}/toggle", dependencies=[Depends(auth.require_session)])
-def toggle_shopping_item(item_id: int, db: Session = Depends(get_db)) -> Response:
-    from souschef.models import ShoppingListItem
-
+@app.post("/shopping/item/{item_id}/toggle")
+def toggle_shopping_item(
+    item_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    # A list item carries no owner of its own; ownership lives on the parent
+    # list, so that is what gets checked.
     item = db.get(ShoppingListItem, item_id)
-    if item is not None:
+    if item is not None and item.shopping_list.user_id == user.id:
         item.is_checked = not item.is_checked
         db.flush()
     return RedirectResponse("/shopping", status_code=303)
@@ -547,34 +686,44 @@ def toggle_shopping_item(item_id: int, db: Session = Depends(get_db)) -> Respons
 # --------------------------------------------------------------------------
 
 
-@app.get("/receipts", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def receipts_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    receipts = db.scalars(select(Receipt).order_by(Receipt.created_at.desc()).limit(20)).all()
+@app.get("/receipts", response_class=HTMLResponse)
+def receipts_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    receipts = db.scalars(
+        select(Receipt)
+        .where(Receipt.user_id == user.id)
+        .order_by(Receipt.created_at.desc())
+        .limit(20)
+    ).all()
     return _render(request, "receipts.html", receipts=receipts)
 
 
-@app.post("/receipts/upload", dependencies=[Depends(auth.require_session)])
-async def upload_receipt(image: UploadFile, db: Session = Depends(get_db)) -> Response:
+@app.post("/receipts/upload")
+async def upload_receipt(
+    image: UploadFile,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
     data = await image.read()
     try:
-        receipt = create_receipt(db, data, image.filename or "receipt.png")
+        receipt = create_receipt(db, user.id, data, image.filename or "receipt.png")
         scan_receipt(db, receipt)
     except ReceiptError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(f"/receipts/{receipt.id}", status_code=303)
 
 
-@app.get(
-    "/receipts/{receipt_id}",
-    response_class=HTMLResponse,
-    dependencies=[Depends(auth.require_session)],
-)
+@app.get("/receipts/{receipt_id}", response_class=HTMLResponse)
 def receipt_review(
-    request: Request, receipt_id: int, db: Session = Depends(get_db)
+    request: Request,
+    receipt_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    receipt = db.get(Receipt, receipt_id)
-    if receipt is None:
-        raise HTTPException(status_code=404, detail="No such receipt")
+    receipt = _owned(db, Receipt, receipt_id, user, "receipt")
 
     ingredients = db.scalars(
         select(CanonicalIngredient).order_by(CanonicalIngredient.name)
@@ -585,7 +734,7 @@ def receipt_review(
     )
 
 
-@app.post("/receipts/{receipt_id}/line/{line_id}", dependencies=[Depends(auth.require_session)])
+@app.post("/receipts/{receipt_id}/line/{line_id}")
 def update_receipt_line(
     receipt_id: int,
     line_id: int,
@@ -593,8 +742,13 @@ def update_receipt_line(
     quantity: str = Form(""),
     unit: str = Form(""),
     confirmed: str = Form(""),
+    user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    # Ownership is checked on the receipt, then the line is checked to belong to
+    # that receipt -- verifying only one of the two would let a line from
+    # someone else's receipt be edited through a receipt id you do own.
+    _owned(db, Receipt, receipt_id, user, "receipt")
     line = db.get(ReceiptLine, line_id)
     if line is None or line.receipt_id != receipt_id:
         raise HTTPException(status_code=404, detail="No such line")
@@ -618,13 +772,14 @@ def update_receipt_line(
     return RedirectResponse(f"/receipts/{receipt_id}", status_code=303)
 
 
-@app.post("/receipts/{receipt_id}/apply", dependencies=[Depends(auth.require_session)])
+@app.post("/receipts/{receipt_id}/apply")
 def apply_receipt_route(
-    request: Request, receipt_id: int, db: Session = Depends(get_db)
+    request: Request,
+    receipt_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
 ) -> Response:
-    receipt = db.get(Receipt, receipt_id)
-    if receipt is None:
-        raise HTTPException(status_code=404, detail="No such receipt")
+    receipt = _owned(db, Receipt, receipt_id, user, "receipt")
     try:
         warnings = apply_receipt(db, receipt)
     except ReceiptError as exc:
@@ -640,21 +795,101 @@ def apply_receipt_route(
 # --------------------------------------------------------------------------
 
 
-@app.get("/settings", response_class=HTMLResponse, dependencies=[Depends(auth.require_session)])
-def settings_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    credential = db.scalar(
+def _nyt_credential(db: Session, user: User) -> StoredCredential | None:
+    return db.scalar(
         select(StoredCredential).where(
-            StoredCredential.kind == CredentialKind.NYT_COOKING_COOKIE
+            StoredCredential.user_id == user.id,
+            StoredCredential.kind == CredentialKind.NYT_COOKING_COOKIE,
         )
     )
+
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+    new_invite: str = "",
+) -> HTMLResponse:
+    invites = []
+    if user.is_admin:
+        invites = db.scalars(
+            select(Invite).order_by(Invite.created_at.desc()).limit(20)
+        ).all()
+
     return _render(
-        request, "settings.html", nyt_credential=credential, settings=get_settings()
+        request,
+        "settings.html",
+        nyt_credential=_nyt_credential(db, user),
+        settings=get_settings(),
+        invites=invites,
+        # Shown once, immediately after creation. The plaintext is never stored,
+        # so there is no page that can display it again.
+        new_invite=new_invite,
+        now=datetime.now(UTC),
     )
 
 
-@app.post("/settings/nyt-cookie", dependencies=[Depends(auth.require_session)])
-def save_nyt_cookie(cookie: str = Form(...), db: Session = Depends(get_db)) -> Response:
-    """Store the NYT session cookie, encrypted.
+@app.post("/settings/password")
+def change_password(
+    request: Request,
+    current: str = Form(...),
+    password: str = Form(...),
+    confirm: str = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if not auth.verify_password(user.password_hash, current):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    if password != confirm:
+        raise HTTPException(status_code=400, detail="New passwords do not match")
+    try:
+        auth.set_password(db, user, password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # set_password bumped the session epoch, which just invalidated this
+    # request's own cookie along with every other one. Re-issue so the person
+    # who changed their password isn't the only one signed out by it.
+    response = RedirectResponse("/settings", status_code=303)
+    _set_session_cookie(request, response, user)
+    return response
+
+
+@app.post("/settings/invites")
+def create_invite_route(
+    note: str = Form(""),
+    user: User = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    _, code = auth.create_invite(db, user, note=note)
+    # The code rides back in the URL so the page can show it once. That puts it
+    # in this user's own browser history, which is an acceptable trade for not
+    # storing the plaintext anywhere on the server.
+    return RedirectResponse(f"/settings?new_invite={code}", status_code=303)
+
+
+@app.post("/settings/invites/{invite_id}/revoke")
+def revoke_invite(
+    invite_id: int,
+    user: User = Depends(auth.require_admin),
+    db: Session = Depends(get_db),
+) -> Response:
+    invite = db.get(Invite, invite_id)
+    if invite is not None and invite.redeemed_at is None:
+        db.delete(invite)
+        db.flush()
+        log.info("Invite %d revoked by %r", invite_id, user.username)
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/nyt-cookie")
+def save_nyt_cookie(
+    cookie: str = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Store this user's NYT session cookie, encrypted.
 
     Only the cookie is accepted. The password is never asked for, because NYT
     gates login behind bot detection and a stored password would be a much
@@ -664,13 +899,11 @@ def save_nyt_cookie(cookie: str = Form(...), db: Session = Depends(get_db)) -> R
     if not value:
         raise HTTPException(status_code=400, detail="Cookie is empty")
 
-    credential = db.scalar(
-        select(StoredCredential).where(
-            StoredCredential.kind == CredentialKind.NYT_COOKING_COOKIE
-        )
-    )
+    credential = _nyt_credential(db, user)
     if credential is None:
-        credential = StoredCredential(kind=CredentialKind.NYT_COOKING_COOKIE)
+        credential = StoredCredential(
+            user_id=user.id, kind=CredentialKind.NYT_COOKING_COOKIE
+        )
         db.add(credential)
 
     credential.ciphertext = encrypt(value)
@@ -680,13 +913,11 @@ def save_nyt_cookie(cookie: str = Form(...), db: Session = Depends(get_db)) -> R
     return RedirectResponse("/settings", status_code=303)
 
 
-@app.post("/settings/nyt-cookie/delete", dependencies=[Depends(auth.require_session)])
-def delete_nyt_cookie(db: Session = Depends(get_db)) -> Response:
-    credential = db.scalar(
-        select(StoredCredential).where(
-            StoredCredential.kind == CredentialKind.NYT_COOKING_COOKIE
-        )
-    )
+@app.post("/settings/nyt-cookie/delete")
+def delete_nyt_cookie(
+    user: User = Depends(auth.current_user), db: Session = Depends(get_db)
+) -> Response:
+    credential = _nyt_credential(db, user)
     if credential is not None:
         db.delete(credential)
         db.flush()
@@ -698,9 +929,12 @@ def delete_nyt_cookie(db: Session = Depends(get_db)) -> Response:
 # --------------------------------------------------------------------------
 
 
-@app.get("/share", dependencies=[Depends(auth.require_session)])
+@app.get("/share")
 def share_target(
-    url: str = "", text: str = "", title: str = ""
+    url: str = "",
+    text: str = "",
+    title: str = "",
+    _user: User = Depends(auth.current_user),
 ) -> Response:
     """Android share-sheet entry point for a recipe URL.
 

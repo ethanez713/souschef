@@ -109,10 +109,10 @@ def test_bounds_widen_as_confidence_falls() -> None:
 # ---------------------------------------------------------------- ledger
 
 
-def test_every_change_writes_a_ledger_entry(seeded_session: Session) -> None:
+def test_every_change_writes_a_ledger_entry(seeded_session: Session, owner: int) -> None:
     eggs = ingredient(seeded_session, "eggs")
-    record_event(seeded_session, eggs, reason=EventReason.PURCHASE, delta=12)
-    record_event(seeded_session, eggs, reason=EventReason.COOK, delta=-3)
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    record_event(seeded_session, owner, eggs, reason=EventReason.COOK, delta=-3)
 
     events = seeded_session.scalars(
         select(InventoryEvent).where(InventoryEvent.ingredient_id == eggs.id)
@@ -121,45 +121,47 @@ def test_every_change_writes_a_ledger_entry(seeded_session: Session) -> None:
     assert [e.resulting_quantity for e in events] == [12, 9]
 
 
-def test_quantity_never_goes_negative(seeded_session: Session) -> None:
+def test_quantity_never_goes_negative(seeded_session: Session, owner: int) -> None:
     """A recipe wanting more than you have empties the jar, it doesn't invert it."""
     eggs = ingredient(seeded_session, "eggs")
-    record_event(seeded_session, eggs, reason=EventReason.PURCHASE, delta=2)
-    record_event(seeded_session, eggs, reason=EventReason.COOK, delta=-10)
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=2)
+    record_event(seeded_session, owner, eggs, reason=EventReason.COOK, delta=-10)
 
     item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == eggs.id))
     assert item.quantity == 0
 
 
-def test_purchase_units_are_converted_to_base(seeded_session: Session) -> None:
+def test_purchase_units_are_converted_to_base(seeded_session: Session, owner: int) -> None:
     """A 5 lb bag of flour must land as grams, not as the number 5."""
     flour = ingredient(seeded_session, "all-purpose flour")
-    record_event(seeded_session, flour, reason=EventReason.PURCHASE, delta=5, unit="lb")
+    record_event(seeded_session, owner, flour, reason=EventReason.PURCHASE, delta=5, unit="lb")
 
     item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == flour.id))
     assert item.quantity == pytest.approx(2268, rel=0.01)
 
 
-def test_confirming_restores_confidence_and_resets_the_anchor(seeded_session: Session) -> None:
+def test_confirming_restores_confidence_and_resets_the_anchor(
+    seeded_session: Session, owner: int
+) -> None:
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=1000)
-    consume_for_recipe(seeded_session, {rice.id: 200}, recipe_id=1)
-    consume_for_recipe(seeded_session, {rice.id: 200}, recipe_id=2)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    consume_for_recipe(seeded_session, owner, {rice.id: 200}, recipe_id=1)
+    consume_for_recipe(seeded_session, owner, {rice.id: 200}, recipe_id=2)
 
     item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == rice.id))
     assert item.cooks_since_confirmed == 2
 
-    confirm_level(seeded_session, rice)
+    confirm_level(seeded_session, owner, rice)
     seeded_session.refresh(item)
     assert item.cooks_since_confirmed == 0
     assert item.confidence == 1.0
 
 
-def test_set_level_records_the_correction_as_a_delta(seeded_session: Session) -> None:
+def test_set_level_records_the_correction_as_a_delta(seeded_session: Session, owner: int) -> None:
     """The ledger should explain a jump, not silently absorb it."""
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=1000)
-    set_level(seeded_session, rice, 250)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    set_level(seeded_session, owner, rice, 250)
 
     item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == rice.id))
     assert item.quantity == 250
@@ -173,18 +175,20 @@ def test_set_level_records_the_correction_as_a_delta(seeded_session: Session) ->
     assert last.delta == pytest.approx(-750)
 
 
-def test_rebuild_from_ledger_reproduces_incremental_state(seeded_session: Session) -> None:
+def test_rebuild_from_ledger_reproduces_incremental_state(
+    seeded_session: Session, owner: int
+) -> None:
     """The materialized row is a cache; replaying events must agree with it."""
     eggs = ingredient(seeded_session, "eggs")
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, eggs, reason=EventReason.PURCHASE, delta=12)
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=1000)
-    consume_for_recipe(seeded_session, {eggs.id: 2, rice.id: 150}, recipe_id=7)
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    consume_for_recipe(seeded_session, owner, {eggs.id: 2, rice.id: 150}, recipe_id=7)
     seeded_session.flush()
 
-    before = {v.ingredient.name: v.quantity for v in pantry_view(seeded_session)}
-    rebuild_from_ledger(seeded_session)
-    after = {v.ingredient.name: v.quantity for v in pantry_view(seeded_session)}
+    before = {v.ingredient.name: v.quantity for v in pantry_view(seeded_session, owner)}
+    rebuild_from_ledger(seeded_session, owner)
+    after = {v.ingredient.name: v.quantity for v in pantry_view(seeded_session, owner)}
 
     assert before == after
     assert after["eggs"] == 10
@@ -201,43 +205,47 @@ def _age_item(session: Session, ing: CanonicalIngredient, days: int, cooks: int 
     return item
 
 
-def test_audit_stays_silent_about_confident_levels(seeded_session: Session) -> None:
+def test_audit_stays_silent_about_confident_levels(seeded_session: Session, owner: int) -> None:
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=1000)
-    confirm_level(seeded_session, rice)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    confirm_level(seeded_session, owner, rice)
 
-    assert build_audit(seeded_session, {rice.id: 500}) == []
+    assert build_audit(seeded_session, owner, {rice.id: 500}) == []
 
 
-def test_audit_ignores_items_the_plan_does_not_need(seeded_session: Session) -> None:
+def test_audit_ignores_items_the_plan_does_not_need(seeded_session: Session, owner: int) -> None:
     """Uncertainty about something you aren't cooking with is free."""
     rice = ingredient(seeded_session, "white rice")
     flour = ingredient(seeded_session, "all-purpose flour")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=1000)
-    record_event(seeded_session, flour, reason=EventReason.PURCHASE, delta=1000)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    record_event(seeded_session, owner, flour, reason=EventReason.PURCHASE, delta=1000)
     _age_item(seeded_session, rice, days=120)
     _age_item(seeded_session, flour, days=120)
 
-    result = build_audit(seeded_session, {rice.id: 900})
+    result = build_audit(seeded_session, owner, {rice.id: 900})
     assert [c.ingredient.name for c in result] == ["white rice"]
 
 
-def test_audit_skips_levels_that_are_not_close_to_the_decision(seeded_session: Session) -> None:
+def test_audit_skips_levels_that_are_not_close_to_the_decision(
+    seeded_session: Session, owner: int
+) -> None:
     """Plenty, or nowhere near enough -- either way, checking changes nothing."""
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=5000)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=5000)
     _age_item(seeded_session, rice, days=120)
 
     # Believed 5 kg, need 100 g: even the pessimistic bound covers it.
-    assert build_audit(seeded_session, {rice.id: 100}) == []
+    assert build_audit(seeded_session, owner, {rice.id: 100}) == []
 
 
-def test_audit_surfaces_levels_straddling_the_requirement(seeded_session: Session) -> None:
+def test_audit_surfaces_levels_straddling_the_requirement(
+    seeded_session: Session, owner: int
+) -> None:
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=500)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=500)
     _age_item(seeded_session, rice, days=90, cooks=3)
 
-    result = build_audit(seeded_session, {rice.id: 480})
+    result = build_audit(seeded_session, owner, {rice.id: 480})
     assert [c.ingredient.name for c in result] == ["white rice"]
     candidate = result[0]
     assert candidate.straddles_decision
@@ -245,7 +253,7 @@ def test_audit_surfaces_levels_straddling_the_requirement(seeded_session: Sessio
     assert candidate.low < candidate.threshold < candidate.high
 
 
-def test_audit_respects_the_item_cap(seeded_session: Session) -> None:
+def test_audit_respects_the_item_cap(seeded_session: Session, owner: int) -> None:
     """A checklist long enough to ignore has failed at its job."""
     names = [
         "white rice", "all-purpose flour", "granulated sugar", "rolled oats",
@@ -255,38 +263,38 @@ def test_audit_respects_the_item_cap(seeded_session: Session) -> None:
     requirements = {}
     for name in names:
         ing = ingredient(seeded_session, name)
-        record_event(seeded_session, ing, reason=EventReason.PURCHASE, delta=500)
+        record_event(seeded_session, owner, ing, reason=EventReason.PURCHASE, delta=500)
         _age_item(seeded_session, ing, days=120, cooks=4)
         requirements[ing.id] = 480
 
-    result = build_audit(seeded_session, requirements, limit=5)
+    result = build_audit(seeded_session, owner, requirements, limit=5)
     assert len(result) == 5
     # And it returns the highest-value checks, in order.
     assert result == sorted(result, key=lambda c: c.score, reverse=True)
 
 
-def test_audit_deprioritizes_staples(seeded_session: Session) -> None:
+def test_audit_deprioritizes_staples(seeded_session: Session, owner: int) -> None:
     """Over-buying olive oil is cheap; being short of chicken is not."""
     oil = ingredient(seeded_session, "olive oil")
     chicken = ingredient(seeded_session, "chicken breast")
     assert oil.is_staple and not chicken.is_staple
 
     for ing in (oil, chicken):
-        record_event(seeded_session, ing, reason=EventReason.PURCHASE, delta=500)
+        record_event(seeded_session, owner, ing, reason=EventReason.PURCHASE, delta=500)
         _age_item(seeded_session, ing, days=90, cooks=3)
 
-    result = build_audit(seeded_session, {oil.id: 480, chicken.id: 480})
+    result = build_audit(seeded_session, owner, {oil.id: 480, chicken.id: 480})
     assert [c.ingredient.name for c in result][0] == "chicken breast"
 
 
-def test_restock_candidates_can_reach_the_audit(seeded_session: Session) -> None:
+def test_restock_candidates_can_reach_the_audit(seeded_session: Session, owner: int) -> None:
     """Regression: restock checks have a threshold but no plan requirement."""
     rice = ingredient(seeded_session, "white rice")
-    record_event(seeded_session, rice, reason=EventReason.PURCHASE, delta=500)
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=500)
     item = _age_item(seeded_session, rice, days=90, cooks=3)
     item.restock_threshold = 480
     seeded_session.flush()
 
-    result = build_audit(seeded_session, {})
+    result = build_audit(seeded_session, owner, {})
     assert [c.ingredient.name for c in result] == ["white rice"]
     assert result[0].reason == AuditReason.NEAR_RESTOCK

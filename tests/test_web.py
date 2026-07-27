@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from tests.conftest import WEB_PASSWORD, WEB_USERNAME
 
-from souschef.core.inventory import record_event
+from souschef.core.inventory import get_or_create_item, record_event
 from souschef.core.recipes import save_imported_recipe
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
@@ -25,24 +25,8 @@ from souschef.models import (
     Recipe,
     RecipeSource,
     StoredCredential,
+    User,
 )
-
-PASSWORD = "a-long-enough-test-password"
-
-
-@pytest.fixture
-def client(seeded_session: Session) -> TestClient:
-    from souschef.web.app import app
-
-    # The app opens its own sessions against the same test database.
-    seeded_session.commit()
-    return TestClient(app, follow_redirects=False)
-
-
-@pytest.fixture
-def signed_in(client: TestClient) -> TestClient:
-    client.post("/setup", data={"password": PASSWORD, "confirm": PASSWORD})
-    return client
 
 
 def ing(session: Session, name: str) -> CanonicalIngredient:
@@ -57,7 +41,7 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
 def test_first_visit_offers_setup(client: TestClient) -> None:
     response = client.get("/login")
     assert response.status_code == 200
-    assert "Set a password" in response.text
+    assert "Claim this SousChef" in response.text
 
 
 def test_protected_routes_redirect_when_signed_out(client: TestClient) -> None:
@@ -68,33 +52,79 @@ def test_protected_routes_redirect_when_signed_out(client: TestClient) -> None:
 
 
 def test_setup_then_access(client: TestClient) -> None:
-    response = client.post("/setup", data={"password": PASSWORD, "confirm": PASSWORD})
+    response = client.post(
+        "/setup",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+    )
     assert response.status_code == 303
     assert client.get("/").status_code == 200
 
 
 def test_setup_rejects_mismatched_passwords(client: TestClient) -> None:
-    response = client.post("/setup", data={"password": PASSWORD, "confirm": "different"})
+    response = client.post(
+        "/setup",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": "different"},
+    )
     assert "do not match" in response.text
 
 
 def test_setup_rejects_short_passwords(client: TestClient) -> None:
-    response = client.post("/setup", data={"password": "short", "confirm": "short"})
+    response = client.post(
+        "/setup", data={"username": WEB_USERNAME, "password": "short", "confirm": "short"}
+    )
     assert "at least 12" in response.text
+
+
+def test_setup_rejects_a_malformed_username(client: TestClient) -> None:
+    response = client.post(
+        "/setup", data={"username": "a b", "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+    )
+    assert "Username must be" in response.text
+
+
+def test_setup_only_works_once(signed_in: TestClient) -> None:
+    """The claim page must close behind the first account, not stay open."""
+    signed_in.cookies.clear()
+    response = signed_in.post(
+        "/setup",
+        data={"username": "squatter", "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+    )
+    assert response.status_code == 400
+    assert signed_in.get("/login").status_code == 200
+    assert "Claim this SousChef" not in signed_in.get("/login").text
 
 
 def test_wrong_password_is_rejected(signed_in: TestClient) -> None:
     signed_in.cookies.clear()
-    response = signed_in.post("/login", data={"password": "wrong-password-here"})
-    assert "Incorrect password" in response.text
+    response = signed_in.post(
+        "/login", data={"username": WEB_USERNAME, "password": "wrong-password-here"}
+    )
+    assert "Incorrect username or password" in response.text
     assert signed_in.get("/").status_code == 303
 
 
 def test_login_succeeds_with_correct_password(signed_in: TestClient) -> None:
     signed_in.cookies.clear()
-    response = signed_in.post("/login", data={"password": PASSWORD})
+    response = signed_in.post(
+        "/login", data={"username": WEB_USERNAME, "password": WEB_PASSWORD}
+    )
     assert response.status_code == 303
     assert signed_in.get("/").status_code == 200
+
+
+def test_unknown_username_gives_the_same_error_as_a_wrong_password(
+    signed_in: TestClient,
+) -> None:
+    """Otherwise the login form is a free list of who has an account here."""
+    signed_in.cookies.clear()
+    unknown = signed_in.post(
+        "/login", data={"username": "nobody-here", "password": WEB_PASSWORD}
+    )
+    wrong = signed_in.post(
+        "/login", data={"username": WEB_USERNAME, "password": "wrong-password-here"}
+    )
+    assert "Incorrect username or password" in unknown.text
+    assert "Incorrect username or password" in wrong.text
 
 
 def test_logout_clears_the_session(signed_in: TestClient) -> None:
@@ -103,14 +133,17 @@ def test_logout_clears_the_session(signed_in: TestClient) -> None:
 
 
 def test_repeated_failures_lock_out(client: TestClient) -> None:
-    client.post("/setup", data={"password": PASSWORD, "confirm": PASSWORD})
+    client.post(
+        "/setup",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+    )
     client.cookies.clear()
     from souschef.web import auth
 
     auth._failures.clear()
     for _ in range(auth.MAX_ATTEMPTS):
-        client.post("/login", data={"password": "nope-nope-nope"})
-    response = client.post("/login", data={"password": PASSWORD})
+        client.post("/login", data={"username": WEB_USERNAME, "password": "nope-nope-nope"})
+    response = client.post("/login", data={"username": WEB_USERNAME, "password": WEB_PASSWORD})
     assert "Too many attempts" in response.text
     auth._failures.clear()
 
@@ -124,9 +157,12 @@ def test_dashboard_renders_when_empty(signed_in: TestClient) -> None:
     assert "No recipes yet" in response.text
 
 
-def test_pantry_page_lists_stock(signed_in: TestClient, seeded_session: Session) -> None:
+def test_pantry_page_lists_stock(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
     record_event(
-        seeded_session, ing(seeded_session, "olive oil"), reason=EventReason.PURCHASE, delta=500
+        seeded_session, web_user.id, ing(seeded_session, "olive oil"),
+        reason=EventReason.PURCHASE, delta=500,
     )
     seeded_session.commit()
 
@@ -152,9 +188,12 @@ def test_unknown_ingredient_is_rejected(signed_in: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_recipe_pages_render(signed_in: TestClient, seeded_session: Session) -> None:
+def test_recipe_pages_render(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
     recipe = save_imported_recipe(
         seeded_session,
+        web_user.id,
         RawRecipe(
             title="Test Pasta",
             ingredients=["1 pound spaghetti", "2 tablespoons olive oil"],
@@ -179,10 +218,11 @@ def test_missing_recipe_is_404(signed_in: TestClient) -> None:
 
 
 def test_marking_cooked_debits_the_pantry(
-    signed_in: TestClient, seeded_session: Session
+    signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     recipe = save_imported_recipe(
         seeded_session,
+        web_user.id,
         RawRecipe(
             title="Oil Test",
             ingredients=["2 tablespoons olive oil"],
@@ -192,22 +232,24 @@ def test_marking_cooked_debits_the_pantry(
         source=RecipeSource.URL,
     )
     oil = ing(seeded_session, "olive oil")
-    record_event(seeded_session, oil, reason=EventReason.PURCHASE, delta=500)
+    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
     seeded_session.commit()
 
     response = signed_in.post(f"/recipes/{recipe.id}/cooked", data={"servings": 1})
     assert response.status_code == 303
 
     seeded_session.expire_all()
-    assert oil.pantry_item.quantity < 500
+    item = get_or_create_item(seeded_session, web_user.id, oil)
+    assert item.quantity < 500
     assert seeded_session.get(Recipe, recipe.id).times_cooked == 1
 
 
 def test_shopping_list_generates_from_the_plan(
-    signed_in: TestClient, seeded_session: Session
+    signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     recipe = save_imported_recipe(
         seeded_session,
+        web_user.id,
         RawRecipe(
             title="Pasta Night",
             ingredients=["1 pound spaghetti"],
@@ -218,6 +260,7 @@ def test_shopping_list_generates_from_the_plan(
     )
     seeded_session.add(
         MealPlanEntry(
+            user_id=web_user.id,
             plan_date=date.today() + timedelta(days=1),
             slot=MealSlot.DINNER,
             recipe_id=recipe.id,

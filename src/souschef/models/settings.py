@@ -5,14 +5,20 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import Enum, Index, LargeBinary, String, Text
+from sqlalchemy import Enum, LargeBinary, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from souschef.models.base import Base, TimestampMixin
+from souschef.models.base import Base, OwnedMixin, TimestampMixin
 
 
 class AppSetting(Base, TimestampMixin):
-    """Small key/value store for user preferences. Never holds secrets."""
+    """Small key/value store for *app-wide* settings. Never holds secrets.
+
+    Not per-user: anything belonging to one person's account goes on ``User``.
+    This once held the single shared password hash, which is now
+    ``User.password_hash``; the migration reads the old key to build the first
+    account.
+    """
 
     __tablename__ = "app_setting"
 
@@ -24,7 +30,7 @@ class CredentialKind(enum.StrEnum):
     NYT_COOKING_COOKIE = "nyt_cooking_cookie"
 
 
-class StoredCredential(Base, TimestampMixin):
+class StoredCredential(Base, OwnedMixin, TimestampMixin):
     """A third-party credential, encrypted at rest.
 
     The ciphertext lives here; the key does not -- it comes from the host secret
@@ -35,14 +41,20 @@ class StoredCredential(Base, TimestampMixin):
     NYT gates login behind bot detection, so automating it is both fragile and a
     good way to get an account locked; a session cookie is also far less
     valuable to an attacker than full account credentials.
+
+    Per user, emphatically: this is someone's paid NYT subscription, and sharing
+    one cookie across accounts would both leak a credential and get it revoked
+    for concurrent use.
     """
 
     __tablename__ = "stored_credential"
-    __table_args__ = (Index("ix_credential_kind", "kind"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", name="uq_credential_user_kind"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[CredentialKind] = mapped_column(
-        Enum(CredentialKind, native_enum=False, length=32), unique=True
+        Enum(CredentialKind, native_enum=False, length=32)
     )
 
     # AES-GCM: nonce prepended to ciphertext.

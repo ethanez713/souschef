@@ -71,14 +71,109 @@ def cmd_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_rebuild(_args: argparse.Namespace) -> int:
+def cmd_rebuild(args: argparse.Namespace) -> int:
     """Recompute pantry levels by replaying the event ledger."""
+    from sqlalchemy import select
+
     from souschef.core.inventory import rebuild_from_ledger
     from souschef.db import session_scope
+    from souschef.models import User
 
     with session_scope() as session:
-        count = rebuild_from_ledger(session)
-    print(f"Rebuilt {count} pantry rows from the ledger.")
+        users = session.scalars(select(User).order_by(User.id)).all()
+        if args.user:
+            users = [u for u in users if u.username == args.user.strip().casefold()]
+            if not users:
+                print(f"No such user: {args.user}", file=sys.stderr)
+                return 1
+
+        total = 0
+        for user in users:
+            count = rebuild_from_ledger(session, user.id)
+            print(f"  {user.username}: {count} pantry rows")
+            total += count
+
+    print(f"Rebuilt {total} pantry rows from the ledger.")
+    return 0
+
+
+def cmd_users(_args: argparse.Namespace) -> int:
+    """List accounts. Useful for confirming who a deployed box actually has."""
+    from sqlalchemy import select
+
+    from souschef.db import session_scope
+    from souschef.models import User
+
+    with session_scope() as session:
+        users = session.scalars(select(User).order_by(User.id)).all()
+        if not users:
+            print("No accounts yet -- visit the site to claim the first one.")
+            return 0
+        for user in users:
+            flags = " ".join(
+                f for f in ("admin" if user.is_admin else "", "" if user.is_active else "disabled")
+                if f
+            )
+            last = user.last_login_at.strftime("%Y-%m-%d") if user.last_login_at else "never"
+            print(f"  {user.id:>3}  {user.username:<24} last login {last:<12} {flags}")
+    return 0
+
+
+def cmd_passwd(args: argparse.Namespace) -> int:
+    """Set a user's password from the box.
+
+    The recovery path when nobody can sign in: there is no email reset, so
+    shell access to the VM is deliberately the only way back in.
+    """
+    import getpass
+
+    from sqlalchemy import select
+
+    from souschef.db import session_scope
+    from souschef.models import User
+    from souschef.web import auth
+
+    with session_scope() as session:
+        user = session.scalar(
+            select(User).where(User.username == args.username.strip().casefold())
+        )
+        if user is None:
+            print(f"No such user: {args.username}", file=sys.stderr)
+            return 1
+
+        password = getpass.getpass("New password: ")
+        if password != getpass.getpass("Repeat: "):
+            print("Passwords do not match.", file=sys.stderr)
+            return 1
+        try:
+            auth.set_password(session, user, password)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    print(f"Password updated for {args.username}. Existing sessions were signed out.")
+    return 0
+
+
+def cmd_invite(args: argparse.Namespace) -> int:
+    """Mint an invite from the command line, for when you're already on the box."""
+    from sqlalchemy import select
+
+    from souschef.db import session_scope
+    from souschef.models import User
+    from souschef.web import auth
+
+    with session_scope() as session:
+        admin = session.scalar(
+            select(User).where(User.is_admin.is_(True)).order_by(User.id)
+        )
+        if admin is None:
+            print("No admin account exists yet.", file=sys.stderr)
+            return 1
+        invite, code = auth.create_invite(session, admin, note=args.note)
+        print(f"Invite {invite.id}, expires {invite.expires_at:%Y-%m-%d}:")
+        print(f"  https://<your-domain>/join?code={code}")
+        print("\nShown once. It is stored hashed, so it cannot be printed again.")
     return 0
 
 
@@ -110,12 +205,22 @@ def main(argv: list[str] | None = None) -> int:
         func=cmd_init
     )
     sub.add_parser("keygen", help="generate the required secrets").set_defaults(func=cmd_keygen)
-    sub.add_parser("rebuild", help="replay the ledger into pantry levels").set_defaults(
-        func=cmd_rebuild
-    )
     sub.add_parser("config", help="show the effective configuration").set_defaults(
         func=cmd_config
     )
+    sub.add_parser("users", help="list accounts").set_defaults(func=cmd_users)
+
+    rebuild = sub.add_parser("rebuild", help="replay the ledger into pantry levels")
+    rebuild.add_argument("--user", default=None, help="one username (default: everyone)")
+    rebuild.set_defaults(func=cmd_rebuild)
+
+    invite = sub.add_parser("invite", help="mint an invite code")
+    invite.add_argument("--note", default="", help="a reminder of who it is for")
+    invite.set_defaults(func=cmd_invite)
+
+    passwd = sub.add_parser("passwd", help="set a user's password")
+    passwd.add_argument("username")
+    passwd.set_defaults(func=cmd_passwd)
 
     scan = sub.add_parser("scan", help="dry-run OCR on a receipt image")
     scan.add_argument("image")

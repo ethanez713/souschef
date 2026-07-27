@@ -76,8 +76,34 @@ docker compose logs -f app
 The image pre-downloads the OCR models and NLTK data at build time, so the first
 receipt scan and first recipe import don't stall on a download.
 
-Visit `https://your-domain` and set a password. The first request creates the
-schema and loads the ingredient catalog.
+Visit `https://your-domain` and **claim the instance**: the first visitor to an
+empty database creates the admin account, and the claim page closes behind them.
+Do this immediately after the stack comes up — until you do, anyone who finds the
+hostname can claim it instead of you.
+
+The first request creates the schema and loads the ingredient catalog.
+
+### Adding other people
+
+Accounts are invite-only; there is no public registration form. From Settings →
+Invites, generate a single-use link (`/join?code=…`, valid 7 days) and send it to
+them. They pick their own username and password, so no password ever passes
+through a chat app.
+
+Each account is a separate kitchen: its own pantry, recipes, meal plan, shopping
+list, receipts and NYT cookie. Nothing is shared between accounts except the
+ingredient catalog itself.
+
+From the box, if you would rather not use the web UI:
+
+```bash
+docker compose exec app souschef users            # who has an account
+docker compose exec app souschef invite --note X  # mint an invite link
+docker compose exec app souschef passwd alice     # the lost-password recovery path
+```
+
+There is no email-based password reset by design — shell access to this VM is
+deliberately the only way back in.
 
 ## 6. Install on the phone
 
@@ -158,7 +184,7 @@ an issue. Do not defeat this by adding `print()` calls.
 | `most lines … need manual review` | Normal for a new store; the alias table learns as you confirm |
 | `no quantity and no package size for 'x'` | Catalog gap — give that ingredient a `package_qty` in `data/seeds/ingredients.json` |
 | `%d of %d ingredient lines did not match the catalog` | Those lines are invisible to pantry checks until aliased |
-| `Locked out <ip> after 8 failed sign-ins` | Someone is guessing your password |
+| `Locked out <ip> after 8 failed sign-ins` | Someone is guessing a password |
 | `Stored NYT cookie could not be decrypted` | `SOUSCHEF_SECRET_KEY` changed; re-enter the cookie |
 | `POST /… SLOW (>3000ms)` | Expected once after a restart (OCR model load); investigate if repeated |
 
@@ -176,6 +202,8 @@ nothing surfaces the problem until you try to sign in. Docker restarts on this.
 | Site unreachable, security list open | Instance `iptables` still closed — see step 1 |
 | Certificate never issues | DNS not resolving yet, or 80/443 blocked |
 | Sign-in succeeds then every page bounces to `/login` | Running plain HTTP behind a proxy that isn't sending `X-Forwarded-Proto` |
+| Everyone is signed out at once | Someone changed their password (revokes only *their* sessions), or `SOUSCHEF_SESSION_SECRET` changed (revokes everyone's) |
+| The site offers to "claim" itself again | The database was replaced or the volume was lost — restore a backup before anyone claims it |
 | NYT imports start failing | Session cookie expired — paste a fresh one in Settings |
 | Receipt scan is slow the first time | Model load; ~1 s thereafter |
 | `/healthz` returns 503 | Read `problems` in the JSON body; usually a missing secret |

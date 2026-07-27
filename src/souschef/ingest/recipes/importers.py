@@ -76,11 +76,17 @@ def _guard_external(what: str) -> None:
         )
 
 
-def get_nyt_cookie(session: Session) -> str | None:
-    """Decrypt the stored NYT session cookie, if one is configured."""
+def get_nyt_cookie(session: Session, user_id: int) -> str | None:
+    """Decrypt this user's stored NYT session cookie, if they configured one.
+
+    Strictly per-user: it is someone's paid subscription, and lending it to
+    another account would both leak the credential and risk NYT revoking it for
+    concurrent use.
+    """
     credential = session.scalar(
         select(StoredCredential).where(
-            StoredCredential.kind == CredentialKind.NYT_COOKING_COOKIE
+            StoredCredential.user_id == user_id,
+            StoredCredential.kind == CredentialKind.NYT_COOKING_COOKIE,
         )
     )
     if credential is None:
@@ -133,8 +139,8 @@ def fetch_html(url: str, *, cookie: str | None = None) -> str:
     return response.text
 
 
-def import_from_url(session: Session, url: str) -> ImportResult:
-    """Import a single recipe from any URL.
+def import_from_url(session: Session, user_id: int, url: str) -> ImportResult:
+    """Import a single recipe from any URL, on behalf of one user.
 
     Tries JSON-LD first because it is the most stable target, then falls back to
     ``recipe-scrapers``, which carries site-specific rules for pages whose markup
@@ -145,7 +151,7 @@ def import_from_url(session: Session, url: str) -> ImportResult:
         raise ImportError_("Enter a full URL starting with http:// or https://")
 
     nyt = is_nyt_url(url)
-    cookie = get_nyt_cookie(session) if nyt else None
+    cookie = get_nyt_cookie(session, user_id) if nyt else None
 
     if nyt and not cookie:
         raise ImportError_(

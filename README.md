@@ -45,10 +45,24 @@ export SOUSCHEF_SESSION_SECRET=$(python3 -c "import secrets;print(secrets.token_
 ./venv/bin/souschef serve     # http://127.0.0.1:8000
 ```
 
+The first visitor to an empty database claims the instance and becomes the admin;
+the claim page closes behind them.
+
 Outbound calls are **blocked by default** so a dev run can't hit a real service
 or burn API quota. Set `SOUSCHEF_NO_EXTERNAL=false` to allow recipe imports.
 
 Deployment to a free Oracle ARM VM: [`deploy/README.md`](deploy/README.md).
+
+### Accounts
+
+Several people can share one instance, and each gets a **separate kitchen** — own
+pantry, recipes, plan, shopping list, receipts and NYT cookie. The only thing
+shared is the ingredient catalog, which is reference data about food rather than
+anything personal.
+
+Registration is closed: after the first account, joining needs a single-use
+invite generated from Settings. On an internet-facing box, an open signup form
+would be the one anonymous write endpoint worth attacking.
 
 ### Other commands
 
@@ -57,6 +71,9 @@ souschef keygen           # generate the required secrets
 souschef scan photo.jpg   # dry-run OCR on a receipt, changes nothing
 souschef rebuild          # recompute pantry levels by replaying the ledger
 souschef config           # show effective configuration
+souschef users            # list accounts
+souschef invite           # mint an invite link from the box
+souschef passwd <user>    # set a password; the only password-reset path there is
 ```
 
 ## How it works

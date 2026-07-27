@@ -4,6 +4,12 @@ Every change goes through :func:`record_event`, which appends to the ledger and
 then updates the materialized ``PantryItem``. Nothing writes a level directly.
 That single rule is what makes state reconstructible, makes "why does it think I
 have three onions?" answerable, and makes undo trivial.
+
+Every kitchen belongs to one user, so ``user_id`` is a required second argument
+throughout this module. It is positional rather than an optional keyword
+deliberately: a default would let a caller forget it and silently read or write
+someone else's pantry, and that is the one bug in a multi-user app that must be
+impossible to write rather than merely caught in review.
 """
 
 from __future__ import annotations
@@ -68,13 +74,19 @@ class PantryView:
 
 def get_or_create_item(
     session: Session,
+    user_id: int,
     ingredient: CanonicalIngredient,
     *,
     location: StorageLocation | None = None,
 ) -> PantryItem:
-    item = session.scalar(select(PantryItem).where(PantryItem.ingredient_id == ingredient.id))
+    item = session.scalar(
+        select(PantryItem).where(
+            PantryItem.user_id == user_id, PantryItem.ingredient_id == ingredient.id
+        )
+    )
     if item is None:
         item = PantryItem(
+            user_id=user_id,
             ingredient_id=ingredient.id,
             quantity=0.0,
             confidence=1.0,
@@ -96,6 +108,7 @@ def _default_location(ingredient: CanonicalIngredient) -> StorageLocation:
 
 def record_event(
     session: Session,
+    user_id: int,
     ingredient: CanonicalIngredient,
     *,
     reason: EventReason,
@@ -113,7 +126,7 @@ def record_event(
     unit) and converted before storage, so callers can speak in whatever units
     their source used.
     """
-    item = get_or_create_item(session, ingredient)
+    item = get_or_create_item(session, user_id, ingredient)
     physical = physical_of(ingredient)
 
     if unit is not None and delta:
@@ -125,6 +138,7 @@ def record_event(
     new_quantity = max(0.0, item.quantity + delta_base)
 
     event = InventoryEvent(
+        user_id=user_id,
         ingredient_id=ingredient.id,
         reason=reason,
         delta=delta_base,
@@ -175,6 +189,7 @@ def _apply_confidence(item: PantryItem, reason: EventReason, event_confidence: f
 
 def set_level(
     session: Session,
+    user_id: int,
     ingredient: CanonicalIngredient,
     quantity: float,
     *,
@@ -186,12 +201,13 @@ def set_level(
     Recorded as a MANUAL delta rather than an overwrite so the ledger still
     explains the jump.
     """
-    item = get_or_create_item(session, ingredient)
+    item = get_or_create_item(session, user_id, ingredient)
     target = (
         to_base(quantity, unit, physical_of(ingredient)) if unit is not None else quantity
     )
     return record_event(
         session,
+        user_id,
         ingredient,
         reason=EventReason.MANUAL,
         delta=target - item.quantity,
@@ -201,6 +217,7 @@ def set_level(
 
 def confirm_level(
     session: Session,
+    user_id: int,
     ingredient: CanonicalIngredient,
     quantity: float | None = None,
     *,
@@ -213,9 +230,12 @@ def confirm_level(
     whole point of the pre-shop audit.
     """
     if quantity is not None:
-        return set_level(session, ingredient, quantity, unit=unit, note="confirmed by check")
+        return set_level(
+            session, user_id, ingredient, quantity, unit=unit, note="confirmed by check"
+        )
     return record_event(
         session,
+        user_id,
         ingredient,
         reason=EventReason.CONFIRM,
         delta=0.0,
@@ -225,6 +245,7 @@ def confirm_level(
 
 def consume_for_recipe(
     session: Session,
+    user_id: int,
     requirements: dict[int, float],
     *,
     recipe_id: int,
@@ -246,6 +267,7 @@ def consume_for_recipe(
         events.append(
             record_event(
                 session,
+                user_id,
                 ingredient,
                 reason=EventReason.COOK,
                 delta=-amount,
@@ -256,11 +278,14 @@ def consume_for_recipe(
     return events
 
 
-def pantry_view(session: Session, *, include_empty: bool = False) -> list[PantryView]:
-    """Current pantry with decay applied."""
+def pantry_view(
+    session: Session, user_id: int, *, include_empty: bool = False
+) -> list[PantryView]:
+    """One user's current pantry, with decay applied."""
     rows = session.execute(
         select(PantryItem, CanonicalIngredient)
         .join(CanonicalIngredient, PantryItem.ingredient_id == CanonicalIngredient.id)
+        .where(PantryItem.user_id == user_id)
         .order_by(CanonicalIngredient.name)
     ).all()
 
@@ -279,14 +304,16 @@ def pantry_view(session: Session, *, include_empty: bool = False) -> list[Pantry
     return views
 
 
-def rebuild_from_ledger(session: Session) -> int:
-    """Recompute every pantry row by replaying the ledger.
+def rebuild_from_ledger(session: Session, user_id: int) -> int:
+    """Recompute one user's pantry rows by replaying their ledger.
 
     The materialized rows are a cache; this proves it. Useful after editing
     history, and as a self-check that the fold and the incremental path agree.
     """
     events = session.scalars(
-        select(InventoryEvent).order_by(InventoryEvent.occurred_at, InventoryEvent.id)
+        select(InventoryEvent)
+        .where(InventoryEvent.user_id == user_id)
+        .order_by(InventoryEvent.occurred_at, InventoryEvent.id)
     ).all()
 
     totals: dict[int, float] = {}
@@ -307,7 +334,7 @@ def rebuild_from_ledger(session: Session) -> int:
         ingredient = session.get(CanonicalIngredient, ingredient_id)
         if ingredient is None:
             continue
-        item = get_or_create_item(session, ingredient)
+        item = get_or_create_item(session, user_id, ingredient)
         item.quantity = quantity
         item.cooks_since_confirmed = cooks.get(ingredient_id, 0)
         if ingredient_id in last_confirmed:

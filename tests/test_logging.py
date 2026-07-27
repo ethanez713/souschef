@@ -11,6 +11,7 @@ import logging
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.conftest import WEB_USERNAME
 
 from souschef.logconfig import (
     REQUEST_ID,
@@ -93,14 +94,6 @@ def test_warnings_reach_the_log(caplog: pytest.LogCaptureFixture) -> None:
 # ---------------------------------------------------------------- web
 
 
-@pytest.fixture
-def client(seeded_session) -> TestClient:  # noqa: ANN001
-    from souschef.web.app import app
-
-    seeded_session.commit()
-    return TestClient(app, follow_redirects=False)
-
-
 def test_responses_carry_a_request_id(client: TestClient) -> None:
     """The header is how a user-reported failure gets found in the log."""
     response = client.get("/healthz")
@@ -139,24 +132,20 @@ def test_request_log_line_carries_the_request_id(
 
 
 def test_warnings_during_a_request_share_its_id(
-    client: TestClient, caplog: pytest.LogCaptureFixture
+    signed_in: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A warning and the request that caused it must be correlatable."""
-    from souschef.web import auth
 
-    auth._failures.clear()
-    client.post(
-        "/setup", data={"password": "a-long-test-password", "confirm": "a-long-test-password"}
-    )
-    client.cookies.clear()
+    signed_in.cookies.clear()
 
     with caplog.at_level(logging.INFO):
-        response = client.post("/login", data={"password": "definitely-wrong"})
+        response = signed_in.post(
+            "/login", data={"username": WEB_USERNAME, "password": "definitely-wrong"}
+        )
 
     request_id = response.headers["X-Request-ID"]
     auth_warning = next(r for r in caplog.records if "Failed sign-in" in r.getMessage())
     assert auth_warning.request_id == request_id
-    auth._failures.clear()
 
 
 def test_unhandled_errors_are_logged_with_a_traceback(
@@ -180,55 +169,46 @@ def test_unhandled_errors_are_logged_with_a_traceback(
 
 
 def test_client_errors_are_logged_as_warnings(
-    client: TestClient, caplog: pytest.LogCaptureFixture
+    signed_in: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Must be signed in, or the route redirects to /login before it can 404.
-    client.post(
-        "/setup", data={"password": "a-long-test-password", "confirm": "a-long-test-password"}
-    )
     with caplog.at_level(logging.WARNING, logger="souschef.web"):
-        assert client.get("/recipes/999999").status_code == 404
+        assert signed_in.get("/recipes/999999").status_code == 404
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("404" in r.getMessage() for r in warnings)
 
 
 def test_failed_signin_is_logged(
-    client: TestClient, caplog: pytest.LogCaptureFixture
+    signed_in: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     """On a public box, repeated failures are the signal that matters."""
-    from souschef.web import auth
 
-    auth._failures.clear()
-    client.post(
-        "/setup", data={"password": "a-long-test-password", "confirm": "a-long-test-password"}
-    )
-    client.cookies.clear()
+    signed_in.cookies.clear()
 
     with caplog.at_level(logging.WARNING, logger="souschef.auth"):
-        client.post("/login", data={"password": "wrong-password-attempt"})
+        signed_in.post(
+            "/login",
+            data={"username": WEB_USERNAME, "password": "wrong-password-attempt"},
+        )
     assert "Failed sign-in" in caplog.text
     # The attempted password must never appear.
     assert "wrong-password-attempt" not in caplog.text
-    auth._failures.clear()
 
 
 def test_lockout_is_logged_as_an_error(
-    client: TestClient, caplog: pytest.LogCaptureFixture
+    signed_in: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     from souschef.web import auth
 
-    auth._failures.clear()
-    client.post(
-        "/setup", data={"password": "a-long-test-password", "confirm": "a-long-test-password"}
-    )
-    client.cookies.clear()
+    signed_in.cookies.clear()
 
     with caplog.at_level(logging.WARNING, logger="souschef.auth"):
         for _ in range(auth.MAX_ATTEMPTS):
-            client.post("/login", data={"password": "nope-nope-nope"})
+            signed_in.post(
+                "/login", data={"username": WEB_USERNAME, "password": "nope-nope-nope"}
+            )
     assert any(r.levelno == logging.ERROR and "Locked out" in r.getMessage()
                for r in caplog.records)
-    auth._failures.clear()
 
 
 def test_healthz_reports_degraded_when_secrets_are_missing(

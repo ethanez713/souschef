@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 
@@ -56,6 +57,92 @@ def session(_schema: None) -> Iterator[Session]:
     finally:
         db.rollback()
         db.close()
+
+
+def _make_user(session: Session, username: str, *, is_admin: bool = False):  # noqa: ANN202
+    """Insert an account directly, skipping the argon2 hash.
+
+    Hashing a password costs ~50 ms by design, which is the right price at a
+    login form and the wrong one multiplied across a test suite. Tests that
+    exercise the login path itself go through the real `auth.create_user`.
+    """
+    from souschef.models import User
+
+    user = User(
+        username=username,
+        display_name=username,
+        password_hash="not-a-usable-hash",
+        is_admin=is_admin,
+    )
+    session.add(user)
+    session.flush()
+    return user
+
+
+@pytest.fixture
+def user(session: Session):  # noqa: ANN201
+    """The account that owns whatever a test creates."""
+    return _make_user(session, "tester", is_admin=True)
+
+
+@pytest.fixture
+def other_user(session: Session):  # noqa: ANN201
+    """A second account, for proving one user cannot reach another's data."""
+    return _make_user(session, "intruder")
+
+
+@pytest.fixture
+def owner(user) -> int:  # noqa: ANN001
+    """Shorthand for the owning user's id, which most core calls take."""
+    return user.id
+
+
+# Credentials for the account that web tests sign in as. Deliberately a
+# different username from the `user` fixture, so a test can hold both a
+# signed-in account and somebody else's data at the same time.
+WEB_USERNAME = "webuser"
+WEB_PASSWORD = "a-long-enough-test-password"
+
+
+@pytest.fixture
+def client(seeded_session: Session) -> Iterator[TestClient]:
+    """A TestClient against the real app and the real test database."""
+    from souschef.web import auth
+    from souschef.web.app import app
+
+    # The app opens its own sessions against the same test database.
+    seeded_session.commit()
+
+    # The login throttle is in-process, so without this a test that exhausts it
+    # locks out every test that runs afterwards -- an order-dependent failure
+    # that only shows up when the suite is run as a whole.
+    auth._failures.clear()
+    yield TestClient(app, follow_redirects=False)
+    auth._failures.clear()
+
+
+@pytest.fixture
+def signed_in(client: TestClient) -> TestClient:
+    """A client that has claimed the instance and holds a session cookie."""
+    response = client.post(
+        "/setup",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+    )
+    assert response.status_code == 303, response.text
+    return client
+
+
+@pytest.fixture
+def web_user(signed_in: TestClient, session: Session):  # noqa: ANN201, ARG001
+    """The account `signed_in` is signed in as, for seeding data it should see."""
+    from sqlalchemy import select
+
+    from souschef.models import User
+
+    session.expire_all()
+    user = session.scalar(select(User).where(User.username == WEB_USERNAME))
+    assert user is not None
+    return user
 
 
 @pytest.fixture

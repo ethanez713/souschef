@@ -6,10 +6,10 @@ import enum
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, Enum, Float, ForeignKey, Index, String
+from sqlalchemy import Date, Enum, Float, ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from souschef.models.base import Base, TimestampMixin, utcnow
+from souschef.models.base import Base, OwnedMixin, TimestampMixin, utcnow
 
 if TYPE_CHECKING:
     from souschef.models.ingredient import CanonicalIngredient
@@ -31,8 +31,8 @@ class EventReason(enum.StrEnum):
     INITIAL = "initial"  # seeding an item for the first time
 
 
-class PantryItem(Base, TimestampMixin):
-    """Current believed state of one ingredient in the kitchen.
+class PantryItem(Base, OwnedMixin, TimestampMixin):
+    """Current believed state of one ingredient in one user's kitchen.
 
     This is a *materialized view* of the event ledger, not the source of truth.
     It exists so the common read path is a single indexed row rather than a fold
@@ -40,10 +40,16 @@ class PantryItem(Base, TimestampMixin):
     """
 
     __tablename__ = "pantry_item"
+    __table_args__ = (
+        # One row per ingredient *per user*. Ingredient alone was unique when
+        # there was only one kitchen; keeping it that way would let the first
+        # user to stock an ingredient block everyone else from tracking it.
+        UniqueConstraint("user_id", "ingredient_id", name="uq_pantry_item_user_ingredient"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ingredient_id: Mapped[int] = mapped_column(
-        ForeignKey("canonical_ingredient.id", ondelete="CASCADE"), unique=True, index=True
+        ForeignKey("canonical_ingredient.id", ondelete="CASCADE"), index=True
     )
 
     # Quantity in the ingredient's base_unit (g / ml / count). Authoritative for
@@ -72,16 +78,16 @@ class PantryItem(Base, TimestampMixin):
     # item becomes a restock candidate even if no planned recipe needs it.
     restock_threshold: Mapped[float | None] = mapped_column(Float)
 
-    ingredient: Mapped[CanonicalIngredient] = relationship(back_populates="pantry_item")
+    ingredient: Mapped[CanonicalIngredient] = relationship()
 
     def __repr__(self) -> str:
         return (
-            f"<PantryItem ing={self.ingredient_id} "
+            f"<PantryItem u={self.user_id} ing={self.ingredient_id} "
             f"qty={self.quantity:.1f} c={self.confidence:.2f}>"
         )
 
 
-class InventoryEvent(Base):
+class InventoryEvent(Base, OwnedMixin):
     """Append-only ledger of every change to pantry state.
 
     Nothing mutates a level except by writing one of these first. That buys
@@ -90,7 +96,11 @@ class InventoryEvent(Base):
     """
 
     __tablename__ = "inventory_event"
-    __table_args__ = (Index("ix_event_ingredient_time", "ingredient_id", "occurred_at"),)
+    __table_args__ = (
+        # The replay in `rebuild_from_ledger` reads one user's whole history in
+        # order, so the owner leads the index.
+        Index("ix_event_user_ingredient_time", "user_id", "ingredient_id", "occurred_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ingredient_id: Mapped[int] = mapped_column(
@@ -119,4 +129,7 @@ class InventoryEvent(Base):
     note: Mapped[str | None] = mapped_column(String(300))
 
     def __repr__(self) -> str:
-        return f"<InventoryEvent {self.reason} ing={self.ingredient_id} d={self.delta:+.1f}>"
+        return (
+            f"<InventoryEvent u={self.user_id} {self.reason} "
+            f"ing={self.ingredient_id} d={self.delta:+.1f}>"
+        )

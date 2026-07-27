@@ -198,15 +198,20 @@ def score_recipe(
 
 def suggest(
     session: Session,
+    user_id: int,
     *,
     limit: int = 20,
     today: date | None = None,
     include_archived: bool = False,
 ) -> list[Suggestion]:
-    """Rank the whole library against the pantry."""
-    pantry = {v.ingredient.id: v for v in pantry_view(session)}
+    """Rank one user's library against their pantry."""
+    pantry = {v.ingredient.id: v for v in pantry_view(session, user_id)}
 
-    query = select(Recipe).options(selectinload(Recipe.ingredients))
+    query = (
+        select(Recipe)
+        .options(selectinload(Recipe.ingredients))
+        .where(Recipe.user_id == user_id)
+    )
     if not include_archived:
         query = query.where(Recipe.is_archived.is_(False))
 

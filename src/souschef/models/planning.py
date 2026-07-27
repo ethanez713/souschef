@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Date, Enum, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from souschef.models.base import Base, TimestampMixin
+from souschef.models.base import Base, OwnedMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from souschef.models.ingredient import CanonicalIngredient
@@ -23,9 +23,9 @@ class MealSlot(enum.StrEnum):
     OTHER = "other"
 
 
-class MealPlanEntry(Base, TimestampMixin):
+class MealPlanEntry(Base, OwnedMixin, TimestampMixin):
     __tablename__ = "meal_plan_entry"
-    __table_args__ = (Index("ix_mealplan_date_slot", "plan_date", "slot"),)
+    __table_args__ = (Index("ix_mealplan_user_date_slot", "user_id", "plan_date", "slot"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     plan_date: Mapped[date] = mapped_column(Date, index=True)
@@ -58,7 +58,7 @@ class ShoppingListStatus(enum.StrEnum):
     ARCHIVED = "archived"
 
 
-class ShoppingList(Base, TimestampMixin):
+class ShoppingList(Base, OwnedMixin, TimestampMixin):
     __tablename__ = "shopping_list"
 
     id: Mapped[int] = mapped_column(primary_key=True)

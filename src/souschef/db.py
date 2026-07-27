@@ -1,9 +1,15 @@
 """Database engine and session management.
 
-SQLite is a deliberate choice, not a placeholder. This is a single-user app with
-a few thousand rows: there is no write concurrency to solve, the backup story is
-"copy one file", and dev and production run the identical engine so tests can't
-pass against a database that behaves differently from the real one.
+SQLite is a deliberate choice, not a placeholder. This is a handful of people
+cooking dinner, with a few thousand rows between them: writes are rare and never
+simultaneous in practice, the backup story is "copy one file", and dev and
+production run the identical engine so tests can't pass against a database that
+behaves differently from the real one.
+
+WAL plus a busy timeout covers the one case that does overlap -- two people
+opening the app at once -- because readers never block and a writer waits rather
+than failing. If this ever grew past that, Postgres would be the answer, but
+nothing in the schema assumes SQLite.
 """
 
 from __future__ import annotations

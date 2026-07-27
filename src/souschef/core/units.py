@@ -60,6 +60,7 @@ _UNIT_ALIASES = {
     "tbsps": "tablespoon",
     "tablespoons": "tablespoon",
     "c": "cup",
+    "cp": "cup",  # pint's short format for cup
     "cups": "cup",
     "fl oz": "fluid_ounce",
     "floz": "fluid_ounce",

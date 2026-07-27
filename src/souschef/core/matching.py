@@ -210,11 +210,24 @@ def head_segment(text: str) -> str:
     it from "1 can diced tomatoes", since both have the identical token set
     {tomatoes, diced}. Treating everything after the comma as preparation
     resolves the ambiguity the way a cook reads it.
+
+    Not every comma separates a product from its preparation, though: recipes
+    also use them between adjectives, as in "boneless, skinless chicken thighs".
+    Splitting there would leave "boneless" as the product. The test for a real
+    split is whether the head still contains a content word once generic prep
+    and packaging words are removed -- "2 large tomatoes" keeps "tomatoes", but
+    "boneless" is nothing but a modifier and reduces to empty.
     """
+    if "," not in text:
+        return text.strip()
+
     head = text.split(",", 1)[0].strip()
-    # A comma that leaves nothing behind ("salt, to taste" is fine; ", drained"
-    # is not) means the split was wrong -- fall back to the whole line.
-    return head if len(head) >= 3 else text.strip()
+    if len(head) < 3:
+        return text.strip()
+
+    # Deliberately the unprotected strip: the question is whether anything
+    # survives as a *noun*, and protection exists to keep modifiers alive.
+    return head if strip_noise(head) else text.strip()
 
 
 def strip_noise(text: str, protected: frozenset[str] = frozenset()) -> str:

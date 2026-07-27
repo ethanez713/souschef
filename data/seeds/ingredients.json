@@ -11,7 +11,6 @@
       "package_qty": 2270,
       "package_unit": "g",
       "shelf_life_days": 365,
-      "is_staple": true,
       "aliases": [
         "flour",
         "ap flour",
@@ -77,7 +76,6 @@
       "package_qty": 1814,
       "package_unit": "g",
       "shelf_life_days": 1825,
-      "is_staple": true,
       "aliases": [
         "sugar",
         "white sugar",
@@ -331,7 +329,8 @@
       "aliases": [
         "pam",
         "nonstick spray"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "white vinegar",
@@ -503,7 +502,8 @@
       "shelf_life_days": 1095,
       "aliases": [
         "coriander powder"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "paprika",
@@ -533,7 +533,8 @@
       "shelf_life_days": 1095,
       "aliases": [
         "chile powder"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "garlic powder",
@@ -560,7 +561,8 @@
       "package_qty": 71,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "aliases": []
+      "aliases": [],
+      "is_staple": true
     },
     {
       "name": "dried oregano",
@@ -589,7 +591,8 @@
       "shelf_life_days": 1095,
       "aliases": [
         "thyme"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "dried basil",
@@ -601,7 +604,8 @@
       "package_qty": 18,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "aliases": []
+      "aliases": [],
+      "is_staple": true
     },
     {
       "name": "bay leaves",
@@ -643,7 +647,8 @@
       "package_qty": 43,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "aliases": []
+      "aliases": [],
+      "is_staple": true
     },
     {
       "name": "ground turmeric",
@@ -657,7 +662,8 @@
       "shelf_life_days": 1095,
       "aliases": [
         "turmeric"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "curry powder",
@@ -669,7 +675,8 @@
       "package_qty": 50,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "aliases": []
+      "aliases": [],
+      "is_staple": true
     },
     {
       "name": "nutmeg",
@@ -683,7 +690,8 @@
       "shelf_life_days": 1095,
       "aliases": [
         "ground nutmeg"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "cayenne pepper",
@@ -697,7 +705,8 @@
       "shelf_life_days": 1095,
       "aliases": [
         "cayenne"
-      ]
+      ],
+      "is_staple": true
     },
     {
       "name": "italian seasoning",
@@ -709,7 +718,8 @@
       "package_qty": 28,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "aliases": []
+      "aliases": [],
+      "is_staple": true
     },
     {
       "name": "yellow onion",
@@ -786,7 +796,6 @@
       "package_qty": 12,
       "package_unit": "count",
       "shelf_life_days": 60,
-      "is_staple": true,
       "aliases": [
         "fresh garlic"
       ]
@@ -1150,7 +1159,6 @@
       "package_qty": 4,
       "package_unit": "count",
       "shelf_life_days": 21,
-      "is_staple": true,
       "aliases": [
         "lemons"
       ]
@@ -1565,7 +1573,6 @@
       "package_qty": 12,
       "package_unit": "count",
       "shelf_life_days": 28,
-      "is_staple": true,
       "aliases": [
         "egg",
         "large eggs",
@@ -1583,7 +1590,6 @@
       "package_qty": 1893,
       "package_unit": "ml",
       "shelf_life_days": 10,
-      "is_staple": true,
       "aliases": [
         "milk",
         "2% milk",
@@ -1617,7 +1623,6 @@
       "package_qty": 454,
       "package_unit": "g",
       "shelf_life_days": 60,
-      "is_staple": true,
       "aliases": [
         "unsalted butter",
         "salted butter",
@@ -1662,7 +1667,6 @@
       "package_qty": 227,
       "package_unit": "g",
       "shelf_life_days": 90,
-      "is_staple": true,
       "aliases": [
         "parmesan",
         "parmigiano reggiano",
@@ -1739,7 +1743,6 @@
       "package_qty": 907,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "is_staple": true,
       "aliases": [
         "rice",
         "long grain rice",
@@ -1769,7 +1772,6 @@
       "package_qty": 454,
       "package_unit": "g",
       "shelf_life_days": 730,
-      "is_staple": true,
       "aliases": [
         "pasta",
         "spaghettini",
@@ -1896,7 +1898,6 @@
       "package_qty": 1,
       "package_unit": "count",
       "shelf_life_days": 1095,
-      "is_staple": true,
       "aliases": [
         "diced tomatoes",
         "canned tomatoes"
@@ -1928,7 +1929,6 @@
       "package_qty": 170,
       "package_unit": "g",
       "shelf_life_days": 1095,
-      "is_staple": true,
       "aliases": [
         "tomato puree"
       ]
@@ -2022,7 +2022,6 @@
       "package_qty": 946,
       "package_unit": "ml",
       "shelf_life_days": 365,
-      "is_staple": true,
       "aliases": [
         "chicken broth",
         "chicken bouillon",
@@ -2115,7 +2114,6 @@
       "package_qty": 227,
       "package_unit": "g",
       "shelf_life_days": 365,
-      "is_staple": true,
       "aliases": [
         "mustard",
         "whole grain mustard",

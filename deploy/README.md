@@ -40,10 +40,42 @@ Let's Encrypt on first boot, so DNS must resolve **before** you start the stack.
 Real HTTPS is not cosmetic: without it the PWA will not install, the camera
 input is restricted, and the session cookie cannot carry `Secure`.
 
-## 4. Secrets
+**A free subdomain is enough.** At [duckdns.org](https://www.duckdns.org), sign
+in, claim a name, and set its IP to the instance's public address. `duckdns.org`
+is on the Public Suffix List, so cookies and Let's Encrypt rate limits are scoped
+to your subdomain alone and no other user's name affects yours.
+
+Confirm it resolves before going further — a certificate that fails to issue is
+almost always this:
 
 ```bash
-git clone <your-repo> souschef && cd souschef
+dig +short souschef-example.duckdns.org      # must print the instance IP
+```
+
+Swapping to a real domain later is an A record plus one line in `.env`; nothing
+else changes.
+
+**Don't put Cloudflare's proxy in front of this.** Cloudflare would terminate
+TLS, which means your receipt images and pantry data pass through a third party
+in plaintext. Caddy talking directly to Let's Encrypt keeps everything on your
+own box. (Cloudflare *DNS only* — grey cloud — is fine.)
+
+## 4. Getting the code and secrets onto the box
+
+If the repo has a remote, clone it. If it only exists on your workstation, copy
+it up instead — this skips the venv, database and secrets, all of which are
+rebuilt or created on the box:
+
+```bash
+# From the workstation
+rsync -az --filter=':- .gitignore' --exclude .git \
+      ~/souschef/ ubuntu@<vm>:~/souschef/
+```
+
+Then, on the VM:
+
+```bash
+cd souschef
 mkdir -p .secrets && chmod 700 .secrets
 
 python3 -c "import secrets; print(secrets.token_hex(32))"     > .secrets/secret_key
@@ -51,11 +83,14 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))" > .secrets/session
 printf '' > .secrets/spoonacular_key          # optional; leave empty to disable discovery
 chmod 600 .secrets/*
 
-echo "SOUSCHEF_DOMAIN=souschef.example.com" > .env
+echo "SOUSCHEF_DOMAIN=souschef-example.duckdns.org" > .env
 ```
 
 `secret_key` encrypts the stored NYT session cookie. Losing it costs you one
 re-paste of that cookie and nothing else — it protects no other data.
+
+`session_secret` signs session cookies. Changing it signs **everyone** out at
+once, which is the blunt instrument if you ever think a cookie has leaked.
 
 Back the directory up off the box:
 

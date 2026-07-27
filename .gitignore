@@ -29,8 +29,10 @@ __pycache__/
 .coverage
 htmlcov/
 
-# OCR model weights (downloaded, not vendored)
-models/
+# OCR model weights (downloaded, not vendored). Anchored to the repo root: a
+# bare "models/" also matches src/souschef/models/, which silently excluded the
+# entire ORM package from the repo.
+/models/
 
 # Editor / OS
 .vscode/

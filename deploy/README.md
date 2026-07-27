@@ -62,20 +62,30 @@ own box. (Cloudflare *DNS only* — grey cloud — is fine.)
 
 ## 4. Getting the code and secrets onto the box
 
-If the repo has a remote, clone it. If it only exists on your workstation, copy
-it up instead — this skips the venv, database and secrets, all of which are
-rebuilt or created on the box:
+The repo is private, so the VM needs read access. Use a **deploy key**: it is
+read-only and scoped to this one repository, so a compromised VM cannot push to
+it or touch anything else in the account — unlike a personal access token or a
+`gh auth login` on the box.
 
 ```bash
-# From the workstation
-rsync -az --filter=':- .gitignore' --exclude .git \
-      ~/souschef/ ubuntu@<vm>:~/souschef/
+# On the VM
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_deploy -C "souschef-oracle"
+cat ~/.ssh/id_deploy.pub
+```
+
+```bash
+# On the workstation, paste that public key in:
+gh repo deploy-key add /dev/stdin --repo ethanez713/souschef --title "oracle-vm"
 ```
 
 Then, on the VM:
 
 ```bash
+git -c core.sshCommand="ssh -i ~/.ssh/id_deploy" \
+    clone git@github.com:ethanez713/souschef.git
 cd souschef
+git config core.sshCommand "ssh -i ~/.ssh/id_deploy"   # so `git pull` keeps working
+
 mkdir -p .secrets && chmod 700 .secrets
 
 python3 -c "import secrets; print(secrets.token_hex(32))"     > .secrets/secret_key
@@ -242,6 +252,22 @@ nothing surfaces the problem until you try to sign in. Docker restarts on this.
 | NYT imports start failing | Session cookie expired — paste a fresh one in Settings |
 | Receipt scan is slow the first time | Model load; ~1 s thereafter |
 | `/healthz` returns 503 | Read `problems` in the JSON body; usually a missing secret |
+
+## Shipping an update
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Schema changes apply themselves: the container runs `souschef init` on start,
+which is `alembic upgrade head` followed by a catalog re-seed. **Take a backup
+first anyway** — a migration is the one routine operation that can lose data:
+
+```bash
+docker compose exec app sh -c 'sqlite3 /data/souschef.db ".backup /data/pre-upgrade.db"'
+docker compose cp app:/data/pre-upgrade.db ./backups/
+```
 
 ## Moving off Oracle
 

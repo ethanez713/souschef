@@ -22,6 +22,7 @@ from souschef.core.matching import IngredientMatcher
 from souschef.core.units import UnitConversionError
 from souschef.ingest.ocr import OcrUnavailable, run_ocr
 from souschef.ingest.receipt import detect_store, detect_total, parse_receipt
+from souschef.logconfig import get_logger
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
@@ -31,6 +32,8 @@ from souschef.models import (
 )
 from souschef.models.ingredient import AliasSource
 from souschef.models.receipt import OcrEngine
+
+log = get_logger("souschef.receipt")
 
 # Below this mean OCR confidence, offer the cloud fallback. Tuned so a clean
 # phone photo never triggers it -- the prompt should mean "this scan is genuinely
@@ -172,6 +175,23 @@ def scan_receipt(session: Session, receipt: Receipt) -> ScanSummary:
     session.flush()
     session.expire(receipt, ["lines"])
 
+    log.info(
+        "Receipt %d (%s): %d items, %d auto-matched, %d need review",
+        receipt.id, receipt.store_name or "unknown store", items, auto, review,
+    )
+    if items == 0:
+        log.warning(
+            "Receipt %d produced no line items -- every row classified as noise. "
+            "Check the photo, or the store's layout may need new noise rules.",
+            receipt.id,
+        )
+    elif review > auto:
+        log.warning(
+            "Receipt %d: most lines (%d of %d) need manual review; the alias table "
+            "has not learned this store yet",
+            receipt.id, review, items,
+        )
+
     return ScanSummary(
         receipt=receipt,
         item_count=items,
@@ -211,6 +231,10 @@ def apply_receipt(
 
         quantity, unit = _resolve_quantity(line, ingredient)
         if quantity is None:
+            log.warning(
+                "Receipt %d line %d (%s): no quantity and no package size for %r",
+                receipt.id, line.id, line.raw_text[:60], ingredient.name,
+            )
             warnings.append(
                 f"{line.raw_text}: no quantity could be determined -- set one manually"
             )
@@ -233,6 +257,12 @@ def apply_receipt(
                 ),
             )
         except UnitConversionError as exc:
+            # Almost always a missing density or per-item weight in the catalog,
+            # which is a data gap worth fixing rather than a transient error.
+            log.warning(
+                "Receipt %d: cannot convert %s %s of %r -- %s",
+                receipt.id, quantity, unit, ingredient.name, exc,
+            )
             warnings.append(f"{line.raw_text}: {exc}")
             continue
 
@@ -253,6 +283,10 @@ def apply_receipt(
     receipt.status = ReceiptStatus.APPLIED
     session.flush()
 
+    log.info(
+        "Receipt %d applied: %d lines written to the pantry, %d warnings",
+        receipt.id, applied, len(warnings),
+    )
     if applied == 0:
         warnings.append("No lines were confirmed, so nothing was added to the pantry.")
     return warnings

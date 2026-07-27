@@ -20,8 +20,16 @@ not catch them. They need explicit repair.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from souschef.logconfig import get_logger
+
+log = get_logger("souschef.ocr")
+
+# Below this, the scan is poor enough that the review screen should say so.
+LOW_CONFIDENCE = 0.75
 
 # Digit/letter pairs that thermal-print OCR confuses. Restricted to the two
 # substitutions that are both common and low-risk: zero-for-O dominates real
@@ -184,10 +192,15 @@ def _get_engine():  # noqa: ANN202
         try:
             from rapidocr_onnxruntime import RapidOCR
         except ImportError as exc:
+            log.error("RapidOCR is not installed; receipt scanning is unavailable")
             raise OcrUnavailable(
                 "rapidocr-onnxruntime is not installed; receipt scanning is unavailable."
             ) from exc
+        started = time.perf_counter()
         _engine = RapidOCR()
+        # Worth logging: the first scan after a restart pays this, and it is the
+        # usual explanation for one slow request that never recurs.
+        log.info("OCR models loaded in %.1fs", time.perf_counter() - started)
     return _engine
 
 
@@ -195,9 +208,31 @@ def run_ocr(image_path: str | Path) -> OcrResult:
     """Extract text rows from a receipt image."""
     path = Path(image_path)
     if not path.is_file():
+        log.error("Receipt image missing: %s", path)
         raise OcrUnavailable(f"No such image: {path}")
 
     engine = _get_engine()
-    raw_result, _timing = engine(str(path))
-    lines = group_boxes_into_lines(_to_boxes(raw_result))
-    return OcrResult(lines=lines, engine="rapidocr")
+    started = time.perf_counter()
+    try:
+        raw_result, _timing = engine(str(path))
+    except Exception as exc:
+        log.exception("OCR failed on %s", path.name)
+        raise OcrUnavailable(f"OCR failed on {path.name}: {exc}") from exc
+
+    boxes = _to_boxes(raw_result)
+    lines = group_boxes_into_lines(boxes)
+    result = OcrResult(lines=lines, engine="rapidocr")
+
+    log.info(
+        "OCR %s: %d boxes -> %d lines, confidence %.2f, %.1fs",
+        path.name, len(boxes), len(lines), result.mean_confidence,
+        time.perf_counter() - started,
+    )
+    if not lines:
+        log.warning("OCR found no text in %s -- likely a blurry or blank photo", path.name)
+    elif result.mean_confidence < LOW_CONFIDENCE:
+        log.warning(
+            "Low-confidence scan of %s (%.2f); matches will need careful review",
+            path.name, result.mean_confidence,
+        )
+    return result

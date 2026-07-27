@@ -29,8 +29,11 @@ from sqlalchemy.orm import Session
 from souschef.config import get_settings
 from souschef.core.crypto import CredentialError, decrypt
 from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe
+from souschef.logconfig import get_logger
 from souschef.models import RecipeSource, StoredCredential
 from souschef.models.settings import CredentialKind
+
+log = get_logger("souschef.import")
 
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -87,6 +90,10 @@ def get_nyt_cookie(session: Session) -> str | None:
     except CredentialError:
         # A key rotation shouldn't take the whole importer down; the caller
         # falls back to an unauthenticated fetch and the UI flags re-entry.
+        log.error(
+            "Stored NYT cookie could not be decrypted -- SOUSCHEF_SECRET_KEY may have "
+            "changed. Re-enter the cookie in Settings."
+        )
         credential.is_working = False
         return None
 
@@ -103,21 +110,26 @@ def fetch_html(url: str, *, cookie: str | None = None) -> str:
     if cookie:
         headers["Cookie"] = cookie
 
+    log.info("Fetching %s (authenticated=%s)", url, bool(cookie))
     try:
         response = httpx.get(
             url, headers=headers, timeout=REQUEST_TIMEOUT, follow_redirects=True
         )
     except httpx.HTTPError as exc:
+        log.warning("Fetch failed for %s: %s", url, exc)
         raise ImportError_(f"Could not reach {url}: {exc}") from exc
 
     if response.status_code == 403:
+        log.warning("403 from %s (cookie present=%s)", url, bool(cookie))
         raise ImportError_(
             "The site refused the request (403). If this is a subscriber recipe, "
             "your saved session cookie may have expired -- re-enter it in Settings."
         )
     if response.status_code >= 400:
+        log.warning("HTTP %d from %s", response.status_code, url)
         raise ImportError_(f"{url} returned HTTP {response.status_code}")
 
+    log.info("Fetched %s (%d bytes)", url, len(response.content))
     return response.text
 
 
@@ -145,13 +157,22 @@ def import_from_url(session: Session, url: str) -> ImportResult:
 
     recipe = extract_recipe(html, source_url=url)
     if recipe is None:
+        # Worth a warning: JSON-LD is the stable path, so falling through to
+        # site-specific scraping is the first sign a source changed its markup.
+        log.warning("No JSON-LD recipe found at %s; trying recipe-scrapers", url)
         recipe = _scrape_fallback(html, url)
 
     if recipe is None or not recipe.is_usable:
+        log.warning("No usable recipe extracted from %s", url)
         raise ImportError_(
             "No recipe found on that page. If it is behind a paywall, check that "
             "your session cookie is current."
         )
+
+    log.info(
+        "Imported %r: %d ingredients, %d servings",
+        recipe.title, len(recipe.ingredients), recipe.servings or 0,
+    )
 
     if nyt:
         match = _NYT_RECIPE_ID.search(url)

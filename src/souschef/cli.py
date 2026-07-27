@@ -127,7 +127,15 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--reload", action="store_true")
     serve.set_defaults(func=cmd_serve)
 
+    parser.add_argument(
+        "--log-level", default=None, help="DEBUG, INFO, WARNING, ERROR (default from env)"
+    )
+
     args = parser.parse_args(argv)
+
+    from souschef.logconfig import configure
+
+    configure(args.log_level, force=True)
     return args.func(args)
 
 

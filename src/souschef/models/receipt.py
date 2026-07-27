@@ -78,7 +78,9 @@ class ReceiptLine(Base):
     __table_args__ = (Index("ix_receipt_line_receipt", "receipt_id", "position"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    receipt_id: Mapped[int] = mapped_column(ForeignKey("receipt.id", ondelete="CASCADE"), index=True)
+    receipt_id: Mapped[int] = mapped_column(
+        ForeignKey("receipt.id", ondelete="CASCADE"), index=True
+    )
     position: Mapped[int] = mapped_column(Integer, default=0)
 
     raw_text: Mapped[str] = mapped_column(String(300))

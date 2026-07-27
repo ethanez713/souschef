@@ -22,6 +22,9 @@ from fastapi import HTTPException, Request, status
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from souschef.config import get_settings
+from souschef.logconfig import get_logger
+
+log = get_logger("souschef.auth")
 
 SESSION_COOKIE = "souschef_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days; this is a kitchen app, not a bank
@@ -97,8 +100,18 @@ def record_failure(key: str) -> None:
     record = _failures.get(key)
     if record is None or time.monotonic() - record.first_at > LOCKOUT_SECONDS:
         _failures[key] = _Attempts(count=1)
+        log.warning("Failed sign-in from %s (1/%d)", key, MAX_ATTEMPTS)
+        return
+
+    record.count += 1
+    if record.count >= MAX_ATTEMPTS:
+        # On a public box this is the signal that matters: someone is guessing.
+        log.error(
+            "Locked out %s after %d failed sign-ins; blocked for %ds",
+            key, record.count, LOCKOUT_SECONDS,
+        )
     else:
-        record.count += 1
+        log.warning("Failed sign-in from %s (%d/%d)", key, record.count, MAX_ATTEMPTS)
 
 
 def clear_failures(key: str) -> None:

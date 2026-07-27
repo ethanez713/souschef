@@ -28,6 +28,7 @@ services:
     environment:
       SOUSCHEF_NO_EXTERNAL: "false"   # live imports are the point in production
       SOUSCHEF_DATA_DIR: /data
+      SOUSCHEF_LOG_LEVEL: INFO
       SOUSCHEF_SECRET_KEY_FILE: /run/secrets/secret_key
       SOUSCHEF_SESSION_SECRET_FILE: /run/secrets/session_secret
       SOUSCHEF_SPOONACULAR_KEY_FILE: /run/secrets/spoonacular_key

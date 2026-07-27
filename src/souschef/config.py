@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # Default-on so a dev run can never quietly hit a real service or spend quota.
     no_external: bool = True
     debug: bool = False
+    log_level: str = "INFO"
 
     # --- Estimation tuning -----------------------------------------------
     # Half-life in days for confidence in an unverified level. Bulk staples drift

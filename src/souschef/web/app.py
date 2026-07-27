@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -12,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from souschef import logconfig
 from souschef.config import get_settings
 from souschef.core.audit import build_audit
 from souschef.core.crypto import encrypt
@@ -56,10 +59,74 @@ WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 templates.env.filters["humanize"] = humanize
 
-app = FastAPI(title="SousChef", docs_url=None, redoc_url=None)
+logconfig.configure()
+log = logconfig.get_logger("souschef.web")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):  # noqa: ANN201
+    logconfig.log_startup(get_settings())
+    yield
+    log.info("SousChef shutting down")
+
+
+app = FastAPI(title="SousChef", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(WEB_DIR.parent / "static")), name="static")
 
 PASSWORD_HASH_KEY = "auth.password_hash"
+
+# Requests slower than this are logged as a warning. Everything here is a
+# handful of SQLite reads except receipt OCR, so a slow page means something
+# is wrong rather than merely busy.
+SLOW_REQUEST_SECONDS = 3.0
+
+
+# --------------------------------------------------------------------------
+# Request logging
+# --------------------------------------------------------------------------
+
+
+@app.middleware("http")
+async def request_logging(request: Request, call_next):  # noqa: ANN001, ANN201
+    """Log every request, and make unhandled errors impossible to miss.
+
+    Without this an exception on a remote box surfaces as a bare 500 in the
+    browser and nothing anywhere else. The id is echoed in a response header so
+    a reported failure can be found in the log.
+    """
+    request_id = logconfig.new_request_id()
+    token = logconfig.set_request_id(request_id)
+    started = time.perf_counter()
+    route = f"{request.method} {request.url.path}"
+
+    # The reset has to come after the summary line is emitted, not in a finally
+    # that runs before it -- otherwise every request log line is tagged "-" and
+    # cannot be correlated with the warnings raised while handling it, which is
+    # the entire reason for having an id.
+    try:
+        try:
+            response = await call_next(request)
+        except Exception:
+            elapsed = (time.perf_counter() - started) * 1000
+            # exc_info, so the traceback lands in the log, not just the message.
+            log.exception("%s failed after %.0fms", route, elapsed)
+            raise
+
+        elapsed = (time.perf_counter() - started) * 1000
+
+        if response.status_code >= 500:
+            log.error("%s -> %d (%.0fms)", route, response.status_code, elapsed)
+        elif response.status_code >= 400:
+            log.warning("%s -> %d (%.0fms)", route, response.status_code, elapsed)
+        elif elapsed > SLOW_REQUEST_SECONDS * 1000:
+            log.warning("%s -> %d SLOW (%.0fms)", route, response.status_code, elapsed)
+        else:
+            log.info("%s -> %d (%.0fms)", route, response.status_code, elapsed)
+
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        logconfig.reset_request_id(token)
 
 
 # --------------------------------------------------------------------------
@@ -674,6 +741,27 @@ def manifest() -> JSONResponse:
 
 
 @app.get("/healthz")
-def healthz(db: Session = Depends(get_db)) -> dict:
-    db.execute(select(func.count()).select_from(CanonicalIngredient))
-    return {"status": "ok"}
+def healthz(db: Session = Depends(get_db)) -> JSONResponse:
+    """Liveness plus the two misconfigurations that break the app silently.
+
+    A container that answers 200 while unable to decrypt credentials or issue
+    sessions is worse than one that is plainly down, because nothing surfaces
+    the problem until you try to sign in.
+    """
+    problems: list[str] = []
+    try:
+        db.execute(select(func.count()).select_from(CanonicalIngredient))
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        log.exception("Health check: database unreachable")
+        problems.append(f"database: {exc}")
+
+    settings = get_settings()
+    if not settings.session_secret:
+        problems.append("SOUSCHEF_SESSION_SECRET is not set")
+    if not settings.secret_key:
+        problems.append("SOUSCHEF_SECRET_KEY is not set")
+
+    if problems:
+        log.error("Health check failing: %s", "; ".join(problems))
+        return JSONResponse({"status": "degraded", "problems": problems}, status_code=503)
+    return JSONResponse({"status": "ok"})

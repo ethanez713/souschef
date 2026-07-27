@@ -26,8 +26,11 @@ from souschef.core.matching import IngredientMatcher
 from souschef.core.units import UnitConversionError, to_base
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.ingest.recipes.parsing import parse_all
+from souschef.logconfig import get_logger
 from souschef.models import CanonicalIngredient, Recipe, RecipeIngredient, RecipeSource
 from souschef.models.ingredient import AliasSource
+
+log = get_logger("souschef.recipes")
 
 
 @dataclass
@@ -103,7 +106,11 @@ def recipe_requirements(
 
         try:
             base = to_base(line.quantity * scale, line.unit, physical_of(ingredient))
-        except UnitConversionError:
+        except UnitConversionError as exc:
+            log.warning(
+                "Recipe %d: %r needs %s but %r has no density or per-item weight (%s)",
+                recipe.id, line.raw_text[:60], line.unit, ingredient.name, exc,
+            )
             result.unconvertible.append(line.raw_text)
             result.requirements.append(
                 Requirement(ingredient, 0.0, ingredient.is_staple, line.is_optional, True,
@@ -163,6 +170,15 @@ def save_imported_recipe(
 
     matcher = IngredientMatcher(session)
     parsed_lines = parse_all(raw.ingredients, matcher)
+
+    unmatched = [p.raw_text for p in parsed_lines if not (p.match and p.match.is_match)]
+    if unmatched:
+        # A gap in the catalog, not a transient failure: these lines are
+        # invisible to pantry checks until the ingredient exists or is aliased.
+        log.warning(
+            "Recipe %r: %d of %d ingredient lines did not match the catalog: %s",
+            raw.title, len(unmatched), len(parsed_lines), "; ".join(unmatched[:5]),
+        )
 
     for position, parsed in enumerate(parsed_lines):
         match = parsed.match

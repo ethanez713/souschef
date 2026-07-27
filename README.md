@@ -103,6 +103,27 @@ Cookies expire; paste a fresh one when imports start failing.
 Any other recipe site works too, via schema.org markup with `recipe-scrapers` as
 a fallback.
 
+## Logs
+
+Everything goes to stdout, tagged with a request id that is also returned in the
+`X-Request-ID` header — so a page that misbehaved can be traced to every line it
+produced:
+
+```
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.ocr: OCR receipt.png: 40 boxes -> 14 lines, confidence 0.95, 0.8s
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.receipt: Receipt 1 (SUPERGROCER): 9 items, 8 auto-matched, 1 need review
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.web: POST /receipts/upload -> 303 (1469ms)
+```
+
+Warnings are reserved for things worth acting on: an unreadable photo, a store
+the matcher hasn't learned, a catalog gap that blocked a unit conversion,
+repeated failed sign-ins. `SOUSCHEF_LOG_LEVEL=DEBUG` for more.
+
+Credentials are scrubbed by the formatter before anything is written, so logs
+are safe to paste into an issue. `/healthz` returns 503 rather than 200 when a
+required secret is missing — a container that looks healthy while unable to
+issue sessions is worse than one that is plainly down.
+
 ## Testing
 
 ```bash

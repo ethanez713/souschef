@@ -75,7 +75,10 @@ class PantryItem(Base, TimestampMixin):
     ingredient: Mapped[CanonicalIngredient] = relationship(back_populates="pantry_item")
 
     def __repr__(self) -> str:
-        return f"<PantryItem ing={self.ingredient_id} qty={self.quantity:.1f} c={self.confidence:.2f}>"
+        return (
+            f"<PantryItem ing={self.ingredient_id} "
+            f"qty={self.quantity:.1f} c={self.confidence:.2f}>"
+        )
 
 
 class InventoryEvent(Base):

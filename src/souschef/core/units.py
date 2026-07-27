@@ -16,6 +16,7 @@ than silently inventing a number.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import pint
@@ -23,7 +24,16 @@ import pint
 # A single shared registry. Building one is expensive and pint quantities from
 # different registries cannot be compared, so everything must use this instance.
 _ureg = pint.UnitRegistry()
+
+# pint ships a dimensionless `count`; we need it to carry its own dimension so
+# "3 eggs" cannot be silently added to "3 grams". The override is deliberate, so
+# quiet the redefinition warning -- an unactionable WARNING on every startup
+# just teaches you to ignore the log.
+_pint_log_level = logging.getLogger("pint.util").level
+logging.getLogger("pint.util").setLevel(logging.ERROR)
 _ureg.define("count = [item]")
+logging.getLogger("pint.util").setLevel(_pint_log_level)
+
 _ureg.define("piece = 1 * count")
 _ureg.define("clove = 1 * count")
 _ureg.define("slice = 1 * count")

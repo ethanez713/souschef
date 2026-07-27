@@ -113,6 +113,62 @@ Oracle reclaims Always Free instances that look idle. The app's own health check
 generates enough activity to count, but verify the instance is still running
 after the first few weeks.
 
+## Debugging a running instance
+
+Logs go to stdout, so `docker compose logs` is the whole interface — there are
+no log files to hunt for and nothing to rotate.
+
+```bash
+docker compose logs -f app                  # follow
+docker compose logs app | grep -E 'WARNING|ERROR'   # just the problems
+docker compose logs app --since 1h
+```
+
+Every line carries a **request id**:
+
+```
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.ocr: OCR receipt.png: 40 boxes -> 14 lines, confidence 0.95, 0.8s
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.receipt: Receipt 1 (SUPERGROCER): 9 items, 8 auto-matched, 1 need review
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.web: POST /receipts/upload -> 303 (1469ms)
+```
+
+The same id is returned in the `X-Request-ID` response header, so a page that
+misbehaved can be traced to every log line it produced:
+
+```bash
+docker compose logs app | grep 31ce7e26
+```
+
+Raise or lower verbosity without a rebuild:
+
+```bash
+docker compose exec -e SOUSCHEF_LOG_LEVEL=DEBUG app true   # or set it in compose.yaml
+```
+
+**Credentials are redacted before anything is written.** Cookies, tokens, API
+keys and passwords are scrubbed by the formatter, so logs are safe to copy into
+an issue. Do not defeat this by adding `print()` calls.
+
+### What the warnings mean
+
+| Log line | What to do |
+|---|---|
+| `OCR found no text in …` | Blank or badly blurred photo; retake it |
+| `Low-confidence scan of … (0.4x)` | Poor light or a creased receipt; review each line carefully |
+| `most lines … need manual review` | Normal for a new store; the alias table learns as you confirm |
+| `no quantity and no package size for 'x'` | Catalog gap — give that ingredient a `package_qty` in `data/seeds/ingredients.json` |
+| `%d of %d ingredient lines did not match the catalog` | Those lines are invisible to pantry checks until aliased |
+| `Locked out <ip> after 8 failed sign-ins` | Someone is guessing your password |
+| `Stored NYT cookie could not be decrypted` | `SOUSCHEF_SECRET_KEY` changed; re-enter the cookie |
+| `POST /… SLOW (>3000ms)` | Expected once after a restart (OCR model load); investigate if repeated |
+
+### Health check
+
+`/healthz` returns `503 {"status": "degraded", …}` — not 200 — when the database
+is unreachable or a required secret is missing. A container that answers 200
+while unable to issue sessions is worse than one that is plainly down, because
+nothing surfaces the problem until you try to sign in. Docker restarts on this.
+
 ## Operational notes
 
 | Symptom | Cause |
@@ -122,6 +178,7 @@ after the first few weeks.
 | Sign-in succeeds then every page bounces to `/login` | Running plain HTTP behind a proxy that isn't sending `X-Forwarded-Proto` |
 | NYT imports start failing | Session cookie expired — paste a fresh one in Settings |
 | Receipt scan is slow the first time | Model load; ~1 s thereafter |
+| `/healthz` returns 503 | Read `problems` in the JSON body; usually a missing secret |
 
 ## Moving off Oracle
 

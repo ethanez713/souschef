@@ -1,0 +1,139 @@
+/* Mobile-first. This gets used one-handed in a kitchen and in a shop aisle, so
+   targets are large, contrast is high, and nothing depends on hover. */
+
+:root {
+  --bg: #12151a;
+  --surface: #1a1f27;
+  --surface-2: #222834;
+  --line: #2f3745;
+  --text: #e8ecf2;
+  --muted: #96a0b0;
+  --accent: #6ee7a8;
+  --accent-dim: #2f6b4e;
+  --warn: #f2b45c;
+  --danger: #f2706b;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --line: #d9dee6;
+    --text: #171b21;
+    --muted: #5d6675;
+    --accent: #12855a;
+    --accent-dim: #b8e6d0;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 0 76px;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------- chrome ---------- */
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--line);
+  background: var(--surface); position: sticky; top: 0; z-index: 10;
+}
+.brand { font-weight: 700; letter-spacing: -0.02em; color: var(--text); text-decoration: none; }
+
+.tabbar {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabbar a {
+  padding: 12px 4px; text-align: center; font-size: 13px;
+  color: var(--muted); text-decoration: none;
+}
+.tabbar a.on { color: var(--accent); font-weight: 600; }
+
+main { padding: 16px; max-width: 720px; margin: 0 auto; }
+
+/* ---------- structure ---------- */
+
+h1 { font-size: 22px; margin: 4px 0 16px; letter-spacing: -0.02em; }
+h2 { font-size: 16px; margin: 24px 0 10px; color: var(--muted);
+     text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+h3 { font-size: 16px; margin: 0 0 4px; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 10px;
+}
+.card.tight { padding: 10px 12px; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stack { display: flex; flex-direction: column; gap: 2px; }
+.muted { color: var(--muted); font-size: 14px; }
+.small { font-size: 13px; }
+.empty { color: var(--muted); text-align: center; padding: 28px 12px; }
+
+/* ---------- controls ---------- */
+
+button, .btn {
+  font: inherit; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface-2); color: var(--text);
+  padding: 11px 14px; cursor: pointer; text-decoration: none;
+  display: inline-block; min-height: 44px;
+}
+button.primary, .btn.primary {
+  background: var(--accent); color: #06120c; border-color: transparent; font-weight: 650;
+}
+button.link {
+  background: none; border: none; color: var(--muted);
+  padding: 4px; min-height: auto; text-decoration: underline;
+}
+button.small, .btn.small { padding: 6px 10px; min-height: 36px; font-size: 14px; }
+
+input, select {
+  font: inherit; padding: 11px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text);
+  width: 100%; min-height: 44px;
+}
+input[type="checkbox"] { width: 24px; height: 24px; min-height: 24px; accent-color: var(--accent); }
+label { font-size: 14px; color: var(--muted); display: block; margin-bottom: 4px; }
+form.inline { display: inline; }
+.field { margin-bottom: 12px; }
+.controls { display: flex; gap: 8px; align-items: flex-end; }
+.controls .field { flex: 1; margin-bottom: 0; }
+
+/* ---------- badges ---------- */
+
+.pill {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; background: var(--surface-2); color: var(--muted);
+}
+.pill.good { background: var(--accent-dim); color: var(--accent); }
+.pill.warn { background: #4a3a1c; color: var(--warn); }
+.pill.bad  { background: #4a2523; color: var(--danger); }
+
+@media (prefers-color-scheme: light) {
+  .pill.warn { background: #fdf0d8; color: #8a5d10; }
+  .pill.bad  { background: #fde3e2; color: #a32e29; }
+}
+
+/* Confidence bar: the app's core idea made visible. A short, faded bar means
+   "I am guessing", which is exactly what the audit acts on. */
+.conf { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 7px; }
+.conf > i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+
+.alert { border-left: 3px solid var(--warn); padding: 10px 12px; background: var(--surface);
+         border-radius: 0 var(--radius) var(--radius) 0; margin-bottom: 12px; font-size: 14px; }
+.alert.bad { border-left-color: var(--danger); }
+
+.aisle { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em;
+         color: var(--muted); margin: 18px 0 6px; font-weight: 700; }
+
+.checked { opacity: 0.45; text-decoration: line-through; }

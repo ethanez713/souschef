@@ -61,3 +61,11 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Calls in argument defaults are how FastAPI declares dependencies and form
+# fields; B008 is a false positive for all of these.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Form", "fastapi.File", "fastapi.Query",
+    "fastapi.Body", "fastapi.Header", "fastapi.Path",
+]

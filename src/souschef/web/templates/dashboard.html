@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% set active = 'home' %}
+{% block content %}
+<main>
+  <h1>Tonight</h1>
+
+  {% if expiring %}
+    <div class="alert">
+      <strong>Use soon:</strong>
+      {{ expiring|map(attribute='ingredient.name')|join(', ') }}
+    </div>
+  {% endif %}
+
+  {% if cook_now %}
+    <h2>Cook now</h2>
+    {% for s in cook_now %}
+      <a class="card" href="/recipes/{{ s.recipe.id }}" style="display:block;text-decoration:none;color:inherit">
+        <div class="row">
+          <div class="stack">
+            <h3>{{ s.recipe.title }}</h3>
+            <span class="muted small">{{ s.reason }}</span>
+          </div>
+          <span class="pill good">ready</span>
+        </div>
+      </a>
+    {% endfor %}
+  {% endif %}
+
+  {% if nearly %}
+    <h2>Nearly there</h2>
+    {% for s in nearly %}
+      <a class="card" href="/recipes/{{ s.recipe.id }}" style="display:block;text-decoration:none;color:inherit">
+        <div class="row">
+          <div class="stack">
+            <h3>{{ s.recipe.title }}</h3>
+            <span class="muted small">{{ s.reason }}</span>
+          </div>
+          <span class="pill warn">{{ s.missing_count }} to buy</span>
+        </div>
+      </a>
+    {% endfor %}
+  {% endif %}
+
+  {% if not cook_now and not nearly %}
+    <div class="empty">
+      <p>No recipes yet.</p>
+      <a class="btn primary" href="/recipes">Import one</a>
+    </div>
+  {% endif %}
+
+  {% if upcoming %}
+    <h2>Planned</h2>
+    {% for e in upcoming %}
+      <div class="card tight row">
+        <div class="stack">
+          <strong>{{ e.recipe.title if e.recipe else e.freeform_title }}</strong>
+          <span class="muted small">{{ e.plan_date.strftime('%a %d %b') }}</span>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% if stale %}
+    <h2>Least certain levels</h2>
+    {% for v in stale %}
+      <div class="card tight">
+        <div class="row">
+          <span>{{ v.ingredient.name }}</span>
+          <span class="muted small">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
+        </div>
+        <div class="conf"><i style="width: {{ (v.confidence * 100)|round|int }}%"></i></div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <p class="muted small" style="margin-top:20px">
+    {{ pantry_count }} items tracked · {{ recipe_count }} recipes
+  </p>
+</main>
+{% endblock %}

@@ -1,0 +1,63 @@
+# SousChef on a single small VM. Caddy terminates TLS and proxies to the app;
+# the app itself is never exposed directly.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      # The hostname Caddy gets its certificate for.
+      SOUSCHEF_DOMAIN: ${SOUSCHEF_DOMAIN:?set SOUSCHEF_DOMAIN in .env}
+    depends_on:
+      - app
+
+  app:
+    build: .
+    restart: unless-stopped
+    # No ports published: only Caddy can reach it.
+    expose:
+      - "8000"
+    volumes:
+      - souschef_data:/data
+    environment:
+      SOUSCHEF_NO_EXTERNAL: "false"   # live imports are the point in production
+      SOUSCHEF_DATA_DIR: /data
+      SOUSCHEF_SECRET_KEY_FILE: /run/secrets/secret_key
+      SOUSCHEF_SESSION_SECRET_FILE: /run/secrets/session_secret
+      SOUSCHEF_SPOONACULAR_KEY_FILE: /run/secrets/spoonacular_key
+    secrets:
+      - secret_key
+      - session_secret
+      - spoonacular_key
+    security_opt:
+      - no-new-privileges:true
+
+  # Nightly backup. Oracle reclaims idle free-tier instances, so a backup that
+  # lives only on the box is worth nothing -- push it somewhere else.
+  backup:
+    image: alpine:3.20
+    restart: unless-stopped
+    volumes:
+      - souschef_data:/data:ro
+      - ./deploy/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "/backup.sh"]
+
+secrets:
+  secret_key:
+    file: ./.secrets/secret_key
+  session_secret:
+    file: ./.secrets/session_secret
+  spoonacular_key:
+    file: ./.secrets/spoonacular_key
+
+volumes:
+  souschef_data:
+  caddy_data:
+  caddy_config:

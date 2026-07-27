@@ -1,0 +1,30 @@
+{$SOUSCHEF_DOMAIN} {
+	encode gzip
+
+	# Automatic Let's Encrypt certificates. Real HTTPS is not cosmetic here:
+	# without it the PWA will not install, the camera input is restricted, and
+	# the session cookie cannot carry the Secure flag.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	# Slow down credential stuffing at the edge as well as in the app.
+	route /login {
+		rate_limit {
+			zone login {
+				key {remote_host}
+				events 10
+				window 1m
+			}
+		}
+		reverse_proxy app:8000
+	}
+
+	reverse_proxy app:8000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

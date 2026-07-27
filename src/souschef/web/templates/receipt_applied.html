@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% set active = 'receipts' %}
+{% block content %}
+<main>
+  <h1>Applied with warnings</h1>
+  {% for w in warnings %}<div class="alert">{{ w }}</div>{% endfor %}
+  <p><a class="btn primary" href="/pantry">Go to pantry</a></p>
+</main>
+{% endblock %}

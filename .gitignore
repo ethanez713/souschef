@@ -16,6 +16,7 @@ data/souschef.db-shm
 data/receipts/
 data/cache/
 data/backups/
+backups/
 
 # Python
 venv/

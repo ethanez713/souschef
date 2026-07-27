@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% set active = 'pantry' %}
+{% block content %}
+<main>
+  <h1>Pantry</h1>
+
+  <form method="get" action="/pantry" class="field">
+    <input name="q" value="{{ query }}" placeholder="Search" inputmode="search">
+  </form>
+
+  <details class="card">
+    <summary>Add something</summary>
+    <form method="post" action="/pantry/add" style="margin-top:12px">
+      <div class="field">
+        <label for="n">Ingredient</label>
+        <input id="n" name="name" placeholder="olive oil" required>
+      </div>
+      <div class="controls">
+        <div class="field">
+          <label for="q2">Amount</label>
+          <input id="q2" name="quantity" type="number" step="any" inputmode="decimal" required>
+        </div>
+        <div class="field">
+          <label for="u">Unit</label>
+          <input id="u" name="unit" placeholder="g / ml / count">
+        </div>
+        <button class="primary" type="submit">Add</button>
+      </div>
+    </form>
+  </details>
+
+  {% for location, views in by_location.items() %}
+    <h2>{{ location }}</h2>
+    {% for v in views %}
+      <div class="card tight">
+        <div class="row">
+          <div class="stack">
+            <strong>{{ v.ingredient.name }}</strong>
+            <span class="muted small">
+              {{ v.quantity|humanize(v.ingredient.base_unit) }}
+              {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%d %b') }}{% endif %}
+              {%- if v.is_staple %} · staple{% endif %}
+            </span>
+          </div>
+          <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline">
+            <button class="small" type="submit" title="Confirm this level is right">Confirm</button>
+          </form>
+        </div>
+        <div class="conf"><i style="width: {{ (v.confidence * 100)|round|int }}%"></i></div>
+        <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls" style="margin-top:8px">
+          <div class="field">
+            <input name="quantity" type="number" step="any" inputmode="decimal"
+                   placeholder="set to… ({{ v.ingredient.base_unit }})">
+          </div>
+          <button class="small" type="submit">Set</button>
+        </form>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">
+      <p>Nothing tracked yet.</p>
+      <a class="btn primary" href="/receipts">Scan a receipt</a>
+    </div>
+  {% endfor %}
+</main>
+{% endblock %}

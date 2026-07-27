@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% set active = 'plan' %}
+{% block content %}
+<main>
+  <h1>Recipes</h1>
+
+  <div class="card">
+    <form method="post" action="/recipes/import">
+      <div class="field">
+        <label for="url">Import from a URL</label>
+        <input id="url" name="url" type="url" placeholder="https://cooking.nytimes.com/recipes/..." required>
+      </div>
+      <button class="primary" type="submit">Import</button>
+    </form>
+    <p class="muted small" style="margin-bottom:0">
+      NYT Cooking needs your session cookie saved in <a href="/settings">Settings</a>.
+    </p>
+  </div>
+
+  {% set labels = {'cook_now': 'Cook now', 'nearly_there': 'Nearly there', 'reach': 'Bigger shop'} %}
+  {% for surface, items in grouped.items() %}
+    {% if items %}
+      <h2>{{ labels.get(surface|string, surface) }}</h2>
+      {% for s in items %}
+        <a class="card" href="/recipes/{{ s.recipe.id }}" style="display:block;text-decoration:none;color:inherit">
+          <div class="row">
+            <div class="stack">
+              <h3>{{ s.recipe.title }}</h3>
+              <span class="muted small">{{ s.reason }}</span>
+            </div>
+            <span class="pill {{ 'good' if s.surface|string == 'cook_now' else 'warn' }}">
+              {{ (s.availability * 100)|round|int }}%
+            </span>
+          </div>
+        </a>
+      {% endfor %}
+    {% endif %}
+  {% endfor %}
+</main>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% set active = 'receipts' %}
+{% block title %}Review receipt · SousChef{% endblock %}
+{% block content %}
+<main>
+  <h1>Check this scan</h1>
+  <p class="muted small">
+    {{ receipt.store_name or 'Receipt' }}
+    {%- if receipt.ocr_confidence %} · scan quality {{ (receipt.ocr_confidence * 100)|round|int }}%{% endif %}
+  </p>
+
+  {% if receipt.ocr_confidence and receipt.ocr_confidence < 0.75 %}
+    <div class="alert">
+      This scan came out poorly. Check each line carefully, or retake the photo
+      in better light.
+    </div>
+  {% endif %}
+
+  <p class="muted small">
+    Nothing changes your pantry until you tick a line and apply.
+  </p>
+
+  {% for line in lines %}
+    <div class="card">
+      <div class="stack" style="margin-bottom:8px">
+        <code class="small">{{ line.raw_text }}</code>
+        {% if line.match_confidence < 0.88 %}
+          <span class="pill bad">needs a look</span>
+        {% endif %}
+      </div>
+      <form method="post" action="/receipts/{{ receipt.id }}/line/{{ line.id }}">
+        <div class="field">
+          <label>Ingredient</label>
+          <select name="ingredient_id">
+            <option value="">— not food / skip —</option>
+            {% for ing in ingredients %}
+              <option value="{{ ing.id }}" {{ 'selected' if ing.id == line.ingredient_id }}>{{ ing.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="controls">
+          <div class="field">
+            <label>Amount</label>
+            <input name="quantity" type="number" step="any" inputmode="decimal"
+                   value="{{ line.parsed_quantity or '' }}">
+          </div>
+          <div class="field">
+            <label>Unit</label>
+            <input name="unit" value="{{ line.parsed_unit or '' }}" placeholder="g / oz / count">
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;margin:10px 0">
+          <input type="checkbox" name="confirmed" {{ 'checked' if line.is_confirmed }}>
+          <span>Add this to the pantry</span>
+        </label>
+        <button class="small" type="submit">Save line</button>
+      </form>
+    </div>
+  {% endfor %}
+
+  <form method="post" action="/receipts/{{ receipt.id }}/apply" style="margin-top:16px">
+    <button class="primary" type="submit">Apply ticked lines to pantry</button>
+  </form>
+</main>
+{% endblock %}

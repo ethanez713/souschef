@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}SousChef{% endblock %}</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#12151a">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">SousChef</a>
+  <form method="post" action="/logout" class="inline">
+    <button class="link" type="submit">Sign out</button>
+  </form>
+</header>
+
+{% block content %}{% endblock %}
+
+<nav class="tabbar">
+  <a href="/" class="{{ 'on' if active == 'home' }}"><span>Home</span></a>
+  <a href="/pantry" class="{{ 'on' if active == 'pantry' }}"><span>Pantry</span></a>
+  <a href="/plan" class="{{ 'on' if active == 'plan' }}"><span>Plan</span></a>
+  <a href="/shopping" class="{{ 'on' if active == 'shopping' }}"><span>Shop</span></a>
+  <a href="/receipts" class="{{ 'on' if active == 'receipts' }}"><span>Scan</span></a>
+</nav>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>

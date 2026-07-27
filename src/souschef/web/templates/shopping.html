@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% set active = 'shopping' %}
+{% block content %}
+<main>
+  <h1>Shopping list</h1>
+
+  <form method="post" action="/shopping/generate">
+    <button class="primary" type="submit">
+      {{ 'Rebuild from plan' if shopping_list else 'Build from this week&rsquo;s plan' }}
+    </button>
+  </form>
+
+  {% if shopping_list %}
+    <p class="muted small">
+      Covers {{ shopping_list.covers_from.strftime('%d %b') }}–{{ shopping_list.covers_to.strftime('%d %b') }}
+      · {{ shopping_list.items|length }} items
+    </p>
+
+    {% for aisle, items in by_aisle.items() %}
+      <p class="aisle">{{ aisle }}</p>
+      {% for it in items %}
+        <div class="card tight row {{ 'checked' if it.is_checked }}">
+          <div class="stack">
+            <strong>
+              {% if it.purchase_qty and it.purchase_unit == 'count' %}{{ it.purchase_qty|round|int }}×
+              {% elif it.purchase_qty %}{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}
+              {% endif %}
+              {{ it.label }}
+            </strong>
+            <span class="muted small">
+              {%- if it.purchase_note %}{{ it.purchase_note }} · {% endif -%}
+              for {{ it.driven_by or 'restock' }}
+            </span>
+          </div>
+          <form method="post" action="/shopping/item/{{ it.id }}/toggle" class="inline">
+            <button class="small" type="submit">{{ '↺' if it.is_checked else '✓' }}</button>
+          </form>
+        </div>
+      {% endfor %}
+    {% endfor %}
+
+    {% if not shopping_list.items %}
+      <div class="empty">Nothing to buy — the pantry covers this week&rsquo;s plan.</div>
+    {% endif %}
+  {% else %}
+    <div class="empty">
+      <p>No list yet.</p>
+      <a class="btn" href="/plan">Plan some meals first</a>
+    </div>
+  {% endif %}
+</main>
+{% endblock %}

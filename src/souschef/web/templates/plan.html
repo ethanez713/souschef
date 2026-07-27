@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% set active = 'plan' %}
+{% block content %}
+<main>
+  <h1>This week</h1>
+  <p><a class="btn primary" href="/audit">Ready to shop →</a></p>
+
+  {% for day, entries in by_day.items() %}
+    <div class="card tight">
+      <div class="row">
+        <strong>{{ day.strftime('%a %d %b') }}</strong>
+        {% if not entries %}<span class="muted small">nothing planned</span>{% endif %}
+      </div>
+      {% for e in entries %}
+        <div class="row" style="margin-top:8px">
+          <span>{{ e.recipe.title if e.recipe else e.freeform_title }}</span>
+          <form method="post" action="/plan/{{ e.id }}/remove" class="inline">
+            <button class="small" type="submit">Remove</button>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <h2>Add a meal</h2>
+  {% for s in suggestions %}
+    <div class="card tight">
+      <div class="stack" style="margin-bottom:8px">
+        <strong>{{ s.recipe.title }}</strong>
+        <span class="muted small">{{ s.reason }}</span>
+      </div>
+      <form method="post" action="/plan/add" class="controls">
+        <input type="hidden" name="recipe_id" value="{{ s.recipe.id }}">
+        <input type="hidden" name="servings" value="{{ s.recipe.servings }}">
+        <div class="field">
+          <input name="plan_date" type="date" required>
+        </div>
+        <button class="small primary" type="submit">Add</button>
+      </form>
+    </div>
+  {% endfor %}
+</main>
+{% endblock %}

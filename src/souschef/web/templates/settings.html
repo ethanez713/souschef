@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<main>
+  <h1>Settings</h1>
+
+  <h2>NYT Cooking</h2>
+  <div class="card">
+    {% if nyt_credential %}
+      <div class="row">
+        <div class="stack">
+          <strong>Session cookie saved</strong>
+          <span class="muted small">
+            {{ nyt_credential.label }}
+            {%- if not nyt_credential.is_working %} · not working, please re-enter{% endif %}
+          </span>
+        </div>
+        <span class="pill {{ 'good' if nyt_credential.is_working else 'bad' }}">
+          {{ 'active' if nyt_credential.is_working else 'expired' }}
+        </span>
+      </div>
+      <form method="post" action="/settings/nyt-cookie/delete" style="margin-top:10px">
+        <button class="small" type="submit">Remove</button>
+      </form>
+    {% endif %}
+
+    <form method="post" action="/settings/nyt-cookie" style="margin-top:12px">
+      <div class="field">
+        <label for="ck">{{ 'Replace cookie' if nyt_credential else 'Paste your NYT-S cookie' }}</label>
+        <input id="ck" name="cookie" placeholder="NYT-S=..." required>
+      </div>
+      <button class="primary" type="submit">Save</button>
+    </form>
+
+    <p class="muted small">
+      SousChef only ever stores the session cookie, never your password — NYT blocks
+      automated logins, and a stored password would be far more damaging if this server
+      were ever compromised. The cookie is encrypted with a key held outside the database.
+      It expires periodically; paste a fresh one when imports start failing.
+    </p>
+    <p class="muted small">
+      To find it: sign in to NYT Cooking in your browser, open DevTools → Application →
+      Cookies → nytimes.com, and copy the <code>NYT-S</code> value.
+    </p>
+  </div>
+
+  <h2>Recipe imports</h2>
+  <div class="card">
+    <p class="muted small" style="margin:0">
+      Recipes are fetched one at a time, only when you ask for one — the same page your
+      browser would load. SousChef does not crawl or bulk-download from any site.
+    </p>
+  </div>
+
+  <h2>External access</h2>
+  <div class="card">
+    <div class="row">
+      <span>Outbound calls</span>
+      <span class="pill {{ 'bad' if settings.no_external else 'good' }}">
+        {{ 'blocked' if settings.no_external else 'allowed' }}
+      </span>
+    </div>
+    <p class="muted small" style="margin-bottom:0">
+      When blocked, recipe imports are disabled. Set <code>SOUSCHEF_NO_EXTERNAL=false</code>
+      to allow them.
+    </p>
+  </div>
+</main>
+{% endblock %}

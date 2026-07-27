@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<main>
+  <h1>Set a password</h1>
+  <p class="muted">SousChef is reachable from the internet and stores your NYT session cookie, so pick something strong. Minimum 12 characters.</p>
+  {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+  <form method="post" action="/setup">
+    <div class="field">
+      <label for="pw">Password</label>
+      <input id="pw" name="password" type="password" autocomplete="new-password" required minlength="12">
+    </div>
+    <div class="field">
+      <label for="pw2">Confirm</label>
+      <input id="pw2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
+    </div>
+    <button class="primary" type="submit">Create</button>
+  </form>
+</main>
+{% endblock %}

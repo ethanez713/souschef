@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% set active = 'plan' %}
+{% block title %}{{ recipe.title }} · SousChef{% endblock %}
+{% block content %}
+<main>
+  <h1>{{ recipe.title }}</h1>
+  <p class="muted small">
+    {% if recipe.author %}{{ recipe.author }} · {% endif %}
+    serves {{ recipe.servings }}
+    {%- if recipe.total_minutes %} · {{ recipe.total_minutes }} min{% endif %}
+    {%- if recipe.times_cooked %} · cooked {{ recipe.times_cooked }}×{% endif %}
+  </p>
+
+  {% if requirements.unmatched %}
+    <div class="alert">
+      Couldn't identify: {{ requirements.unmatched|join('; ') }}.
+      These are ignored when checking your pantry.
+    </div>
+  {% endif %}
+
+  <h2>Ingredients</h2>
+  {% for r in requirements.requirements %}
+    {% set v = pantry.get(r.ingredient.id) %}
+    {% set have = v.quantity if v else 0 %}
+    {% set ok = r.is_staple or (r.quantity > 0 and have >= r.quantity) or (r.quantity == 0 and have > 0) %}
+    <div class="card tight row">
+      <div class="stack">
+        <span>{{ r.raw_text }}</span>
+        <span class="muted small">
+          {{ r.ingredient.name }}
+          {%- if r.is_staple %} · staple, assumed on hand
+          {%- elif r.is_vague %} · amount unspecified
+          {%- else %} · need {{ r.quantity|humanize(r.ingredient.base_unit) }},
+            have {{ have|humanize(r.ingredient.base_unit) }}{% endif %}
+        </span>
+      </div>
+      <span class="pill {{ 'good' if ok else 'bad' }}">{{ 'ok' if ok else 'buy' }}</span>
+    </div>
+  {% endfor %}
+
+  {% if recipe.instructions %}
+    <h2>Method</h2>
+    <div class="card">
+      {% for step in recipe.instructions.split('\n\n') %}
+        {% if step.strip() %}<p>{{ step }}</p>{% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <form method="post" action="/recipes/{{ recipe.id }}/cooked" style="margin-top:16px">
+    <input type="hidden" name="servings" value="{{ recipe.servings }}">
+    <button class="primary" type="submit">I cooked this — subtract from pantry</button>
+  </form>
+
+  {% if recipe.source_url %}
+    <p class="muted small"><a href="{{ recipe.source_url }}" rel="noreferrer">Original recipe</a></p>
+  {% endif %}
+</main>
+{% endblock %}

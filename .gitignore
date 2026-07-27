@@ -9,10 +9,17 @@ token.json
 *.pem
 *.key
 
-# Runtime data — never commit the pantry DB or receipt images
-data/souschef.db
-data/souschef.db-wal
-data/souschef.db-shm
+# Runtime data — never commit the pantry DB or receipt images.
+# Globs rather than exact names: the database holds password hashes and a
+# household's shopping habits, and an exact-match rule missed the obvious
+# variants (souschef.db.bak, a dated copy) that show up whenever someone is
+# about to do something risky and takes a backup first.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.bak
 data/receipts/
 data/cache/
 data/backups/

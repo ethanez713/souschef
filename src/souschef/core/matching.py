@@ -183,7 +183,9 @@ _SIZE_TOKEN = re.compile(
     r"\b\d+\.?\d*\s*(?:z|oz|ozs|lb|lbs|g|kg|ml|l|ct|pk|pc|qt|pt|gal|fz|floz)\b",
     re.IGNORECASE,
 )
-_PRICE = re.compile(r"\$?\d+\.\d{2}\b")
+# A trailing tax flag is often glued to the price ("8.47F"), so the price
+# pattern must not depend on a word boundary after the cents.
+_PRICE = re.compile(r"\$?\d+\.\d{2}(?!\d)[A-Za-z]?")
 _PLU_CODE = re.compile(r"\b\d{4,14}\b")  # UPC / PLU / item codes
 _TRAILING_FLAGS = re.compile(r"\s+[A-Z]{1,2}$")  # tax flags: " F", " T", " FT"
 _NON_ALNUM = re.compile(r"[^a-z0-9\s]+")
@@ -266,7 +268,13 @@ def clean_receipt_line(text: str) -> str:
             out = out[len(brand) + 1 :]
             break
 
-    return " ".join(_RECEIPT_ABBREVIATIONS.get(t, t) for t in out.split())
+    # Only now, with prices, sizes and codes gone, is it safe to undo OCR's
+    # digit-for-letter confusions: what remains should be product words, so
+    # "EV00" -> "evoo" can no longer damage a quantity.
+    from souschef.ingest.ocr import repair_confusions
+
+    tokens = [repair_confusions(t) for t in out.split()]
+    return " ".join(_RECEIPT_ABBREVIATIONS.get(t, t) for t in tokens)
 
 
 def normalize_receipt_line(text: str, protected: frozenset[str] = frozenset()) -> str:

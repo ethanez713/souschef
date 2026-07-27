@@ -1,0 +1,37 @@
+# Secrets — broad defensive patterns, not just the intended paths
+.secrets
+.secrets/
+.env
+.env.*
+*secret*.json
+*secrets*.yaml
+token.json
+*.pem
+*.key
+
+# Runtime data — never commit the pantry DB or receipt images
+data/souschef.db
+data/souschef.db-wal
+data/souschef.db-shm
+data/receipts/
+data/cache/
+data/backups/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# OCR model weights (downloaded, not vendored)
+models/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

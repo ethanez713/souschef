@@ -1,0 +1,2388 @@
+{
+  "_comment": "Canonical ingredient catalog. Densities are g/ml; grams_per_count is the weight of one typical item. These are physical facts that let recipe volumes, receipt weights and counted items reconcile - see core/units.py. package_qty/unit is the common retail size, used to round shopping quantities to something purchasable. is_staple marks things assumed always present, which are omitted from missing-ingredient lists unless explicitly marked out.",
+  "ingredients": [
+    {
+      "name": "all-purpose flour",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.529,
+      "package_qty": 2270,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "is_staple": true,
+      "aliases": [
+        "flour",
+        "ap flour",
+        "plain flour",
+        "white flour",
+        "all purpose flour"
+      ]
+    },
+    {
+      "name": "bread flour",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.551,
+      "package_qty": 2270,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "strong flour",
+        "high gluten flour"
+      ]
+    },
+    {
+      "name": "whole wheat flour",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.507,
+      "package_qty": 2270,
+      "package_unit": "g",
+      "shelf_life_days": 180,
+      "aliases": [
+        "wholemeal flour",
+        "ww flour"
+      ]
+    },
+    {
+      "name": "cornstarch",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.541,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 1460,
+      "is_staple": true,
+      "aliases": [
+        "corn starch",
+        "cornflour",
+        "corn flour"
+      ]
+    },
+    {
+      "name": "granulated sugar",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.845,
+      "package_qty": 1814,
+      "package_unit": "g",
+      "shelf_life_days": 1825,
+      "is_staple": true,
+      "aliases": [
+        "sugar",
+        "white sugar",
+        "caster sugar",
+        "cane sugar"
+      ]
+    },
+    {
+      "name": "brown sugar",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.93,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "light brown sugar",
+        "dark brown sugar"
+      ]
+    },
+    {
+      "name": "powdered sugar",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.507,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "confectioners sugar",
+        "icing sugar",
+        "10x sugar"
+      ]
+    },
+    {
+      "name": "honey",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.42,
+      "package_qty": 340,
+      "package_unit": "g",
+      "shelf_life_days": 3650,
+      "aliases": [
+        "raw honey",
+        "clover honey"
+      ]
+    },
+    {
+      "name": "maple syrup",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.32,
+      "package_qty": 355,
+      "package_unit": "ml",
+      "shelf_life_days": 365,
+      "aliases": [
+        "pure maple syrup"
+      ]
+    },
+    {
+      "name": "molasses",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.4,
+      "package_qty": 355,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "aliases": [
+        "blackstrap molasses"
+      ]
+    },
+    {
+      "name": "baking soda",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.96,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "is_staple": true,
+      "aliases": [
+        "bicarbonate of soda",
+        "sodium bicarbonate",
+        "bicarb"
+      ]
+    },
+    {
+      "name": "baking powder",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.9,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 545,
+      "is_staple": true,
+      "aliases": [
+        "double acting baking powder"
+      ]
+    },
+    {
+      "name": "active dry yeast",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.68,
+      "package_qty": 113,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "yeast",
+        "instant yeast",
+        "dry yeast"
+      ]
+    },
+    {
+      "name": "cocoa powder",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.42,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "unsweetened cocoa",
+        "dutch process cocoa",
+        "cacao powder"
+      ]
+    },
+    {
+      "name": "vanilla extract",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.879,
+      "package_qty": 59,
+      "package_unit": "ml",
+      "shelf_life_days": 1825,
+      "is_staple": true,
+      "aliases": [
+        "vanilla",
+        "pure vanilla extract"
+      ]
+    },
+    {
+      "name": "chocolate chips",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.72,
+      "package_qty": 340,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "semisweet chocolate chips",
+        "dark chocolate chips"
+      ]
+    },
+    {
+      "name": "olive oil",
+      "category": "oil",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.918,
+      "package_qty": 750,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "is_staple": true,
+      "aliases": [
+        "extra virgin olive oil",
+        "evoo",
+        "extra-virgin olive oil",
+        "virgin olive oil"
+      ]
+    },
+    {
+      "name": "vegetable oil",
+      "category": "oil",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.92,
+      "package_qty": 1420,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "is_staple": true,
+      "aliases": [
+        "canola oil",
+        "neutral oil",
+        "cooking oil",
+        "sunflower oil",
+        "grapeseed oil"
+      ]
+    },
+    {
+      "name": "sesame oil",
+      "category": "oil",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.92,
+      "package_qty": 250,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "aliases": [
+        "toasted sesame oil"
+      ]
+    },
+    {
+      "name": "coconut oil",
+      "category": "oil",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.92,
+      "package_qty": 414,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "virgin coconut oil"
+      ]
+    },
+    {
+      "name": "cooking spray",
+      "category": "oil",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "package_qty": 170,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "pam",
+        "nonstick spray"
+      ]
+    },
+    {
+      "name": "white vinegar",
+      "category": "condiment",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.01,
+      "package_qty": 946,
+      "package_unit": "ml",
+      "shelf_life_days": 1825,
+      "is_staple": true,
+      "aliases": [
+        "distilled vinegar",
+        "distilled white vinegar"
+      ]
+    },
+    {
+      "name": "apple cider vinegar",
+      "category": "condiment",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.01,
+      "package_qty": 473,
+      "package_unit": "ml",
+      "shelf_life_days": 1825,
+      "aliases": [
+        "acv",
+        "cider vinegar"
+      ]
+    },
+    {
+      "name": "balsamic vinegar",
+      "category": "condiment",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.09,
+      "package_qty": 250,
+      "package_unit": "ml",
+      "shelf_life_days": 1825,
+      "aliases": [
+        "balsamic"
+      ]
+    },
+    {
+      "name": "rice vinegar",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.01,
+      "package_qty": 355,
+      "package_unit": "ml",
+      "shelf_life_days": 1825,
+      "aliases": [
+        "rice wine vinegar",
+        "seasoned rice vinegar"
+      ]
+    },
+    {
+      "name": "red wine vinegar",
+      "category": "condiment",
+      "aisle": "Oils & Vinegars",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.01,
+      "package_qty": 355,
+      "package_unit": "ml",
+      "shelf_life_days": 1825,
+      "aliases": []
+    },
+    {
+      "name": "table salt",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.217,
+      "package_qty": 737,
+      "package_unit": "g",
+      "shelf_life_days": 3650,
+      "is_staple": true,
+      "aliases": [
+        "salt",
+        "fine salt",
+        "iodized salt",
+        "sea salt"
+      ]
+    },
+    {
+      "name": "kosher salt",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.69,
+      "package_qty": 1360,
+      "package_unit": "g",
+      "shelf_life_days": 3650,
+      "is_staple": true,
+      "aliases": [
+        "diamond crystal",
+        "mortons kosher salt",
+        "coarse salt"
+      ]
+    },
+    {
+      "name": "black pepper",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.46,
+      "package_qty": 113,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "pepper",
+        "ground black pepper",
+        "freshly ground black pepper",
+        "peppercorns"
+      ]
+    },
+    {
+      "name": "red pepper flakes",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.34,
+      "package_qty": 45,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "crushed red pepper",
+        "chili flakes",
+        "pepper flakes"
+      ]
+    },
+    {
+      "name": "ground cumin",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.45,
+      "package_qty": 57,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "cumin",
+        "cumin powder"
+      ]
+    },
+    {
+      "name": "ground coriander",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.42,
+      "package_qty": 43,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "coriander powder"
+      ]
+    },
+    {
+      "name": "paprika",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.46,
+      "package_qty": 64,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "sweet paprika",
+        "smoked paprika"
+      ]
+    },
+    {
+      "name": "chili powder",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.46,
+      "package_qty": 71,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "chile powder"
+      ]
+    },
+    {
+      "name": "garlic powder",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 91,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "granulated garlic"
+      ]
+    },
+    {
+      "name": "onion powder",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.51,
+      "package_qty": 71,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": []
+    },
+    {
+      "name": "dried oregano",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.2,
+      "package_qty": 21,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "oregano"
+      ]
+    },
+    {
+      "name": "dried thyme",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.2,
+      "package_qty": 21,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "thyme"
+      ]
+    },
+    {
+      "name": "dried basil",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.18,
+      "package_qty": 18,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": []
+    },
+    {
+      "name": "bay leaves",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 0.2,
+      "package_qty": 30,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "bay leaf"
+      ]
+    },
+    {
+      "name": "ground cinnamon",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.45,
+      "package_qty": 62,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "cinnamon"
+      ]
+    },
+    {
+      "name": "ground ginger",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.4,
+      "package_qty": 43,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": []
+    },
+    {
+      "name": "ground turmeric",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.55,
+      "package_qty": 50,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "turmeric"
+      ]
+    },
+    {
+      "name": "curry powder",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.45,
+      "package_qty": 50,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": []
+    },
+    {
+      "name": "nutmeg",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.47,
+      "package_qty": 35,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "ground nutmeg"
+      ]
+    },
+    {
+      "name": "cayenne pepper",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.45,
+      "package_qty": 50,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "cayenne"
+      ]
+    },
+    {
+      "name": "italian seasoning",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.2,
+      "package_qty": 28,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": []
+    },
+    {
+      "name": "yellow onion",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 150.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 30,
+      "aliases": [
+        "onion",
+        "onions",
+        "brown onion",
+        "spanish onion",
+        "yellow onions"
+      ]
+    },
+    {
+      "name": "red onion",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 150.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 30,
+      "aliases": [
+        "red onions",
+        "purple onion"
+      ]
+    },
+    {
+      "name": "shallot",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 40.0,
+      "package_qty": 3,
+      "package_unit": "count",
+      "shelf_life_days": 30,
+      "aliases": [
+        "shallots"
+      ]
+    },
+    {
+      "name": "scallion",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 15.0,
+      "package_qty": 8,
+      "package_unit": "count",
+      "shelf_life_days": 10,
+      "aliases": [
+        "green onion",
+        "green onions",
+        "scallions",
+        "spring onion",
+        "spring onions"
+      ]
+    },
+    {
+      "name": "garlic",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 3.0,
+      "package_qty": 12,
+      "package_unit": "count",
+      "shelf_life_days": 60,
+      "is_staple": true,
+      "aliases": [
+        "fresh garlic"
+      ]
+    },
+    {
+      "name": "ginger",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 100,
+      "package_unit": "g",
+      "shelf_life_days": 21,
+      "aliases": [
+        "fresh ginger",
+        "ginger root",
+        "gingerroot"
+      ]
+    },
+    {
+      "name": "carrot",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 61.0,
+      "package_qty": 8,
+      "package_unit": "count",
+      "shelf_life_days": 30,
+      "aliases": [
+        "carrots",
+        "baby carrots"
+      ]
+    },
+    {
+      "name": "celery",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 40.0,
+      "package_qty": 10,
+      "package_unit": "count",
+      "shelf_life_days": 21,
+      "aliases": []
+    },
+    {
+      "name": "potato",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 173.0,
+      "package_qty": 10,
+      "package_unit": "count",
+      "shelf_life_days": 45,
+      "aliases": [
+        "potatoes",
+        "russet potato",
+        "yukon gold",
+        "yukon gold potatoes",
+        "white potato"
+      ]
+    },
+    {
+      "name": "sweet potato",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 130.0,
+      "package_qty": 3,
+      "package_unit": "count",
+      "shelf_life_days": 30,
+      "aliases": [
+        "sweet potatoes",
+        "yam",
+        "yams"
+      ]
+    },
+    {
+      "name": "tomato",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 123.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 10,
+      "aliases": [
+        "tomatoes",
+        "roma tomato",
+        "roma tomatoes",
+        "beefsteak tomato"
+      ]
+    },
+    {
+      "name": "cherry tomatoes",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 283,
+      "package_unit": "g",
+      "shelf_life_days": 10,
+      "aliases": [
+        "grape tomatoes",
+        "cherry tomato"
+      ]
+    },
+    {
+      "name": "bell pepper",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 119.0,
+      "package_qty": 3,
+      "package_unit": "count",
+      "shelf_life_days": 14,
+      "aliases": [
+        "bell peppers",
+        "red bell pepper",
+        "green bell pepper",
+        "yellow bell pepper",
+        "capsicum",
+        "sweet pepper"
+      ]
+    },
+    {
+      "name": "jalapeno",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 14.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 14,
+      "aliases": [
+        "jalapenos",
+        "jalapeño",
+        "jalapeño pepper",
+        "jalapeno pepper"
+      ]
+    },
+    {
+      "name": "serrano pepper",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 6.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 14,
+      "aliases": [
+        "serrano",
+        "serranos"
+      ]
+    },
+    {
+      "name": "cucumber",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 300.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 10,
+      "aliases": [
+        "cucumbers",
+        "english cucumber",
+        "persian cucumber"
+      ]
+    },
+    {
+      "name": "zucchini",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 196.0,
+      "package_qty": 2,
+      "package_unit": "count",
+      "shelf_life_days": 10,
+      "aliases": [
+        "courgette",
+        "summer squash"
+      ]
+    },
+    {
+      "name": "broccoli",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.37,
+      "package_qty": 340,
+      "package_unit": "g",
+      "shelf_life_days": 10,
+      "aliases": []
+    },
+    {
+      "name": "cauliflower",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.4,
+      "package_qty": 600,
+      "package_unit": "g",
+      "shelf_life_days": 10,
+      "aliases": []
+    },
+    {
+      "name": "spinach",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.13,
+      "package_qty": 142,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": [
+        "baby spinach",
+        "fresh spinach"
+      ]
+    },
+    {
+      "name": "kale",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.14,
+      "package_qty": 142,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": [
+        "lacinato kale",
+        "curly kale"
+      ]
+    },
+    {
+      "name": "romaine lettuce",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 300.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 8,
+      "aliases": [
+        "lettuce",
+        "romaine"
+      ]
+    },
+    {
+      "name": "mushrooms",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.29,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": [
+        "cremini mushrooms",
+        "button mushrooms",
+        "white mushrooms",
+        "baby bella"
+      ]
+    },
+    {
+      "name": "green beans",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.42,
+      "package_qty": 340,
+      "package_unit": "g",
+      "shelf_life_days": 8,
+      "aliases": [
+        "string beans",
+        "haricot vert"
+      ]
+    },
+    {
+      "name": "asparagus",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.4,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 6,
+      "aliases": []
+    },
+    {
+      "name": "cabbage",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.36,
+      "package_qty": 900,
+      "package_unit": "g",
+      "shelf_life_days": 30,
+      "aliases": [
+        "green cabbage",
+        "napa cabbage",
+        "red cabbage"
+      ]
+    },
+    {
+      "name": "corn",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 90.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 7,
+      "aliases": [
+        "sweet corn"
+      ]
+    },
+    {
+      "name": "avocado",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 150.0,
+      "package_qty": 2,
+      "package_unit": "count",
+      "shelf_life_days": 6,
+      "aliases": [
+        "avocados",
+        "hass avocado"
+      ]
+    },
+    {
+      "name": "lemon",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 84.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 21,
+      "is_staple": true,
+      "aliases": [
+        "lemons"
+      ]
+    },
+    {
+      "name": "lime",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 67.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 21,
+      "aliases": [
+        "limes"
+      ]
+    },
+    {
+      "name": "orange",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 131.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 21,
+      "aliases": [
+        "oranges",
+        "navel orange"
+      ]
+    },
+    {
+      "name": "apple",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 182.0,
+      "package_qty": 6,
+      "package_unit": "count",
+      "shelf_life_days": 30,
+      "aliases": [
+        "apples",
+        "granny smith",
+        "honeycrisp"
+      ]
+    },
+    {
+      "name": "banana",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 118.0,
+      "package_qty": 6,
+      "package_unit": "count",
+      "shelf_life_days": 7,
+      "aliases": [
+        "bananas"
+      ]
+    },
+    {
+      "name": "fresh parsley",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.25,
+      "package_qty": 30,
+      "package_unit": "g",
+      "shelf_life_days": 10,
+      "aliases": [
+        "parsley",
+        "flat leaf parsley",
+        "italian parsley"
+      ]
+    },
+    {
+      "name": "fresh cilantro",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.25,
+      "package_qty": 30,
+      "package_unit": "g",
+      "shelf_life_days": 8,
+      "aliases": [
+        "cilantro",
+        "fresh coriander"
+      ]
+    },
+    {
+      "name": "fresh basil",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.17,
+      "package_qty": 20,
+      "package_unit": "g",
+      "shelf_life_days": 6,
+      "aliases": []
+    },
+    {
+      "name": "fresh thyme",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.25,
+      "package_qty": 20,
+      "package_unit": "g",
+      "shelf_life_days": 10,
+      "aliases": []
+    },
+    {
+      "name": "fresh rosemary",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.25,
+      "package_qty": 20,
+      "package_unit": "g",
+      "shelf_life_days": 12,
+      "aliases": [
+        "rosemary"
+      ]
+    },
+    {
+      "name": "fresh dill",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.2,
+      "package_qty": 20,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": [
+        "dill"
+      ]
+    },
+    {
+      "name": "fresh mint",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.17,
+      "package_qty": 20,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": []
+    },
+    {
+      "name": "chicken breast",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 907,
+      "package_unit": "g",
+      "shelf_life_days": 3,
+      "aliases": [
+        "boneless skinless chicken breast",
+        "chicken breasts",
+        "bnls skls chicken breast"
+      ]
+    },
+    {
+      "name": "chicken thigh",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 907,
+      "package_unit": "g",
+      "shelf_life_days": 3,
+      "aliases": [
+        "chicken thighs",
+        "boneless chicken thighs",
+        "bone-in chicken thighs"
+      ]
+    },
+    {
+      "name": "whole chicken",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 1600.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 3,
+      "aliases": [
+        "roasting chicken",
+        "fryer chicken"
+      ]
+    },
+    {
+      "name": "ground beef",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 3,
+      "aliases": [
+        "hamburger",
+        "minced beef",
+        "ground chuck",
+        "80/20 ground beef"
+      ]
+    },
+    {
+      "name": "ground pork",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 3,
+      "aliases": [
+        "minced pork"
+      ]
+    },
+    {
+      "name": "ground turkey",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 3,
+      "aliases": []
+    },
+    {
+      "name": "pork shoulder",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 1814,
+      "package_unit": "g",
+      "shelf_life_days": 4,
+      "aliases": [
+        "pork butt",
+        "boston butt",
+        "pork shoulder roast"
+      ]
+    },
+    {
+      "name": "pork chop",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 170.0,
+      "package_qty": 4,
+      "package_unit": "count",
+      "shelf_life_days": 3,
+      "aliases": [
+        "pork chops"
+      ]
+    },
+    {
+      "name": "bacon",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.9,
+      "package_qty": 340,
+      "package_unit": "g",
+      "shelf_life_days": 10,
+      "aliases": [
+        "bacon strips",
+        "streaky bacon"
+      ]
+    },
+    {
+      "name": "sausage",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.0,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 5,
+      "aliases": [
+        "italian sausage",
+        "breakfast sausage",
+        "sausage links"
+      ]
+    },
+    {
+      "name": "beef chuck",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 1360,
+      "package_unit": "g",
+      "shelf_life_days": 4,
+      "aliases": [
+        "chuck roast",
+        "stew meat",
+        "beef stew meat"
+      ]
+    },
+    {
+      "name": "steak",
+      "category": "meat",
+      "aisle": "Meat",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 4,
+      "aliases": [
+        "ribeye",
+        "sirloin",
+        "new york strip",
+        "flank steak",
+        "skirt steak"
+      ]
+    },
+    {
+      "name": "salmon",
+      "category": "seafood",
+      "aisle": "Seafood",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 2,
+      "aliases": [
+        "atlantic salmon"
+      ]
+    },
+    {
+      "name": "shrimp",
+      "category": "seafood",
+      "aisle": "Seafood",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.0,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 2,
+      "aliases": [
+        "prawns"
+      ]
+    },
+    {
+      "name": "white fish",
+      "category": "seafood",
+      "aisle": "Seafood",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 2,
+      "aliases": [
+        "cod",
+        "halibut",
+        "tilapia",
+        "haddock"
+      ]
+    },
+    {
+      "name": "canned tuna",
+      "category": "canned",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 142.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "tuna",
+        "chunk light tuna",
+        "albacore tuna"
+      ]
+    },
+    {
+      "name": "eggs",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 50.0,
+      "package_qty": 12,
+      "package_unit": "count",
+      "shelf_life_days": 28,
+      "is_staple": true,
+      "aliases": [
+        "egg",
+        "large eggs",
+        "large egg",
+        "grade a eggs"
+      ]
+    },
+    {
+      "name": "whole milk",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.03,
+      "package_qty": 1893,
+      "package_unit": "ml",
+      "shelf_life_days": 10,
+      "is_staple": true,
+      "aliases": [
+        "milk",
+        "2% milk",
+        "skim milk",
+        "whole mlk"
+      ]
+    },
+    {
+      "name": "heavy cream",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.01,
+      "package_qty": 473,
+      "package_unit": "ml",
+      "shelf_life_days": 14,
+      "aliases": [
+        "heavy whipping cream",
+        "double cream",
+        "whipping cream"
+      ]
+    },
+    {
+      "name": "butter",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.911,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 60,
+      "is_staple": true,
+      "aliases": [
+        "unsalted butter",
+        "salted butter",
+        "sweet cream butter"
+      ]
+    },
+    {
+      "name": "sour cream",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.0,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 21,
+      "aliases": []
+    },
+    {
+      "name": "greek yogurt",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.03,
+      "package_qty": 907,
+      "package_unit": "g",
+      "shelf_life_days": 21,
+      "aliases": [
+        "yogurt",
+        "plain yogurt",
+        "plain greek yogurt"
+      ]
+    },
+    {
+      "name": "parmesan cheese",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.42,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 90,
+      "is_staple": true,
+      "aliases": [
+        "parmesan",
+        "parmigiano reggiano",
+        "parmigiano"
+      ]
+    },
+    {
+      "name": "cheddar cheese",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.45,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 45,
+      "aliases": [
+        "cheddar",
+        "sharp cheddar",
+        "shredded cheddar"
+      ]
+    },
+    {
+      "name": "mozzarella cheese",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.45,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 30,
+      "aliases": [
+        "mozzarella",
+        "shredded mozzarella",
+        "fresh mozzarella"
+      ]
+    },
+    {
+      "name": "cream cheese",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.0,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 30,
+      "aliases": [
+        "philadelphia"
+      ]
+    },
+    {
+      "name": "feta cheese",
+      "category": "dairy",
+      "aisle": "Dairy",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 170,
+      "package_unit": "g",
+      "shelf_life_days": 30,
+      "aliases": [
+        "feta"
+      ]
+    },
+    {
+      "name": "white rice",
+      "category": "grain",
+      "aisle": "Rice & Grains",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.78,
+      "package_qty": 907,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "rice",
+        "long grain rice",
+        "jasmine rice",
+        "basmati rice"
+      ]
+    },
+    {
+      "name": "brown rice",
+      "category": "grain",
+      "aisle": "Rice & Grains",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.78,
+      "package_qty": 907,
+      "package_unit": "g",
+      "shelf_life_days": 545,
+      "aliases": []
+    },
+    {
+      "name": "spaghetti",
+      "category": "grain",
+      "aisle": "Pasta",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.5,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "is_staple": true,
+      "aliases": [
+        "pasta",
+        "spaghettini",
+        "linguine",
+        "angel hair"
+      ]
+    },
+    {
+      "name": "penne",
+      "category": "grain",
+      "aisle": "Pasta",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.42,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "rigatoni",
+        "ziti",
+        "short pasta",
+        "fusilli",
+        "rotini"
+      ]
+    },
+    {
+      "name": "rolled oats",
+      "category": "grain",
+      "aisle": "Cereal",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.38,
+      "package_qty": 1190,
+      "package_unit": "g",
+      "shelf_life_days": 545,
+      "aliases": [
+        "oats",
+        "old fashioned oats",
+        "oatmeal"
+      ]
+    },
+    {
+      "name": "quinoa",
+      "category": "grain",
+      "aisle": "Rice & Grains",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.72,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": []
+    },
+    {
+      "name": "couscous",
+      "category": "grain",
+      "aisle": "Rice & Grains",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.72,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": [
+        "israeli couscous",
+        "pearl couscous"
+      ]
+    },
+    {
+      "name": "breadcrumbs",
+      "category": "baking",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.46,
+      "package_qty": 425,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "panko",
+        "panko breadcrumbs",
+        "bread crumbs"
+      ]
+    },
+    {
+      "name": "tortillas",
+      "category": "bakery",
+      "aisle": "Bakery",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 45.0,
+      "package_qty": 10,
+      "package_unit": "count",
+      "shelf_life_days": 21,
+      "aliases": [
+        "flour tortillas",
+        "corn tortillas",
+        "tortilla"
+      ]
+    },
+    {
+      "name": "sandwich bread",
+      "category": "bakery",
+      "aisle": "Bakery",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.25,
+      "package_qty": 567,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": [
+        "bread",
+        "white bread",
+        "whole wheat bread"
+      ]
+    },
+    {
+      "name": "canned diced tomatoes",
+      "category": "canned",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 411.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "diced tomatoes",
+        "canned tomatoes"
+      ]
+    },
+    {
+      "name": "canned crushed tomatoes",
+      "category": "canned",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 794.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "crushed tomatoes",
+        "san marzano tomatoes",
+        "whole peeled tomatoes"
+      ]
+    },
+    {
+      "name": "tomato paste",
+      "category": "canned",
+      "aisle": "Canned Goods",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.07,
+      "package_qty": 170,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "tomato puree"
+      ]
+    },
+    {
+      "name": "tomato sauce",
+      "category": "canned",
+      "aisle": "Canned Goods",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 425,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "marinara",
+        "pasta sauce",
+        "marinara sauce"
+      ]
+    },
+    {
+      "name": "black beans",
+      "category": "legume",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 425.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "canned black beans",
+        "blk beans"
+      ]
+    },
+    {
+      "name": "chickpeas",
+      "category": "legume",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 425.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "garbanzo beans",
+        "canned chickpeas"
+      ]
+    },
+    {
+      "name": "cannellini beans",
+      "category": "legume",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 425.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "white beans",
+        "great northern beans",
+        "navy beans"
+      ]
+    },
+    {
+      "name": "dried lentils",
+      "category": "legume",
+      "aisle": "Rice & Grains",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.85,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "lentils",
+        "red lentils",
+        "green lentils",
+        "brown lentils"
+      ]
+    },
+    {
+      "name": "chicken stock",
+      "category": "canned",
+      "aisle": "Soup",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.0,
+      "package_qty": 946,
+      "package_unit": "ml",
+      "shelf_life_days": 365,
+      "is_staple": true,
+      "aliases": [
+        "chicken broth",
+        "chicken bouillon",
+        "stock",
+        "broth"
+      ]
+    },
+    {
+      "name": "vegetable stock",
+      "category": "canned",
+      "aisle": "Soup",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.0,
+      "package_qty": 946,
+      "package_unit": "ml",
+      "shelf_life_days": 365,
+      "aliases": [
+        "vegetable broth",
+        "veggie broth"
+      ]
+    },
+    {
+      "name": "beef stock",
+      "category": "canned",
+      "aisle": "Soup",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.0,
+      "package_qty": 946,
+      "package_unit": "ml",
+      "shelf_life_days": 365,
+      "aliases": [
+        "beef broth"
+      ]
+    },
+    {
+      "name": "coconut milk",
+      "category": "canned",
+      "aisle": "International",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 400.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 730,
+      "aliases": [
+        "canned coconut milk",
+        "full fat coconut milk"
+      ]
+    },
+    {
+      "name": "soy sauce",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.15,
+      "package_qty": 296,
+      "package_unit": "ml",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "shoyu",
+        "light soy sauce",
+        "tamari"
+      ]
+    },
+    {
+      "name": "fish sauce",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.2,
+      "package_qty": 200,
+      "package_unit": "ml",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "nam pla"
+      ]
+    },
+    {
+      "name": "dijon mustard",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "is_staple": true,
+      "aliases": [
+        "mustard",
+        "whole grain mustard",
+        "yellow mustard"
+      ]
+    },
+    {
+      "name": "mayonnaise",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.91,
+      "package_qty": 887,
+      "package_unit": "g",
+      "shelf_life_days": 180,
+      "aliases": [
+        "mayo",
+        "hellmanns"
+      ]
+    },
+    {
+      "name": "ketchup",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.14,
+      "package_qty": 567,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "tomato ketchup",
+        "catsup"
+      ]
+    },
+    {
+      "name": "hot sauce",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.0,
+      "package_qty": 148,
+      "package_unit": "ml",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "sriracha",
+        "tabasco",
+        "franks red hot",
+        "chili sauce"
+      ]
+    },
+    {
+      "name": "worcestershire sauce",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.1,
+      "package_qty": 296,
+      "package_unit": "ml",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "worcestershire"
+      ]
+    },
+    {
+      "name": "peanut butter",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.08,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "pb",
+        "creamy peanut butter",
+        "natural peanut butter"
+      ]
+    },
+    {
+      "name": "salsa",
+      "category": "condiment",
+      "aisle": "Condiments",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.02,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "pico de gallo",
+        "salsa verde"
+      ]
+    },
+    {
+      "name": "miso paste",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.25,
+      "package_qty": 340,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "white miso",
+        "red miso",
+        "miso"
+      ]
+    },
+    {
+      "name": "tahini",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": [
+        "sesame paste"
+      ]
+    },
+    {
+      "name": "walnuts",
+      "category": "other",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.5,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 180,
+      "aliases": []
+    },
+    {
+      "name": "almonds",
+      "category": "other",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 227,
+      "package_unit": "g",
+      "shelf_life_days": 270,
+      "aliases": [
+        "sliced almonds",
+        "slivered almonds"
+      ]
+    },
+    {
+      "name": "pine nuts",
+      "category": "other",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.57,
+      "package_qty": 113,
+      "package_unit": "g",
+      "shelf_life_days": 180,
+      "aliases": [
+        "pignoli"
+      ]
+    },
+    {
+      "name": "sesame seeds",
+      "category": "other",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 100,
+      "package_unit": "g",
+      "shelf_life_days": 365,
+      "aliases": []
+    },
+    {
+      "name": "frozen peas",
+      "category": "frozen",
+      "aisle": "Frozen",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.6,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 240,
+      "aliases": [
+        "peas",
+        "green peas"
+      ]
+    },
+    {
+      "name": "frozen corn",
+      "category": "frozen",
+      "aisle": "Frozen",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.65,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 240,
+      "aliases": []
+    },
+    {
+      "name": "frozen spinach",
+      "category": "frozen",
+      "aisle": "Frozen",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.7,
+      "package_qty": 283,
+      "package_unit": "g",
+      "shelf_life_days": 240,
+      "aliases": []
+    },
+    {
+      "name": "tofu",
+      "category": "other",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 1.05,
+      "package_qty": 396,
+      "package_unit": "g",
+      "shelf_life_days": 14,
+      "aliases": [
+        "firm tofu",
+        "extra firm tofu",
+        "silken tofu"
+      ]
+    },
+    {
+      "name": "dry white wine",
+      "category": "beverage",
+      "aisle": "Beer & Wine",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.99,
+      "package_qty": 750,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "aliases": [
+        "white wine",
+        "sauvignon blanc",
+        "pinot grigio"
+      ]
+    },
+    {
+      "name": "dry red wine",
+      "category": "beverage",
+      "aisle": "Beer & Wine",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.99,
+      "package_qty": 750,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "aliases": [
+        "red wine",
+        "cabernet",
+        "merlot"
+      ]
+    }
+  ]
+}

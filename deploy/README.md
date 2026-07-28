@@ -1,17 +1,54 @@
 # Deploying SousChef to an Oracle Always Free ARM VM
 
-Target: `VM.Standard.A1.Flex`, 2 OCPU / 12 GB, Ubuntu 24.04. That is the current
-Always Free allowance — Oracle [halved it from 4/24 on 15 June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
-— and it is comfortably more than this app needs.
+Target: `VM.Standard.A1.Flex`, Ubuntu 24.04. The Always Free allowance is 4 OCPU
+/ 24 GB across A1 instances — Oracle
+[halved it on 15 June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
+— which is far more than this app needs.
 
 Everything below is plain Docker Compose, so if Oracle reclaims or refuses the
 instance the same stack redeploys unchanged to any ~$5/mo VPS.
 
+## How much machine this actually needs
+
+Measured, not guessed (`ps -o rss` against the running container):
+
+| State | Resident |
+|---|---|
+| Idle, just booted | ~100 MB |
+| Serving every page | ~103 MB |
+| After the first receipt scan (OCR model resident) | ~427 MB |
+| After further scans | ~427 MB, flat |
+
+The OCR model is loaded lazily on the first scan and then stays put, so **~430 MB
+is the steady state** once anyone has scanned a receipt. With Caddy and Ubuntu
+that is roughly **600 MB all-in**, and the disk footprint is a few hundred MB of
+database and receipt images.
+
+So **1 GB of RAM is enough** and 2 OCPU / 12 GB is wildly oversized. That matters
+because capacity, not the allowance, is the binding constraint — see below.
+
 ## 1. Instance
 
-Create the VM with an Ubuntu 24.04 ARM image. If provisioning fails with "out of
-host capacity", retry in a different availability domain or region — this is
-common on the free tier and is not a fault in your account.
+Create the VM with an Ubuntu 24.04 ARM image.
+
+**`Out of host capacity` is the normal experience, not a fault in your account.**
+Free-tier A1 capacity is genuinely scarce in popular regions. In rough order of
+effectiveness:
+
+1. **Ask for less.** Request **1 OCPU / 6 GB** rather than 2/12. The scheduler is
+   looking for a host with room for what you asked for, and by the numbers above
+   even 1/6 is six times more memory than this needs.
+2. **Rotate availability domains** (AD-1, AD-2, AD-3) and omit the fault domain.
+3. **Retry on a loop.** Capacity frees up unpredictably; a script that retries
+   every few minutes generally succeeds within hours where clicking the console
+   does not.
+4. **Upgrade to Pay As You Go.** Always Free shapes still cost nothing, but
+   paid-tier accounts are widely reported to get A1 capacity far more readily.
+5. **Take the x86 micro instead.** `VM.Standard.E2.1.Micro` (1 GB, AMD) is also
+   Always Free, you get two, and it almost always has capacity. It fits the 600 MB
+   above — but it is **1/8 OCPU burstable**, so `docker compose build` is
+   painfully slow. Build the image elsewhere and push it to a registry, or expect
+   receipt scans to take tens of seconds rather than two.
 
 Open 80 and 443 in the VCN **security list**, then again on the instance itself:
 
@@ -274,3 +311,21 @@ docker compose cp app:/data/pre-upgrade.db ./backups/
 Nothing here is Oracle-specific. On any Ubuntu VPS: install Docker, clone, copy
 `.secrets/`, point DNS, `docker compose up -d`. Restore the newest backup into
 the `souschef_data` volume.
+
+**The one requirement that rules hosts out is a persistent disk.** This app keeps
+its database and receipt images on the filesystem, so any platform with an
+ephemeral one — the free tiers of Render, Railway, Koyeb and friends, where a
+redeploy or a restart resets the disk — would silently discard the pantry.
+Running there means moving to Postgres plus object storage, which is a real
+rewrite and not worth it for a kitchen app.
+
+Known-good alternatives, both giving a real VM with a real disk:
+
+| Option | Notes |
+|---|---|
+| **GCP `e2-micro`** always-free, `us-west1`/`us-central1`/`us-east1` | 1 GB RAM + 30 GB disk, free indefinitely. Fits the 600 MB above; add ~1 GB of swap for headroom during the image build. The closest true equivalent to Oracle. |
+| **Hetzner `CAX11`** (~€3.79/mo) | 2 ARM vCPU, 4 GB, 40 GB. Not free, but it is the same architecture as the A1 and the stack moves across untouched. |
+
+Free-tier terms change often; confirm the current allowance before committing to
+one, and check whether it is genuinely "always free" or a trial credit that
+expires.

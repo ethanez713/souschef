@@ -50,6 +50,20 @@ effectiveness:
    painfully slow. Build the image elsewhere and push it to a registry, or expect
    receipt scans to take tens of seconds rather than two.
 
+### If you leave a retry loop running unattended
+
+Check the **Instances** list when you come back, before doing anything else:
+
+- **Delete any duplicates.** A loop that keeps clicking after a success can
+  provision more than one. Within the Always Free allowance the spares are free;
+  on a Pay As You Go account, anything past the allowance **bills you**.
+- **Confirm the instance is marked "Always Free Eligible."** A shape or boot
+  volume outside the free limits is billable, and during the 30-day trial it will
+  look fine right up until the trial ends.
+
+Nothing is at risk from simply not returning for a few hours — a fresh instance
+exposes only key-only SSH, with 80/443 still closed and nothing installed yet.
+
 Open 80 and 443 in the VCN **security list**, then again on the instance itself:
 
 ```bash
@@ -217,9 +231,31 @@ docker compose start app
 
 ## 8. Keeping the instance
 
-Oracle reclaims Always Free instances that look idle. The app's own health check
-generates enough activity to count, but verify the instance is still running
-after the first few weeks.
+Oracle may reclaim **Always Free** instances that look idle, judged over a rolling
+7-day window against utilization thresholds (broadly: 95th-percentile CPU under
+20%, plus network and memory floors). Two consequences:
+
+**Hours or days of not touching it are fine.** Nothing is reclaimed for being
+unattended; the test is sustained low utilization over a week, not recent logins.
+
+**But a quiet SousChef box will not clear those thresholds.** An earlier version
+of this file claimed the health check generated enough activity to count. It does
+not — a `curl /healthz` each minute is far below 20% CPU, and a kitchen app used a
+few times a week is exactly the profile the policy targets. Do not rely on it.
+
+The clean fix is to **upgrade the account to Pay As You Go**: idle reclamation
+applies to Always Free accounts, not paid ones, while Always Free shapes still
+cost nothing. It also makes A1 capacity much easier to get in the first place, so
+it solves both problems at once. Manufacturing fake CPU load to stay above a
+threshold is the other option, and it is a silly thing to run on a machine
+forever.
+
+Either way, keep backups off the box (§7) and treat the instance as replaceable —
+that is the assumption the whole stack is built on.
+
+These policies change; Oracle
+[cut the Always Free allowance in June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/).
+Confirm the current terms rather than trusting this file.
 
 ## Debugging a running instance
 

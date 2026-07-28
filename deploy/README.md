@@ -1,9 +1,10 @@
 # Deploying SousChef to an Oracle Always Free ARM VM
 
-Target: `VM.Standard.A1.Flex`, Ubuntu 24.04. The Always Free allowance is 4 OCPU
-/ 24 GB across A1 instances — Oracle
-[halved it on 15 June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
-— which is far more than this app needs.
+Target: `VM.Standard.A1.Flex`, Ubuntu 24.04. The Always Free allowance is **2 OCPU
+/ 12 GB** across all A1 instances in the tenancy, since Oracle
+[halved it from 4/24 on 15 June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
+— still far more than this app needs. Ask for a fraction of it; §"How much machine
+this actually needs" explains why the small shape is the better request.
 
 Everything below is plain Docker Compose, so if Oracle reclaims or refuses the
 instance the same stack redeploys unchanged to any ~$5/mo VPS.
@@ -24,8 +25,23 @@ is the steady state** once anyone has scanned a receipt. With Caddy and Ubuntu
 that is roughly **600 MB all-in**, and the disk footprint is a few hundred MB of
 database and receipt images.
 
-So **1 GB of RAM is enough** and 2 OCPU / 12 GB is wildly oversized. That matters
-because capacity, not the allowance, is the binding constraint — see below.
+### Ask for 1 OCPU / 3 GB, not 2 OCPU / 12 GB
+
+Counter-intuitively, the *small* shape is the better ask on all three axes:
+
+- **Capacity.** The scheduler is hunting for a host with room for what you
+  requested. A smaller request is a much easier fit, and `Out of host capacity`
+  is the binding constraint on this tier — not the allowance.
+- **Idle reclamation.** Oracle deems an Always Free instance idle only if CPU,
+  network **and** memory are all under 20% across 7 days (see §8). At ~600 MB
+  used, a 12 GB box sits at 5% memory and is a reclamation candidate; a 3 GB box
+  sits near 25% and is not. Right-sizing is the honest way to stay under that
+  policy — no fake load required.
+- **Trial end.** Staying well inside 2 OCPU / 12 GB total means nothing to unwind
+  when the trial expires (see below).
+
+Give it ~2 GB of swap so the image build, which is heavier than the running app,
+has headroom.
 
 ## 1. Instance
 
@@ -35,16 +51,13 @@ Create the VM with an Ubuntu 24.04 ARM image.
 Free-tier A1 capacity is genuinely scarce in popular regions. In rough order of
 effectiveness:
 
-1. **Ask for less.** Request **1 OCPU / 6 GB** rather than 2/12. The scheduler is
-   looking for a host with room for what you asked for, and by the numbers above
-   even 1/6 is six times more memory than this needs.
+1. **Ask for less.** Request **1 OCPU / 3 GB** rather than 2/12 — see above for
+   why the small shape is better on every axis, not just this one.
 2. **Rotate availability domains** (AD-1, AD-2, AD-3) and omit the fault domain.
 3. **Retry on a loop.** Capacity frees up unpredictably; a script that retries
    every few minutes generally succeeds within hours where clicking the console
    does not.
-4. **Upgrade to Pay As You Go.** Always Free shapes still cost nothing, but
-   paid-tier accounts are widely reported to get A1 capacity far more readily.
-5. **Take the x86 micro instead.** `VM.Standard.E2.1.Micro` (1 GB, AMD) is also
+4. **Take the x86 micro instead.** `VM.Standard.E2.1.Micro` (1 GB, AMD) is also
    Always Free, you get two, and it almost always has capacity. It fits the 600 MB
    above — but it is **1/8 OCPU burstable**, so `docker compose build` is
    painfully slow. Build the image elsewhere and push it to a registry, or expect
@@ -64,7 +77,17 @@ Check the **Instances** list when you come back, before doing anything else:
 Nothing is at risk from simply not returning for a few hours — a fresh instance
 exposes only key-only SSH, with 80/443 still closed and nothing installed yet.
 
-Open 80 and 443 in the VCN **security list**, then again on the instance itself:
+## 1b. Firewall (after the instance exists)
+
+Neither firewall layer is configurable on the create-instance form. Both are set
+afterwards, and neither needs a rebuild.
+
+**VCN security list** — Networking → Virtual Cloud Networks → your VCN →
+Security Lists → Default Security List → *Add Ingress Rules*. Two stateful rules,
+source CIDR `0.0.0.0/0`, IP protocol TCP, destination port `80` and `443`. It
+takes effect within seconds; the instance keeps running.
+
+**The instance's own iptables** — SSH in and run:
 
 ```bash
 sudo iptables -I INPUT -p tcp --dport 80  -j ACCEPT
@@ -72,9 +95,15 @@ sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
 sudo netfilter-persistent save
 ```
 
-Oracle's Ubuntu images ship a restrictive `iptables` chain **in addition to** the
-cloud security list. Opening only the security list leaves the port silently
-filtered, which looks exactly like a broken app.
+`-I` inserts at the top; `-A` would append *after* the REJECT rule Oracle's
+Ubuntu images ship with, which does nothing. Both layers must be open — one alone
+leaves the port silently filtered, which looks exactly like a broken app.
+
+Verify from your workstation once the stack is up:
+
+```bash
+nc -zv <public-ip> 80 443
+```
 
 ## 2. Docker
 
@@ -229,33 +258,63 @@ docker compose cp /tmp/restore.db app:/data/souschef.db
 docker compose start app
 ```
 
-## 8. Keeping the instance
+## 8. Staying free, and keeping the instance
 
-Oracle may reclaim **Always Free** instances that look idle, judged over a rolling
-7-day window against utilization thresholds (broadly: 95th-percentile CPU under
-20%, plus network and memory floors). Two consequences:
+Verified against Oracle's
+[Always Free Resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
+docs, 28 July 2026. Confirm before trusting it — Oracle
+[halved the A1 allowance in June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
+with no announcement, just a documentation edit.
 
-**Hours or days of not touching it are fine.** Nothing is reclaimed for being
-unattended; the test is sustained low utilization over a week, not recent logins.
+| Resource | Always Free allowance |
+|---|---|
+| Ampere A1 compute | 1,500 OCPU-hours + 9,000 GB-hours/month — i.e. **2 OCPU / 12 GB** running continuously |
+| AMD compute | **2 ×** `VM.Standard.E2.1.Micro`, 1/8 OCPU + 1 GB each |
+| Block + boot volume | **200 GB total**, plus 5 backups |
+| Outbound data | **10 TB/month** |
 
-**But a quiet SousChef box will not clear those thresholds.** An earlier version
-of this file claimed the health check generated enough activity to count. It does
-not — a `curl /healthz` each minute is far below 20% CPU, and a kitchen app used a
-few times a week is exactly the profile the policy targets. Do not rely on it.
+This app needs 1 OCPU, 3 GB, one ~50 GB boot volume and a rounding error of
+egress, so it sits far inside every line.
 
-The clean fix is to **upgrade the account to Pay As You Go**: idle reclamation
-applies to Always Free accounts, not paid ones, while Always Free shapes still
-cost nothing. It also makes A1 capacity much easier to get in the first place, so
-it solves both problems at once. Manufacturing fake CPU load to stay above a
-threshold is the other option, and it is a silly thing to run on a machine
-forever.
+### Reclamation of idle instances
 
-Either way, keep backups off the box (§7) and treat the instance as replaceable —
-that is the assumption the whole stack is built on.
+> Oracle will deem virtual machine and bare metal compute instances as idle if,
+> during a 7-day period, the following are true:
+> - CPU utilization for the 95th percentile is less than 20%
+> - Network utilization is less than 20%
+> - Memory utilization is less than 20% *(applies to A1 shapes only)*
 
-These policies change; Oracle
-[cut the Always Free allowance in June 2026](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/).
-Confirm the current terms rather than trusting this file.
+Two things follow.
+
+**Being away for hours or days is irrelevant.** The test is sustained low
+utilization over a week, not recent logins.
+
+**All three conditions must hold — so memory is the lever.** An earlier version of
+this file claimed the health check generated enough activity to count; it does
+not, and a kitchen app used twice a week will not clear the CPU bar either. But it
+does not have to: at ~600 MB resident, a **3 GB** instance sits around 25% memory
+and therefore fails the "idle" test outright, while a 12 GB instance sits at 5%
+and qualifies. Sizing the box to the workload is what keeps it, not fake load.
+
+Oracle does not document how it measures memory utilization, so leave margin
+rather than aiming exactly at 20%.
+
+### At the end of the 30-day trial
+
+Always Free resources keep running; the account stays open. The trap is
+**over-provisioning during the trial**, when the $300 credit hides it: if you hold
+more A1 than the Always Free allowance when the trial ends, *all* your A1
+instances are disabled and deleted 30 days later unless you upgrade to a paid
+account. Staying at 1 OCPU / 3 GB means there is nothing to unwind.
+
+**Don't upgrade to Pay As You Go to dodge reclamation.** Earlier advice in this
+file said to; that was wrong if you want a guaranteed $0. A paid tenancy gets the
+same 1,500 OCPU-hour A1 grant, but anything past it — or past 200 GB of storage —
+is billed rather than refused, which converts a hard limit into a bill. Always
+Free refusing to provision is the behaviour you want.
+
+Keep backups off the box (§7) and treat the instance as replaceable — that is the
+assumption the whole stack is built on.
 
 ## Debugging a running instance
 

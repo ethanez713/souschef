@@ -51,7 +51,8 @@ the claim page closes behind them.
 Outbound calls are **blocked by default** so a dev run can't hit a real service
 or burn API quota. Set `SOUSCHEF_NO_EXTERNAL=false` to allow recipe imports.
 
-Deployment to a free Oracle ARM VM: [`deploy/README.md`](deploy/README.md).
+Deploying it to a small VM — free tier, cheap VPS, or your own hardware:
+[`deploy/README.md`](deploy/README.md).
 
 ### Accounts
 
@@ -160,9 +161,9 @@ a file copy, and dev and production run the identical engine.
 
 **No LLM in the core loop.** Ingredient parsing is a CPU-only CRF model and
 matching is deterministic. A matcher you can debug beats a model that's
-confidently wrong, and 2 ARM cores can't run an LLM at usable speed anyway. A
-cloud vision model is touched only as a fallback for receipts the local OCR
-can't read.
+confidently wrong, and the one-or-two shared cores this runs on couldn't serve an
+LLM at usable speed anyway. A cloud vision model is touched only as a fallback
+for receipts the local OCR can't read.
 
 **Server-rendered HTML + HTMX.** One service, one language, no build step.
 

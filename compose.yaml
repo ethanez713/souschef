@@ -18,6 +18,10 @@ services:
       - app
 
   app:
+    # Built locally by default. Set SOUSCHEF_IMAGE to a registry reference to
+    # build on a bigger machine and pull the result -- the build is much heavier
+    # than the running app and will thrash a 1 GB host.
+    image: ${SOUSCHEF_IMAGE:-souschef:local}
     build: .
     restart: unless-stopped
     # No ports published: only Caddy can reach it.
@@ -39,8 +43,8 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # Nightly backup. Oracle reclaims idle free-tier instances, so a backup that
-  # lives only on the box is worth nothing -- push it somewhere else.
+  # Nightly backup. A snapshot that only exists on the box it protects is not a
+  # backup -- pull these somewhere else (deploy/README.md, "Backups").
   backup:
     image: alpine:3.20
     restart: unless-stopped

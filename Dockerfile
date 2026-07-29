@@ -1,4 +1,5 @@
-# Targets linux/arm64 (Oracle Ampere A1) but builds cleanly on amd64 too.
+# Builds cleanly on both linux/amd64 and linux/arm64; pass --platform to cross-build
+# for a host whose architecture differs from the machine doing the build.
 FROM python:3.12-slim-bookworm
 
 # libgl/libglib are needed by opencv, which RapidOCR pulls in for image handling.

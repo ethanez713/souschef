@@ -85,7 +85,6 @@ def confidence_for_item(
     now: datetime | None = None,
     settings: Settings | None = None,
 ) -> float:
-    """Decay-adjusted confidence for a pantry row."""
     return current_confidence(
         DecayInputs(
             tracking_mode=item.ingredient.tracking_mode,

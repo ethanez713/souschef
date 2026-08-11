@@ -30,19 +30,16 @@ def _read_secret(name: str) -> str | None:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SOUSCHEF_", extra="ignore")
 
-    # --- Paths -----------------------------------------------------------
     data_dir: Path = REPO_ROOT / "data"
     db_path: Path | None = None
     receipt_dir: Path | None = None
 
-    # --- Behaviour -------------------------------------------------------
     # Blocks every outbound third-party call (NYT, Spoonacular, cloud VLM).
     # Default-on so a dev run can never quietly hit a real service or spend quota.
     no_external: bool = True
     debug: bool = False
     log_level: str = "INFO"
 
-    # --- Estimation tuning -----------------------------------------------
     # Half-life in days for confidence in an unverified level. Bulk staples drift
     # faster than countable items because every cook subtracts an estimate rather
     # than a known amount. These are config, not code, precisely so they can be
@@ -56,11 +53,9 @@ class Settings(BaseSettings):
     # Max items the pre-shop audit will ever ask you to physically check.
     audit_max_items: int = 10
 
-    # --- Auth / crypto ---------------------------------------------------
     session_secret: str = Field(default="", repr=False)
     secret_key: str = Field(default="", repr=False)  # AES-GCM key for stored creds
 
-    # --- Third-party -----------------------------------------------------
     spoonacular_key: str = Field(default="", repr=False)
     spoonacular_daily_budget: int = 140  # free tier is ~150/day; leave headroom
     vlm_api_key: str = Field(default="", repr=False)

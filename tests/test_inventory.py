@@ -46,9 +46,6 @@ def ingredient(session: Session, name: str) -> CanonicalIngredient:
     return ing
 
 
-# ---------------------------------------------------------------- decay
-
-
 def test_confidence_decays_with_time() -> None:
     settings = get_settings()
     fresh = current_confidence(
@@ -104,9 +101,6 @@ def test_bounds_widen_as_confidence_falls() -> None:
     vague_low, vague_high = estimated_bounds(100, 0.2)
     assert vague_low < 100 < vague_high
     assert vague_low >= 0
-
-
-# ---------------------------------------------------------------- ledger
 
 
 def test_every_change_writes_a_ledger_entry(seeded_session: Session, owner: int) -> None:
@@ -192,9 +186,6 @@ def test_rebuild_from_ledger_reproduces_incremental_state(
 
     assert before == after
     assert after["eggs"] == 10
-
-
-# ---------------------------------------------------------------- audit
 
 
 def _age_item(session: Session, ing: CanonicalIngredient, days: int, cooks: int = 0) -> PantryItem:

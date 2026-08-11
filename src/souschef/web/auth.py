@@ -63,11 +63,6 @@ _hasher = PasswordHasher()
 _DUMMY_HASH = _hasher.hash("not-a-real-password-just-for-timing")
 
 
-# --------------------------------------------------------------------------
-# Passwords
-# --------------------------------------------------------------------------
-
-
 def hash_password(password: str) -> str:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
@@ -94,11 +89,6 @@ def validate_username(raw: str) -> str:
             "underscore, starting with a letter or digit."
         )
     return name
-
-
-# --------------------------------------------------------------------------
-# Accounts
-# --------------------------------------------------------------------------
 
 
 def user_count(db: Session) -> int:
@@ -141,11 +131,6 @@ def set_password(db: Session, user: User, password: str) -> None:
     user.session_epoch += 1
     db.flush()
     log.info("Password changed for %r; existing sessions invalidated", user.username)
-
-
-# --------------------------------------------------------------------------
-# Sessions
-# --------------------------------------------------------------------------
 
 
 def _serializer() -> URLSafeTimedSerializer:
@@ -224,11 +209,6 @@ def require_admin(user: User = Depends(current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admins only")
     return user
-
-
-# --------------------------------------------------------------------------
-# Login throttling
-# --------------------------------------------------------------------------
 
 
 @dataclass
@@ -313,11 +293,6 @@ def authenticate(db: Session, username: str, password: str) -> User | None:
 
 def constant_time_equals(a: str, b: str) -> bool:
     return hmac.compare_digest(a.encode(), b.encode())
-
-
-# --------------------------------------------------------------------------
-# Invites
-# --------------------------------------------------------------------------
 
 
 def hash_invite_code(code: str) -> str:

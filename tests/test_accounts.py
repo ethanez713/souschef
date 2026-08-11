@@ -74,9 +74,6 @@ def stranger_recipe(seeded_session: Session, stranger: User) -> Recipe:
     return recipe
 
 
-# ---------------------------------------------------------------- core scoping
-
-
 def test_pantries_do_not_bleed_between_users(
     seeded_session: Session, user: User, other_user: User
 ) -> None:
@@ -129,9 +126,6 @@ def test_a_cooked_meal_only_debits_the_cooks_pantry(
 
     assert get_or_create_item(seeded_session, user.id, oil).quantity == 400
     assert get_or_create_item(seeded_session, other_user.id, oil).quantity == 500
-
-
-# ---------------------------------------------------------------- route probing
 
 
 def test_another_users_recipe_is_404_not_visible(
@@ -305,9 +299,6 @@ def test_deleting_a_user_takes_their_data_with_them(
     assert seeded_session.scalars(select(ShoppingList)).all() == []
 
 
-# ---------------------------------------------------------------- invites
-
-
 def test_registration_is_closed_without_an_invite(signed_in: TestClient) -> None:
     signed_in.cookies.clear()
     page = signed_in.get("/join")
@@ -436,9 +427,6 @@ def test_usernames_are_case_insensitive(seeded_session: Session) -> None:
     auth.create_user(seeded_session, "Ethan", WEB_PASSWORD)
     with pytest.raises(ValueError, match="already taken"):
         auth.create_user(seeded_session, "ETHAN", WEB_PASSWORD)
-
-
-# ---------------------------------------------------------------- sessions
 
 
 def test_changing_your_password_signs_out_other_devices(

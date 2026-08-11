@@ -59,10 +59,6 @@ class MatchResult:
         return self.ingredient_id is not None
 
 
-# --------------------------------------------------------------------------
-# Normalization
-# --------------------------------------------------------------------------
-
 # Preparation and packaging words that carry no identity. Stripping them lets
 # "finely chopped fresh flat-leaf parsley" reach "parsley".
 _NOISE_WORDS = {
@@ -282,11 +278,6 @@ def normalize_receipt_line(text: str, protected: frozenset[str] = frozenset()) -
     return strip_noise(clean_receipt_line(text), protected)
 
 
-# --------------------------------------------------------------------------
-# Matching
-# --------------------------------------------------------------------------
-
-
 class IngredientMatcher:
     """Matches text to canonical ingredients, caching the lookup tables.
 
@@ -348,7 +339,6 @@ class IngredientMatcher:
         return [f for f in forms if f and not (f in seen or seen.add(f))]
 
     def match(self, text: str, *, is_receipt: bool = False) -> MatchResult:
-        """Resolve text to a canonical ingredient."""
         if not text or not text.strip():
             return MatchResult(None, None, 0.0, MatchMethod.NONE)
 
@@ -369,7 +359,6 @@ class IngredientMatcher:
         # Fuzzy runs on the protected-strip form: noise removed, identity kept.
         cleaned = candidates[1] if len(candidates) > 1 else candidates[0]
 
-        # 3. Fuzzy over aliases and names together.
         haystack: dict[str, int] = {k: v[0] for k, v in self._by_alias.items()}
         haystack.update(self._by_name)
         if not haystack:

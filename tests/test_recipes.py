@@ -53,9 +53,6 @@ def stock(
     )
 
 
-# ---------------------------------------------------------------- JSON-LD
-
-
 def test_extracts_recipe_from_graph(recipe_html: str) -> None:
     raw = extract_recipe(recipe_html, source_url="https://example.com/r/1")
     assert raw is not None
@@ -88,9 +85,6 @@ def test_unusable_pages_return_none(html: str) -> None:
     assert extract_recipe(html) is None
 
 
-# ---------------------------------------------------------------- parsing
-
-
 def test_parses_quantity_unit_and_name() -> None:
     parsed = parse_line("1 1/2 pounds boneless, skinless chicken thighs")
     assert parsed.quantity == pytest.approx(1.5)
@@ -104,9 +98,6 @@ def test_flags_vague_amounts_rather_than_inventing_numbers() -> None:
         parsed = parse_line(text)
         assert parsed.quantity_is_vague, text
         assert parsed.is_optional, text
-
-
-# ---------------------------------------------------------------- requirements
 
 
 def test_requirements_convert_to_base_units(seeded_session: Session, imported: Recipe) -> None:
@@ -151,9 +142,6 @@ def test_staples_can_be_excluded_from_totals(seeded_session: Session, imported: 
     assert ing(seeded_session, "olive oil").id not in without
 
 
-# ---------------------------------------------------------------- re-import
-
-
 def test_reimport_updates_in_place_without_duplicating(
     seeded_session: Session, recipe_html: str,
     owner: int) -> None:
@@ -190,9 +178,6 @@ def test_recipe_with_no_ingredients_is_never_cook_now(seeded_session: Session, o
     suggestion = score_recipe(seeded_session, empty, {})
     assert suggestion.surface is not Surface.COOK_NOW
     assert suggestion.availability == 0.0
-
-
-# ---------------------------------------------------------------- suggestion
 
 
 def test_fully_stocked_recipe_is_cook_now(
@@ -280,9 +265,6 @@ def test_recently_cooked_recipes_are_penalized(
     seeded_session.flush()
 
     assert suggest(seeded_session, owner)[0].score < baseline
-
-
-# ---------------------------------------------------------------- shopping
 
 
 def test_purchase_quantity_rounds_up_to_a_real_package(seeded_session: Session) -> None:

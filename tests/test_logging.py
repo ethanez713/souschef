@@ -91,9 +91,6 @@ def test_warnings_reach_the_log(caplog: pytest.LogCaptureFixture) -> None:
     assert "something looks wrong: 42" in caplog.text
 
 
-# ---------------------------------------------------------------- web
-
-
 def test_responses_carry_a_request_id(client: TestClient) -> None:
     """The header is how a user-reported failure gets found in the log."""
     response = client.get("/healthz")

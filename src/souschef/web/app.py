@@ -87,11 +87,6 @@ app.mount("/static", StaticFiles(directory=str(WEB_DIR.parent / "static")), name
 SLOW_REQUEST_SECONDS = 3.0
 
 
-# --------------------------------------------------------------------------
-# Request logging
-# --------------------------------------------------------------------------
-
-
 @app.middleware("http")
 async def request_logging(request: Request, call_next):  # noqa: ANN001, ANN201
     """Log every request, and make unhandled errors impossible to miss.
@@ -135,11 +130,6 @@ async def request_logging(request: Request, call_next):  # noqa: ANN001, ANN201
         logconfig.reset_request_id(token)
 
 
-# --------------------------------------------------------------------------
-# Security headers
-# --------------------------------------------------------------------------
-
-
 @app.middleware("http")
 async def security_headers(request: Request, call_next):  # noqa: ANN001, ANN201
     response = await call_next(request)
@@ -180,11 +170,6 @@ def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str): 
     if obj is None or obj.user_id != user.id:
         raise HTTPException(status_code=404, detail=f"No such {what}")
     return obj
-
-
-# --------------------------------------------------------------------------
-# Auth routes
-# --------------------------------------------------------------------------
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -330,11 +315,6 @@ def logout() -> Response:
     return response
 
 
-# --------------------------------------------------------------------------
-# Dashboard
-# --------------------------------------------------------------------------
-
-
 @app.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
@@ -378,11 +358,6 @@ def dashboard(
         )
         or 0,
     )
-
-
-# --------------------------------------------------------------------------
-# Pantry
-# --------------------------------------------------------------------------
 
 
 @app.get("/pantry", response_class=HTMLResponse)
@@ -454,11 +429,6 @@ def add_to_pantry(
     return RedirectResponse("/pantry", status_code=303)
 
 
-# --------------------------------------------------------------------------
-# Recipes
-# --------------------------------------------------------------------------
-
-
 @app.get("/recipes", response_class=HTMLResponse)
 def recipes_page(
     request: Request,
@@ -518,11 +488,6 @@ def mark_cooked(
     recipe.last_cooked_at = datetime.now(UTC)
     db.flush()
     return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
-
-
-# --------------------------------------------------------------------------
-# Planning, audit and shopping
-# --------------------------------------------------------------------------
 
 
 @app.get("/plan", response_class=HTMLResponse)
@@ -681,11 +646,6 @@ def toggle_shopping_item(
     return RedirectResponse("/shopping", status_code=303)
 
 
-# --------------------------------------------------------------------------
-# Receipts
-# --------------------------------------------------------------------------
-
-
 @app.get("/receipts", response_class=HTMLResponse)
 def receipts_page(
     request: Request,
@@ -788,11 +748,6 @@ def apply_receipt_route(
     if warnings:
         return _render(request, "receipt_applied.html", receipt=receipt, warnings=warnings)
     return RedirectResponse("/pantry", status_code=303)
-
-
-# --------------------------------------------------------------------------
-# Settings
-# --------------------------------------------------------------------------
 
 
 def _nyt_credential(db: Session, user: User) -> StoredCredential | None:
@@ -922,11 +877,6 @@ def delete_nyt_cookie(
         db.delete(credential)
         db.flush()
     return RedirectResponse("/settings", status_code=303)
-
-
-# --------------------------------------------------------------------------
-# PWA plumbing
-# --------------------------------------------------------------------------
 
 
 @app.get("/share")

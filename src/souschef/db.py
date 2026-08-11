@@ -76,7 +76,6 @@ def session_scope() -> Iterator[Session]:
 
 
 def get_db() -> Iterator[Session]:
-    """FastAPI dependency."""
     with session_scope() as session:
         yield session
 

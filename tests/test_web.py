@@ -35,9 +35,6 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
     return found
 
 
-# ---------------------------------------------------------------- auth
-
-
 def test_first_visit_offers_setup(client: TestClient) -> None:
     response = client.get("/login")
     assert response.status_code == 200
@@ -146,9 +143,6 @@ def test_repeated_failures_lock_out(client: TestClient) -> None:
     response = client.post("/login", data={"username": WEB_USERNAME, "password": WEB_PASSWORD})
     assert "Too many attempts" in response.text
     auth._failures.clear()
-
-
-# ---------------------------------------------------------------- pages
 
 
 def test_dashboard_renders_when_empty(signed_in: TestClient) -> None:
@@ -287,9 +281,6 @@ def test_receipts_page_renders(signed_in: TestClient) -> None:
     assert "Photograph a receipt" in response.text
 
 
-# ---------------------------------------------------------------- settings
-
-
 def test_nyt_cookie_is_stored_encrypted(
     signed_in: TestClient, seeded_session: Session
 ) -> None:
@@ -330,9 +321,6 @@ def test_import_is_blocked_while_external_calls_are_disabled(signed_in: TestClie
         "/recipes/import", data={"url": "https://example.com/some-recipe"}
     )
     assert "external calls are disabled" in response.text.lower()
-
-
-# ---------------------------------------------------------------- PWA
 
 
 def test_manifest_declares_share_target(client: TestClient) -> None:

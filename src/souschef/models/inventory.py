@@ -26,7 +26,7 @@ class EventReason(enum.StrEnum):
     PURCHASE = "purchase"  # from a receipt or manual add
     COOK = "cook"  # debited by cooking a recipe
     MANUAL = "manual"  # user corrected the level directly
-    WASTE = "waste"  # thrown out
+    WASTE = "waste"
     CONFIRM = "confirm"  # user physically checked; level unchanged, confidence restored
     INITIAL = "initial"  # seeding an item for the first time
 

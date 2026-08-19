@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from souschef import logconfig
-from souschef.config import get_settings
+from souschef.config import ensure_local_secrets, get_settings
 from souschef.core.audit import build_audit
 from souschef.core.crypto import encrypt
 from souschef.core.inventory import (
@@ -68,14 +68,14 @@ log = logconfig.get_logger("souschef.web")
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):  # noqa: ANN201
+    ensure_local_secrets()
     logconfig.log_startup(get_settings())
     yield
     log.info("SousChef shutting down")
 
 
 # openapi_url is disabled alongside the docs UIs: with only those two off,
-# /openapi.json still served the full route schema to anonymous callers, which
-# on an internet-facing box is a free map of every endpoint and parameter.
+# /openapi.json still served the full route schema to anonymous callers.
 app = FastAPI(
     title="SousChef", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
 )
@@ -91,9 +91,9 @@ SLOW_REQUEST_SECONDS = 3.0
 async def request_logging(request: Request, call_next):  # noqa: ANN001, ANN201
     """Log every request, and make unhandled errors impossible to miss.
 
-    Without this an exception on a remote box surfaces as a bare 500 in the
-    browser and nothing anywhere else. The id is echoed in a response header so
-    a reported failure can be found in the log.
+    Without this an exception surfaces as a bare 500 in the browser and nothing
+    anywhere else. The id is echoed in a response header so a reported failure
+    can be found in the log.
     """
     request_id = logconfig.new_request_id()
     token = logconfig.set_request_id(request_id)
@@ -175,8 +175,7 @@ def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str): 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
     # An empty database means nobody has claimed this instance yet. Whoever
-    # reaches it first becomes the admin -- which is why the deployment runbook
-    # says to visit the site immediately after starting it.
+    # reaches it first becomes the admin.
     if auth.user_count(db) == 0:
         return _render(request, "setup.html")
     return _render(request, "login.html")
@@ -251,11 +250,10 @@ def join(
 def _is_secure_request(request: Request) -> bool:
     """Whether the *browser* reached us over HTTPS.
 
-    Caddy terminates TLS, so the app itself always sees http and has to trust
-    the forwarded header. Keying the Secure flag off the scheme rather than the
-    hostname matters: a Secure cookie is never sent back over plain HTTP, so
-    deriving it from the hostname silently breaks every non-localhost HTTP
-    deployment -- sign-in appears to succeed and the next request is anonymous.
+    A local run is plain HTTP, so the session cookie must not be marked Secure:
+    the browser would never send it back and sign-in would appear to succeed
+    while every following request came in anonymous. Behind a TLS tunnel the app
+    still sees http and has to take the forwarded header's word for it.
     """
     forwarded = request.headers.get("x-forwarded-proto", "")
     if forwarded:
@@ -848,7 +846,7 @@ def save_nyt_cookie(
 
     Only the cookie is accepted. The password is never asked for, because NYT
     gates login behind bot detection and a stored password would be a much
-    larger prize on an internet-facing box.
+    larger prize for anyone who got hold of the database.
     """
     value = cookie.strip()
     if not value:
@@ -928,7 +926,7 @@ def manifest() -> JSONResponse:
 def healthz(db: Session = Depends(get_db)) -> JSONResponse:
     """Liveness plus the two misconfigurations that break the app silently.
 
-    A container that answers 200 while unable to decrypt credentials or issue
+    An app that answers 200 while unable to decrypt credentials or issue
     sessions is worse than one that is plainly down, because nothing surfaces
     the problem until you try to sign in.
     """

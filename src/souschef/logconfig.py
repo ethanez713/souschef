@@ -1,10 +1,10 @@
 """Logging setup.
 
-Tuned for a small app running unattended on a remote box, where the logs are
-the only debugging tool available. Three decisions follow from that:
+Tuned for a small app where the logs are the only debugging tool available.
+Three decisions follow from that:
 
-**Everything goes to stdout.** ``docker compose logs`` is the interface; writing
-to files would mean shelling in and hunting for them, and rotating them myself.
+**Everything goes to stdout.** The terminal running the app is the interface;
+writing to files would mean hunting for them, and rotating them myself.
 
 **Requests carry an id.** A failure is usually several log lines -- the request,
 a warning from the matcher, a traceback -- and without a correlation id they
@@ -112,7 +112,7 @@ def reset_request_id(token: contextvars.Token) -> None:
 
 
 def log_startup(settings: Any) -> None:
-    """Record the effective configuration once, so a misconfigured box is obvious.
+    """Record the effective configuration once, so a misconfigured run is obvious.
 
     Deliberately reports only whether each secret is *present* -- the whole
     point of the scrubber is that values like these never reach a log.
@@ -121,6 +121,7 @@ def log_startup(settings: Any) -> None:
     logger.info("SousChef starting")
     logger.info("  data dir       : %s", settings.data_dir)
     logger.info("  database       : %s", settings.db_path)
+    logger.info("  files          : %s", settings.storage_backend)
     logger.info("  external calls : %s", "BLOCKED" if settings.no_external else "allowed")
     logger.info("  log level      : %s", settings.log_level)
 

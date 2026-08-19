@@ -16,7 +16,6 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from souschef.config import get_settings
 from souschef.core.inventory import record_event
 from souschef.core.matching import IngredientMatcher
 from souschef.core.units import UnitConversionError
@@ -32,6 +31,7 @@ from souschef.models import (
 )
 from souschef.models.ingredient import AliasSource
 from souschef.models.receipt import OcrEngine
+from souschef.storage import StorageError, get_storage
 
 log = get_logger("souschef.receipt")
 
@@ -42,6 +42,14 @@ VLM_FALLBACK_THRESHOLD = 0.75
 
 ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+
+# The database stores the bare filename, so the prefix lives here alone and a
+# stored receipt row stays valid whatever the storage backend is.
+RECEIPT_PREFIX = "receipts"
+
+
+def image_key(name: str) -> str:
+    return f"{RECEIPT_PREFIX}/{name}"
 
 
 @dataclass
@@ -58,8 +66,8 @@ class ReceiptError(RuntimeError):
     """Something went wrong that the user should see."""
 
 
-def store_upload(data: bytes, filename: str) -> tuple[Path, str]:
-    """Save an uploaded image, stripping metadata, and return its path and hash.
+def store_upload(data: bytes, filename: str) -> tuple[str, str]:
+    """Save an uploaded image, stripping metadata, and return its name and hash.
 
     EXIF is discarded rather than stored: phone photos carry GPS coordinates,
     and a receipt image tagged with your home address is a needless liability
@@ -71,11 +79,8 @@ def store_upload(data: bytes, filename: str) -> tuple[Path, str]:
     if len(data) > MAX_IMAGE_BYTES:
         raise ReceiptError("Image is too large (limit 15 MB)")
 
-    settings = get_settings()
-    settings.receipt_dir.mkdir(parents=True, exist_ok=True)
-
     digest = hashlib.sha256(data).hexdigest()
-    destination = settings.receipt_dir / f"{digest[:16]}.png"
+    name = f"{digest[:16]}.png"
 
     try:
         import io
@@ -88,16 +93,17 @@ def store_upload(data: bytes, filename: str) -> tuple[Path, str]:
             # including GPS, rather than trusting a targeted EXIF removal.
             clean = Image.new(image.mode, image.size)
             clean.putdata(list(image.getdata()))
-            clean.save(destination, format="PNG")
+            buffer = io.BytesIO()
+            clean.save(buffer, format="PNG")
     except Exception as exc:  # noqa: BLE001 - any decode failure is user-facing
         raise ReceiptError(f"Could not read that image: {exc}") from exc
 
-    destination.chmod(0o600)
-    return destination, digest
+    get_storage().write(image_key(name), buffer.getvalue())
+    return name, digest
 
 
 def create_receipt(session: Session, user_id: int, data: bytes, filename: str) -> Receipt:
-    path, digest = store_upload(data, filename)
+    name, digest = store_upload(data, filename)
 
     # Scoped to the owner: the image file is content-addressed and therefore
     # shared, but the receipt row must not be. An unscoped lookup would hand a
@@ -110,7 +116,7 @@ def create_receipt(session: Session, user_id: int, data: bytes, filename: str) -
 
     receipt = Receipt(
         user_id=user_id,
-        image_path=path.name,
+        image_path=name,
         image_sha256=digest,
         status=ReceiptStatus.UPLOADED,
     )
@@ -121,15 +127,13 @@ def create_receipt(session: Session, user_id: int, data: bytes, filename: str) -
 
 def scan_receipt(session: Session, receipt: Receipt) -> ScanSummary:
     """Run OCR and stage the proposed line items for review."""
-    settings = get_settings()
-    path = settings.receipt_dir / receipt.image_path
-
     receipt.status = ReceiptStatus.OCR_RUNNING
     session.flush()
 
     try:
-        result = run_ocr(path)
-    except OcrUnavailable as exc:
+        with get_storage().local_path(image_key(receipt.image_path)) as path:
+            result = run_ocr(path)
+    except (OcrUnavailable, StorageError) as exc:
         receipt.status = ReceiptStatus.FAILED
         receipt.error_message = str(exc)
         session.flush()

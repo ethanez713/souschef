@@ -7,16 +7,28 @@ import sys
 from pathlib import Path
 
 from souschef.config import get_settings
+from souschef.storage import Storage
+
+BACKUP_PREFIX = "backups"
+
+
+def _snapshots(storage: Storage) -> list[str]:
+    return [k for k in storage.keys(BACKUP_PREFIX) if k.endswith(".db")]
 
 
 def cmd_init(_args: argparse.Namespace) -> int:
-    """Create the schema and load the ingredient catalog."""
+    """Create the schema, generate missing keys, and load the ingredient catalog."""
     from alembic import command
     from alembic.config import Config
 
-    from souschef.config import REPO_ROOT
+    from souschef.config import REPO_ROOT, ensure_local_secrets
     from souschef.core.seeding import seed_ingredients
     from souschef.db import session_scope
+
+    settings = get_settings()
+    created = ensure_local_secrets()
+    if created:
+        print(f"Generated {', '.join(created)} in {settings.config_dir}")
 
     config = Config(str(REPO_ROOT / "alembic.ini"))
     config.set_main_option("script_location", str(REPO_ROOT / "migrations"))
@@ -28,17 +40,85 @@ def cmd_init(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_keygen(_args: argparse.Namespace) -> int:
-    """Print the secrets needed to run the app."""
-    import secrets
+def cmd_backup(args: argparse.Namespace) -> int:
+    """Snapshot the database into the storage backend."""
+    import sqlite3
+    from datetime import UTC, datetime
 
-    from souschef.core.crypto import generate_key
+    from souschef.storage import get_storage
 
-    print(f"SOUSCHEF_SECRET_KEY={generate_key()}")
-    print(f"SOUSCHEF_SESSION_SECRET={secrets.token_urlsafe(48)}")
-    print()
-    print("Store these in ~/.secrets/canonical/souschef/ and symlink .secrets to it.")
-    print("Losing SECRET_KEY means re-entering the NYT cookie; it decrypts nothing else.")
+    settings = get_settings()
+    if not settings.db_path.is_file():
+        print(f"No database at {settings.db_path}", file=sys.stderr)
+        return 1
+
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    staged = settings.db_path.with_name(f".backup-{stamp}.db")
+    # SQLite's own backup API, not a file copy: copying a database that is
+    # mid-write produces a torn file that reads fine and restores broken.
+    source = sqlite3.connect(settings.db_path)
+    try:
+        target = sqlite3.connect(staged)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+
+    storage = get_storage()
+    key = f"{BACKUP_PREFIX}/souschef-{stamp}.db"
+    storage.write(key, staged.read_bytes())
+    staged.unlink()
+
+    snapshots = _snapshots(storage)
+    stale = snapshots[: max(0, len(snapshots) - args.keep)]
+    for old in stale:
+        storage.delete(old)
+
+    print(f"Saved {key} to {storage.location}")
+    if stale:
+        print(f"Removed {len(stale)} older snapshot(s), keeping {args.keep}.")
+    return 0
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    """Replace the live database with a snapshot. Stop the app first."""
+    from souschef.storage import get_storage
+
+    settings = get_settings()
+    storage = get_storage()
+    snapshots = _snapshots(storage)
+
+    if not args.snapshot:
+        if not snapshots:
+            print(f"No snapshots in {storage.location}. Run: souschef backup")
+            return 1
+        print("Snapshots, oldest first:")
+        for key in snapshots:
+            print(f"  {key}")
+        print("\nRestore one with: souschef restore <key>")
+        return 0
+
+    key = args.snapshot if "/" in args.snapshot else f"{BACKUP_PREFIX}/{args.snapshot}"
+    if key not in snapshots:
+        print(f"No such snapshot: {key}", file=sys.stderr)
+        return 1
+
+    data = storage.read(key)
+    if settings.db_path.is_file():
+        aside = settings.db_path.with_name(settings.db_path.name + ".replaced")
+        settings.db_path.replace(aside)
+        print(f"Previous database moved to {aside}")
+    settings.db_path.write_bytes(data)
+    settings.db_path.chmod(0o600)
+
+    # A leftover write-ahead log belongs to the database that was just replaced;
+    # SQLite would replay it into the restored one and corrupt it.
+    for suffix in ("-wal", "-shm"):
+        settings.db_path.with_name(settings.db_path.name + suffix).unlink(missing_ok=True)
+
+    print(f"Restored {key}")
     return 0
 
 
@@ -98,7 +178,7 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
 
 
 def cmd_users(_args: argparse.Namespace) -> int:
-    """List accounts. Useful for confirming who a deployed box actually has."""
+    """List accounts."""
     from sqlalchemy import select
 
     from souschef.db import session_scope
@@ -120,10 +200,10 @@ def cmd_users(_args: argparse.Namespace) -> int:
 
 
 def cmd_passwd(args: argparse.Namespace) -> int:
-    """Set a user's password from the box.
+    """Set a user's password.
 
-    The recovery path when nobody can sign in: there is no email reset, so
-    shell access to the VM is deliberately the only way back in.
+    The recovery path when nobody can sign in: there is no email reset, so a
+    shell on the machine running SousChef is deliberately the only way back in.
     """
     import getpass
 
@@ -156,7 +236,7 @@ def cmd_passwd(args: argparse.Namespace) -> int:
 
 
 def cmd_invite(args: argparse.Namespace) -> int:
-    """Mint an invite from the command line, for when you're already on the box."""
+    """Mint an invite from the command line."""
     from sqlalchemy import select
 
     from souschef.db import session_scope
@@ -172,7 +252,7 @@ def cmd_invite(args: argparse.Namespace) -> int:
             return 1
         invite, code = auth.create_invite(session, admin, note=args.note)
         print(f"Invite {invite.id}, expires {invite.expires_at:%Y-%m-%d}:")
-        print(f"  https://<your-domain>/join?code={code}")
+        print(f"  http://127.0.0.1:8000/join?code={code}")
         print("\nShown once. It is stored hashed, so it cannot be printed again.")
     return 0
 
@@ -187,10 +267,13 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_config(_args: argparse.Namespace) -> int:
+    from souschef.storage import get_storage
+
     settings = get_settings()
     print(f"data dir      : {settings.data_dir}")
+    print(f"config dir    : {settings.config_dir}")
     print(f"database      : {settings.db_path}")
-    print(f"receipts      : {settings.receipt_dir}")
+    print(f"files         : {settings.storage_backend} -> {get_storage().location}")
     print(f"external calls: {'BLOCKED' if settings.no_external else 'allowed'}")
     print(f"secret key    : {'set' if settings.secret_key else 'MISSING'}")
     print(f"session secret: {'set' if settings.session_secret else 'MISSING'}")
@@ -204,7 +287,6 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("init", help="create the database and load the catalog").set_defaults(
         func=cmd_init
     )
-    sub.add_parser("keygen", help="generate the required secrets").set_defaults(func=cmd_keygen)
     sub.add_parser("config", help="show the effective configuration").set_defaults(
         func=cmd_config
     )
@@ -221,6 +303,14 @@ def main(argv: list[str] | None = None) -> int:
     passwd = sub.add_parser("passwd", help="set a user's password")
     passwd.add_argument("username")
     passwd.set_defaults(func=cmd_passwd)
+
+    backup = sub.add_parser("backup", help="snapshot the database")
+    backup.add_argument("--keep", type=int, default=14, help="snapshots to retain (default 14)")
+    backup.set_defaults(func=cmd_backup)
+
+    restore = sub.add_parser("restore", help="restore a snapshot (list them with no argument)")
+    restore.add_argument("snapshot", nargs="?", default="")
+    restore.set_defaults(func=cmd_restore)
 
     scan = sub.add_parser("scan", help="dry-run OCR on a receipt image")
     scan.add_argument("image")

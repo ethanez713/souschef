@@ -1,10 +1,11 @@
 """Encryption for stored third-party credentials.
 
-AES-256-GCM with a key that lives in the host secret store, never in the
-database and never in the repo. The threat this actually addresses is a leaked
-database file or backup -- the most likely way a single-user app spills a
-secret. It does not defend against an attacker who already has code execution
-on the box, and nothing at this scale would.
+AES-256-GCM with a key that lives in the config directory, never in the database
+and never in the repo. The threat this actually addresses is a leaked database
+file or backup -- the most likely way a single-user app spills a secret, and the
+reason the key is kept out of the directory a cloud backend would sync. It does
+not defend against an attacker who already has code execution on the machine,
+and nothing at this scale would.
 
 Only the NYT *session cookie* is ever stored. The account password is never
 accepted, because NYT gates login behind bot detection (making automation both

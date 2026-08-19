@@ -10,11 +10,11 @@ behaviour equivalent to your browser loading a page you pay for.
 
 **Only the session cookie is stored, never the password.** NYT gates login
 behind bot detection, so automating it is fragile and risks locking the account,
-and a stored password would be a far bigger prize sitting on an internet-facing
-box.
+and a stored password would be a far bigger prize for anyone who got hold of
+the database.
 
-Every fetch is gated on ``settings.no_external`` so tests and dev runs cannot
-quietly reach a real service.
+Every fetch is gated on ``settings.no_external``, which the test suite turns on
+so a test can never quietly reach a real service.
 """
 
 from __future__ import annotations

@@ -33,26 +33,36 @@ target is a five-item check instead of an eighty-item audit.
    Nothing touches the pantry until you confirm.
 5. **Cook** — tap "I cooked this" and levels are debited.
 
-## Running it locally
+## Running it
+
+It runs on your own machine. There is no server to rent, no domain to point, and
+nothing about it that assumes a network beyond the one you are sitting on.
 
 ```bash
 python3 -m venv venv && ./venv/bin/pip install -e '.[dev]'
 
-export SOUSCHEF_SECRET_KEY=$(python3 -c "import secrets;print(secrets.token_hex(32))")
-export SOUSCHEF_SESSION_SECRET=$(python3 -c "import secrets;print(secrets.token_urlsafe(48))")
-
-./venv/bin/souschef init      # create the database, load the ingredient catalog
+./venv/bin/souschef init      # database, keys, ingredient catalog
 ./venv/bin/souschef serve     # http://127.0.0.1:8000
 ```
 
-The first visitor to an empty database claims the instance and becomes the admin;
-the claim page closes behind them.
+`init` generates the two keys the app needs and writes them to
+`~/.config/souschef/`, mode 0600 — nothing to export and nothing left in a shell
+history. `session_secret` signs session cookies; `secret_key` encrypts the stored
+NYT cookie. Deleting the first signs everyone out, deleting the second costs one
+re-paste of that cookie, and neither protects anything else.
 
-Outbound calls are **blocked by default** so a dev run can't hit a real service
-or burn API quota. Set `SOUSCHEF_NO_EXTERNAL=false` to allow recipe imports.
+The first visitor to an empty database claims it and becomes the admin. Locally
+that is you, thirty seconds later.
 
-Deploying it to a small VM — free tier, cheap VPS, or your own hardware:
-[`deploy/README.md`](deploy/README.md).
+`souschef config` prints where everything ended up. `SOUSCHEF_NO_EXTERNAL=true`
+blocks every outbound call, for a run that provably cannot reach a third party.
+
+### From your phone
+
+`souschef serve --host 0.0.0.0` publishes it to your own network, and a phone on
+the same wifi reaches `http://<this-machine>:8000`. Sessions and receipt photos
+work; installing it as an app does not, because a service worker needs a secure
+context and that means localhost or real TLS.
 
 ### Accounts
 
@@ -62,20 +72,55 @@ shared is the ingredient catalog, which is reference data about food rather than
 anything personal.
 
 Registration is closed: after the first account, joining needs a single-use
-invite generated from Settings. On an internet-facing box, an open signup form
-would be the one anonymous write endpoint worth attacking.
+invite generated from Settings. That leaves exactly one anonymous form on the
+whole site, whatever network you end up serving it on.
 
 ### Other commands
 
 ```bash
-souschef keygen           # generate the required secrets
+souschef backup           # snapshot the database, keeping the last 14
+souschef restore          # list snapshots; pass one to roll back to it
 souschef scan photo.jpg   # dry-run OCR on a receipt, changes nothing
 souschef rebuild          # recompute pantry levels by replaying the ledger
 souschef config           # show effective configuration
 souschef users            # list accounts
-souschef invite           # mint an invite link from the box
+souschef invite           # mint an invite link
 souschef passwd <user>    # set a password; the only password-reset path there is
 ```
+
+## Where your data lives
+
+| Path | What |
+|---|---|
+| `data/souschef.db` | Everything: pantry, ledger, recipes, plans, accounts |
+| `data/receipts/` | Receipt photos, stripped of EXIF on upload |
+| `data/backups/` | Snapshots from `souschef backup` |
+| `~/.config/souschef/` | The two keys, deliberately not in the data directory |
+
+`SOUSCHEF_DATA_DIR` moves the first three elsewhere.
+
+```bash
+souschef backup
+souschef restore                                        # list what there is
+souschef restore backups/souschef-20260818T193000Z.db   # roll back to one
+```
+
+Snapshots go through SQLite's backup API rather than a file copy, which would
+risk a torn read mid-write. Restore replaces the live database, so stop the app
+first; the database it replaces is kept beside it as `souschef.db.replaced`.
+
+### Backing it with something other than this machine
+
+Receipt images and snapshots are written through a small storage interface
+(`src/souschef/storage/`), and the local filesystem is the only backend today. A
+Google Drive backend is one class implementing that interface: blobs live in
+Drive, and the database rides along as a `souschef backup` snapshot.
+
+What will not work is putting the live SQLite file on a synced drive. SQLite
+needs byte-range locks and an fsync that means something, and a sync client
+gives it neither — you get silent corruption rather than an error. The keys stay
+out of the data directory for a related reason: a session key that syncs to a
+third party is a session key you have given away.
 
 ## How it works
 
@@ -99,8 +144,8 @@ the probability the belief is wrong *in a way that flips the buy decision*, time
 the cost of being wrong. Being short an ingredient costs more than buying a
 spare, so the two directions are weighted differently.
 
-**Receipts** (`ingest/`). Self-hosted OCR — receipts are transaction data, so
-they stay on your own box, and the cloud fallback needs explicit per-receipt
+**Receipts** (`ingest/`). OCR runs locally — receipts are transaction data, so
+they never leave the machine, and the cloud fallback needs explicit per-receipt
 consent. The parser reassembles OCR fragments into rows, repairs the O/zero
 confusion that turns "8 OZ" into eighty ounces, merges the weight row that
 receipts print under weighed goods, and filters out subtotals and payment lines
@@ -123,9 +168,9 @@ a fallback.
 
 ## Logs
 
-Everything goes to stdout, tagged with a request id that is also returned in the
-`X-Request-ID` header — so a page that misbehaved can be traced to every line it
-produced:
+Everything goes to stdout in the terminal running the app, tagged with a request
+id that is also returned in the `X-Request-ID` header — so a page that
+misbehaved can be traced to every line it produced:
 
 ```
 2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.ocr: OCR receipt.png: 40 boxes -> 14 lines, confidence 0.95, 0.8s
@@ -139,8 +184,8 @@ repeated failed sign-ins. `SOUSCHEF_LOG_LEVEL=DEBUG` for more.
 
 Credentials are scrubbed by the formatter before anything is written, so logs
 are safe to paste into an issue. `/healthz` returns 503 rather than 200 when a
-required secret is missing — a container that looks healthy while unable to
-issue sessions is worse than one that is plainly down.
+required secret is missing — an app that looks healthy while unable to issue
+sessions is worse than one that is plainly down.
 
 ## Testing
 
@@ -156,14 +201,18 @@ everything" — and none would have raised an exception.
 
 ## Choices worth knowing
 
-**SQLite, not Postgres.** Single user, no write concurrency to solve, backups are
-a file copy, and dev and production run the identical engine.
+**No server.** It runs where your kitchen is. Renting a VM for a household meal
+planner means a hostname, certificates, a firewall, and a box to patch — all so
+that data which never leaves the house can leave the house.
+
+**SQLite, not Postgres.** A handful of people, no write concurrency to solve,
+backups are one file, and tests run the identical engine.
 
 **No LLM in the core loop.** Ingredient parsing is a CPU-only CRF model and
 matching is deterministic. A matcher you can debug beats a model that's
-confidently wrong, and the one-or-two shared cores this runs on couldn't serve an
-LLM at usable speed anyway. A cloud vision model is touched only as a fallback
-for receipts the local OCR can't read.
+confidently wrong, and everything here has to run on a laptop while dinner is
+being planned. A cloud vision model is touched only as a fallback for receipts
+the local OCR can't read, and only with per-receipt consent.
 
 **Server-rendered HTML + HTMX.** One service, one language, no build step.
 

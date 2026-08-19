@@ -1,18 +1,19 @@
 """Authentication: accounts, sessions, and invites.
 
-The app is internet-facing and holds each user's NYT session cookie, so this is
-not decorative. It is still deliberately small: a username, a password, a signed
-session cookie, and an invite to create the next account. No password reset by
-email, no roles beyond "can issue invites" -- each of those would be attack
-surface protecting nothing on a kitchen app used by a handful of people.
+The app runs on your own machine, but it holds each user's NYT session cookie
+and can be reached from the rest of the house, so this is not decorative. It is
+still deliberately small: a username, a password, a signed session cookie, and an
+invite to create the next account. No password reset by email, no roles beyond
+"can issue invites" -- each of those would be attack surface protecting nothing
+on a kitchen app used by a handful of people.
 
 Account creation is closed. The first request to an empty database claims the
 admin account; after that a new account needs a single-use invite. That means
 there is exactly one anonymous form on the whole site (login) plus a redemption
 page that is useless without a 24-byte secret.
 
-Rate limiting is in-process and per-IP. That is the right size for one box; a
-distributed limiter would be ceremony.
+Rate limiting is in-process and per-IP, which is the right size for one
+machine; a distributed limiter would be ceremony.
 """
 
 from __future__ import annotations
@@ -255,7 +256,7 @@ def record_failure(ip: str, username: str) -> None:
     per_account = _bump(f"acct:{ip}|{name}")
 
     if per_account >= MAX_ATTEMPTS or per_ip >= MAX_ATTEMPTS_PER_IP:
-        # On a public box this is the signal that matters: someone is guessing.
+        # The one sign-in log line worth acting on: someone is guessing.
         log.error(
             "Locked out %s after %d failed sign-ins for %r (%d from this address); "
             "blocked for %ds",

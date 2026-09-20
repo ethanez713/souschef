@@ -175,11 +175,35 @@ def test_adding_to_pantry_through_the_form(
     assert "olive oil" in signed_in.get("/pantry").text
 
 
-def test_unknown_ingredient_is_rejected(signed_in: TestClient) -> None:
+def test_unknown_ingredient_is_added_verbatim(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    """An off-catalog name is taken literally, not rejected or coerced.
+
+    The user is stating what they have; the catalog does not get a veto.
+    """
     response = signed_in.post(
         "/pantry/add", data={"name": "xyzzy fnord", "quantity": "1", "unit": ""}
     )
-    assert response.status_code == 400
+    assert response.status_code == 303
+    assert "xyzzy fnord" in signed_in.get("/pantry").text
+    created = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "xyzzy fnord")
+    )
+    assert created is not None
+
+
+def test_add_does_not_coerce_to_a_fuzzy_near_match(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    """Typing "vinegar" must not silently become the catalog's "white vinegar"."""
+    signed_in.post("/pantry/add", data={"name": "vinegar", "quantity": "1", "unit": ""})
+    assert (
+        seeded_session.scalar(
+            select(CanonicalIngredient).where(CanonicalIngredient.name == "vinegar")
+        )
+        is not None
+    )
 
 
 def test_recipe_pages_render(

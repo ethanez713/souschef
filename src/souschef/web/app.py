@@ -6,6 +6,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote_plus
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -25,9 +26,9 @@ from souschef.core.inventory import (
     record_event,
     set_level,
 )
-from souschef.core.matching import IngredientMatcher
+from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
-from souschef.core.units import humanize
+from souschef.core.units import UnitConversionError, dimension_of, humanize
 from souschef.db import get_db
 from souschef.ingest.receipt_service import (
     ReceiptError,
@@ -52,7 +53,7 @@ from souschef.models import (
     User,
 )
 from souschef.models.base import Base
-from souschef.models.ingredient import AliasSource
+from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.models.settings import CredentialKind
 from souschef.planning.shopping import build_shopping_list, requirements_for_audit
 from souschef.planning.suggest import Surface, by_surface, suggest
@@ -358,6 +359,12 @@ def dashboard(
     )
 
 
+def _pantry_url(q: str) -> str:
+    """Back to the pantry, keeping the active search so an edit doesn't drop you
+    back to the full list."""
+    return f"/pantry?q={quote_plus(q)}" if q.strip() else "/pantry"
+
+
 @app.get("/pantry", response_class=HTMLResponse)
 def pantry_page(
     request: Request,
@@ -408,23 +415,57 @@ def confirm_item(
     return RedirectResponse("/pantry", status_code=303)
 
 
+def _adhoc_units(unit: str) -> tuple[str, str | None]:
+    """Base unit and the (validated) input unit for a user-typed pantry item.
+
+    An unrecognised unit is dropped rather than stored, so a typo cannot make the
+    level unconvertible; the amount is then counted as-is.
+    """
+    cleaned = unit.strip()
+    if not cleaned:
+        return "count", None
+    try:
+        dim = dimension_of(cleaned)
+    except UnitConversionError:
+        return "count", None
+    return {"mass": "g", "volume": "ml"}.get(dim, "count"), cleaned
+
+
 @app.post("/pantry/add")
 def add_to_pantry(
     name: str = Form(...),
     quantity: float = Form(...),
     unit: str = Form(""),
+    q: str = Form(""),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    match = IngredientMatcher(db).match(name)
-    if not match.is_match:
-        raise HTTPException(status_code=400, detail=f"Unknown ingredient: {name}")
-    ingredient = db.get(CanonicalIngredient, match.ingredient_id)
+    # Only an *exact* catalog or learned-alias hit reuses an existing ingredient.
+    # A fuzzy near-miss is not trusted here: coercing "vinegar" into "white
+    # vinegar" records the wrong thing and reads as the app fighting the user.
+    # Anything else is taken literally and added as a new ingredient -- the user
+    # is stating what they have, not asking the catalog for permission.
+    clean_name = name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Ingredient name is empty")
+
+    match = IngredientMatcher(db).match(clean_name)
+    if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
+        ingredient = db.get(CanonicalIngredient, match.ingredient_id)
+        store_unit = unit.strip() or None
+    else:
+        base_unit, store_unit = _adhoc_units(unit)
+        ingredient = CanonicalIngredient(
+            name=clean_name, category=IngredientCategory.OTHER, base_unit=base_unit
+        )
+        db.add(ingredient)
+        db.flush()
+
     record_event(
         db, user.id, ingredient, reason=EventReason.PURCHASE,
-        delta=quantity, unit=unit or None,
+        delta=quantity, unit=store_unit,
     )
-    return RedirectResponse("/pantry", status_code=303)
+    return RedirectResponse(_pantry_url(q), status_code=303)
 
 
 @app.get("/recipes", response_class=HTMLResponse)

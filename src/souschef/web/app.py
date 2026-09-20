@@ -12,6 +12,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from rapidfuzz import fuzz
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -365,6 +366,29 @@ def _pantry_url(q: str) -> str:
     return f"/pantry?q={quote_plus(q)}" if q.strip() else "/pantry"
 
 
+# Below this rapidfuzz score a name is not offered as a match. Substring hits
+# always pass; the fuzzy floor only catches typos ("chikn" -> "chicken").
+PANTRY_SEARCH_CUTOFF = 70
+
+
+def _search_pantry(views: list, q: str) -> list:
+    """Filter and rank pantry rows against a live search box.
+
+    A substring hit is treated as certain and floats to the top; everything else
+    is scored fuzzily so a mistyped query still finds the item. Ties keep the
+    incoming alphabetical order.
+    """
+    needle = q.strip().lower()
+    scored = []
+    for view in views:
+        name = view.ingredient.name.lower()
+        score = 100.0 if needle in name else fuzz.partial_ratio(needle, name)
+        if score >= PANTRY_SEARCH_CUTOFF:
+            scored.append((score, view))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [view for _, view in scored]
+
+
 @app.get("/pantry", response_class=HTMLResponse)
 def pantry_page(
     request: Request,
@@ -373,15 +397,17 @@ def pantry_page(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     views = pantry_view(db, user.id, include_empty=True)
-    if q:
-        needle = q.lower()
-        views = [v for v in views if needle in v.ingredient.name.lower()]
+    if q.strip():
+        views = _search_pantry(views, q)
 
     by_location: dict[str, list] = {}
     for view in views:
         by_location.setdefault(str(view.item.location), []).append(view)
 
-    return _render(request, "pantry.html", by_location=by_location, query=q)
+    # A live-search keystroke swaps in only the list; a full navigation renders
+    # the page around it.
+    template = "pantry_list.html" if _is_htmx(request) else "pantry.html"
+    return _render(request, template, by_location=by_location, query=q)
 
 
 @app.post("/pantry/{ingredient_id}/level")
@@ -390,6 +416,7 @@ def update_level(
     ingredient_id: int,
     quantity: float = Form(...),
     unit: str = Form(""),
+    q: str = Form(""),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -399,12 +426,13 @@ def update_level(
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
     set_level(db, user.id, ingredient, quantity, unit=unit or None)
-    return RedirectResponse("/pantry", status_code=303)
+    return RedirectResponse(_pantry_url(q), status_code=303)
 
 
 @app.post("/pantry/{ingredient_id}/confirm")
 def confirm_item(
     ingredient_id: int,
+    q: str = Form(""),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -412,7 +440,7 @@ def confirm_item(
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
     confirm_level(db, user.id, ingredient)
-    return RedirectResponse("/pantry", status_code=303)
+    return RedirectResponse(_pantry_url(q), status_code=303)
 
 
 def _adhoc_units(unit: str) -> tuple[str, str | None]:

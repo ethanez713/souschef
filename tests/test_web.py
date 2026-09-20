@@ -206,6 +206,48 @@ def test_add_does_not_coerce_to_a_fuzzy_near_match(
     )
 
 
+def test_pantry_search_tolerates_a_typo(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    record_event(
+        seeded_session, web_user.id, ing(seeded_session, "olive oil"),
+        reason=EventReason.PURCHASE, delta=500,
+    )
+    seeded_session.commit()
+
+    assert "olive oil" in signed_in.get("/pantry", params={"q": "oliev"}).text
+
+
+def test_pantry_htmx_request_returns_only_the_list(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    """A live-search keystroke swaps in the list, not the whole page chrome."""
+    record_event(
+        seeded_session, web_user.id, ing(seeded_session, "olive oil"),
+        reason=EventReason.PURCHASE, delta=500,
+    )
+    seeded_session.commit()
+
+    response = signed_in.get(
+        "/pantry", params={"q": "olive"}, headers={"HX-Request": "true"}
+    )
+    assert "olive oil" in response.text
+    assert "Add something" not in response.text
+
+
+def test_editing_a_level_keeps_the_active_search(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    oil = ing(seeded_session, "olive oil")
+    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    seeded_session.commit()
+
+    response = signed_in.post(
+        f"/pantry/{oil.id}/confirm", data={"q": "olive"}
+    )
+    assert response.headers["location"] == "/pantry?q=olive"
+
+
 def test_recipe_pages_render(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:

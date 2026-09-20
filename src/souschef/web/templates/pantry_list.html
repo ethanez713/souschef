@@ -1,0 +1,46 @@
+{% from "macros.html" import confidence_pips %}
+{% for location, views in by_location.items() %}
+  <h2>{{ location }}</h2>
+  {% for v in views %}
+    <div class="card tight">
+      <div class="row">
+        <div class="stack">
+          <strong>{{ v.ingredient.name }}
+            {%- if v.ingredient.package_qty %}
+              <span class="muted small">· {{ v.ingredient.package_qty|humanize(v.ingredient.package_unit) }}</span>
+            {%- endif %}
+          </strong>
+          <span class="muted small">
+            {{ v.quantity|humanize(v.ingredient.base_unit) }}
+            {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%d %b') }}{% endif %}
+            {%- if v.is_staple %} · staple{% endif %}
+          </span>
+        </div>
+        <div class="row" style="gap:10px">
+          {{ confidence_pips(v.confidence) }}
+          <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline">
+            <input type="hidden" name="q" value="{{ query }}">
+            <button class="small" type="submit" title="Confirm this level is right">Confirm</button>
+          </form>
+        </div>
+      </div>
+      <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls" style="margin-top:8px">
+        <input type="hidden" name="q" value="{{ query }}">
+        <div class="field">
+          <input name="quantity" type="number" step="any" inputmode="decimal"
+                 placeholder="set to… ({{ v.ingredient.base_unit }})">
+        </div>
+        <button class="small" type="submit">Set</button>
+      </form>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">
+    {% if query %}
+      <p>Nothing in the pantry matches “{{ query }}”.</p>
+    {% else %}
+      <p>Nothing tracked yet.</p>
+      <a class="btn primary" href="/receipts">Scan a receipt</a>
+    {% endif %}
+  </div>
+{% endfor %}

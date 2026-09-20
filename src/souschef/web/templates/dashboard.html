@@ -14,32 +14,32 @@
 
   {% if cook_now %}
     <h2>Cook now</h2>
-    {% for s in cook_now %}
-      <a class="card" href="/recipes/{{ s.recipe.id }}" style="display:block;text-decoration:none;color:inherit">
-        <div class="row">
+    <div class="carousel">
+      {% for s in cook_now %}
+        <a class="card" href="/recipes/{{ s.recipe.id }}">
           <div class="stack">
             <h3>{{ s.recipe.title }}</h3>
             <span class="muted small">{{ s.reason }}</span>
           </div>
           <span class="pill good">ready</span>
-        </div>
-      </a>
-    {% endfor %}
+        </a>
+      {% endfor %}
+    </div>
   {% endif %}
 
   {% if nearly %}
-    <h2>Nearly there</h2>
-    {% for s in nearly %}
-      <a class="card" href="/recipes/{{ s.recipe.id }}" style="display:block;text-decoration:none;color:inherit">
-        <div class="row">
+    <h2>Missing a few things</h2>
+    <div class="carousel">
+      {% for s in nearly %}
+        <a class="card" href="/recipes/{{ s.recipe.id }}">
           <div class="stack">
             <h3>{{ s.recipe.title }}</h3>
             <span class="muted small">{{ s.reason }}</span>
           </div>
           <span class="pill warn">{{ s.missing_count }} to buy</span>
-        </div>
-      </a>
-    {% endfor %}
+        </a>
+      {% endfor %}
+    </div>
   {% endif %}
 
   {% if not cook_now and not nearly %}

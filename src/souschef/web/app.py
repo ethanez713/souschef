@@ -347,8 +347,8 @@ def dashboard(
     return _render(
         request,
         "dashboard.html",
-        cook_now=grouped[Surface.COOK_NOW][:4],
-        nearly=grouped[Surface.NEARLY_THERE][:4],
+        cook_now=grouped[Surface.COOK_NOW][:10],
+        nearly=grouped[Surface.NEARLY_THERE][:10],
         upcoming=upcoming,
         expiring=expiring[:5],
         stale=stale,

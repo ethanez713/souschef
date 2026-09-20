@@ -1,0 +1,11 @@
+{% macro confidence_pips(confidence) %}
+{%- set level = 3 if confidence >= 0.8 else (2 if confidence >= 0.5 else 1) -%}
+{%- set tier = 'high' if level == 3 else ('med' if level == 2 else 'low') -%}
+{%- set label = 'High confidence in this level' if level == 3
+    else ('Medium confidence' if level == 2 else 'Low confidence — worth a look') -%}
+<span class="pips {{ tier }}" role="img" aria-label="{{ label }}" title="{{ label }}">
+  {%- for i in range(1, 4) -%}
+    <i class="{{ 'on' if i <= level }}"></i>
+  {%- endfor -%}
+</span>
+{% endmacro %}

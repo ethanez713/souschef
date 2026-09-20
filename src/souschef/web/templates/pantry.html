@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import confidence_pips %}
 {% set active = 'pantry' %}
 {% block content %}
 <main>
@@ -42,11 +43,13 @@
               {%- if v.is_staple %} · staple{% endif %}
             </span>
           </div>
-          <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline">
-            <button class="small" type="submit" title="Confirm this level is right">Confirm</button>
-          </form>
+          <div class="row" style="gap:10px">
+            {{ confidence_pips(v.confidence) }}
+            <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline">
+              <button class="small" type="submit" title="Confirm this level is right">Confirm</button>
+            </form>
+          </div>
         </div>
-        <div class="conf"><i style="width: {{ (v.confidence * 100)|round|int }}%"></i></div>
         <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls" style="margin-top:8px">
           <div class="field">
             <input name="quantity" type="number" step="any" inputmode="decimal"

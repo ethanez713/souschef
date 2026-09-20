@@ -124,10 +124,15 @@ form.inline { display: inline; }
   .pill.bad  { background: #fde3e2; color: #a32e29; }
 }
 
-/* Confidence bar: the app's core idea made visible. A short, faded bar means
-   "I am guessing", which is exactly what the audit acts on. */
-.conf { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 7px; }
-.conf > i { display: block; height: 100%; border-radius: 2px; background: var(--accent); }
+/* Confidence pips: the app's core idea made visible. Three dots, filled to the
+   trust tier and coloured by it -- one red means "I am guessing", which is what
+   the audit acts on. A count reads faster than a bar whose length is ambiguous
+   between "how sure" and "how much". */
+.pips { display: inline-flex; gap: 4px; align-items: center; vertical-align: middle; }
+.pips > i { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); }
+.pips.low  > i.on { background: var(--danger); }
+.pips.med  > i.on { background: var(--warn); }
+.pips.high > i.on { background: var(--accent); }
 
 .alert { border-left: 3px solid var(--warn); padding: 10px 12px; background: var(--surface);
          border-radius: 0 var(--radius) var(--radius) 0; margin-bottom: 12px; font-size: 14px; }

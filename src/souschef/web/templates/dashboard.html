@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import confidence_pips %}
 {% set active = 'home' %}
 {% block content %}
 <main>
@@ -63,12 +64,12 @@
   {% if stale %}
     <h2>Least certain levels</h2>
     {% for v in stale %}
-      <div class="card tight">
-        <div class="row">
+      <div class="card tight row">
+        <div class="stack">
           <span>{{ v.ingredient.name }}</span>
           <span class="muted small">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
         </div>
-        <div class="conf"><i style="width: {{ (v.confidence * 100)|round|int }}%"></i></div>
+        {{ confidence_pips(v.confidence) }}
       </div>
     {% endfor %}
   {% endif %}

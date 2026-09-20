@@ -34,7 +34,11 @@
             have {{ have|humanize(r.ingredient.base_unit) }}{% endif %}
         </span>
       </div>
-      <span class="pill {{ 'good' if ok else 'bad' }}">{{ 'ok' if ok else 'buy' }}</span>
+      {% if r.is_staple %}
+        <span class="pill good">untracked</span>
+      {% else %}
+        <span class="pill {{ 'good' if ok else 'bad' }}">{{ 'ok' if ok else 'buy' }}</span>
+      {% endif %}
     </div>
   {% endfor %}
 
@@ -47,10 +51,9 @@
     </div>
   {% endif %}
 
-  <form method="post" action="/recipes/{{ recipe.id }}/cooked" style="margin-top:16px">
-    <input type="hidden" name="servings" value="{{ recipe.servings }}">
-    <button class="primary" type="submit">I cooked this — subtract from pantry</button>
-  </form>
+  <p style="margin-top:16px">
+    <a class="btn primary" href="/recipes/{{ recipe.id }}/cook">I cooked this</a>
+  </p>
 
   {% if recipe.source_url %}
     <p class="muted small"><a href="{{ recipe.source_url }}" rel="noreferrer">Original recipe</a></p>

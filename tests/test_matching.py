@@ -43,6 +43,8 @@ RECIPE_CASES = [
     ("1 bunch scallions, thinly sliced", "scallion"),
     ("juice of 1 lemon", "lemon"),
     ("1 pound ground beef", "ground beef"),
+    ("1 large red pepper", "bell pepper"),
+    ("1 teaspoon red pepper flakes", "red pepper flakes"),
 ]
 
 RECEIPT_CASES = [

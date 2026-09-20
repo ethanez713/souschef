@@ -4,13 +4,7 @@
 <main>
   <h1>Shopping list</h1>
 
-  <form method="post" action="/shopping/generate">
-    <button class="primary" type="submit">
-      {{ 'Rebuild from plan' if shopping_list else 'Build from this week&rsquo;s plan' }}
-    </button>
-  </form>
-
-  {% if shopping_list %}
+  {% if shopping_list and shopping_list.items %}
     <p class="muted small">
       Covers {{ shopping_list.covers_from.strftime('%d %b') }}–{{ shopping_list.covers_to.strftime('%d %b') }}
       · {{ shopping_list.items|length }} items
@@ -38,10 +32,8 @@
         </div>
       {% endfor %}
     {% endfor %}
-
-    {% if not shopping_list.items %}
-      <div class="empty">Nothing to buy — the pantry covers this week&rsquo;s plan.</div>
-    {% endif %}
+  {% elif has_plan %}
+    <div class="empty">Nothing to buy — the pantry covers this week’s plan.</div>
   {% else %}
     <div class="empty">
       <p>No list yet.</p>

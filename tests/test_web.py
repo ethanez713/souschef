@@ -20,6 +20,7 @@ from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
+    InventoryEvent,
     MealPlanEntry,
     MealSlot,
     Recipe,
@@ -151,6 +152,26 @@ def test_dashboard_renders_when_empty(signed_in: TestClient) -> None:
     assert "No recipes yet" in response.text
 
 
+def test_home_lists_a_recipe_that_needs_a_shop(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Shop Pasta",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/shop-pasta",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    page = signed_in.get("/")
+    assert "No recipes yet" not in page.text
+    assert "Shop Pasta" in page.text
+
+
 def test_pantry_page_lists_stock(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -248,6 +269,30 @@ def test_editing_a_level_keeps_the_active_search(
     assert response.headers["location"] == "/pantry?q=olive"
 
 
+def test_plan_page_offers_day_chips_and_an_add_recipe_button(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Chip Meal",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/chips",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/plan")
+    assert page.status_code == 200
+    assert "+ Add recipe" in page.text
+    assert 'name="plan_date"' in page.text
+    assert 'type="checkbox"' in page.text
+    assert 'type="date"' not in page.text
+
+
 def test_recipe_pages_render(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -273,8 +318,85 @@ def test_recipe_pages_render(
     assert "Boil." in detail.text
 
 
+def test_staples_show_as_untracked_on_a_recipe(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Oiled Pasta",
+            ingredients=["1 pound spaghetti", "2 tablespoons olive oil"],
+            servings=2,
+            source_url="https://example.com/oiled",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    page = signed_in.get(f"/recipes/{recipe.id}")
+    assert "untracked" in page.text
+    assert "olive oil" in page.text
+
+
 def test_missing_recipe_is_404(signed_in: TestClient) -> None:
     assert signed_in.get("/recipes/99999").status_code == 404
+
+
+def test_cook_preview_shows_what_will_be_subtracted(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Oil Test",
+            ingredients=["2 tablespoons olive oil"],
+            servings=1,
+            source_url="https://example.com/oil-preview",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    page = signed_in.get(f"/recipes/{recipe.id}/cook")
+    assert page.status_code == 200
+    assert "About to cook" in page.text
+    assert "olive oil" in page.text
+    assert "Subtract from pantry" in page.text
+
+
+def test_cook_preview_logs_an_edit(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Oil Test",
+            ingredients=["2 tablespoons olive oil"],
+            servings=1,
+            source_url="https://example.com/oil-edit",
+        ),
+        source=RecipeSource.URL,
+    )
+    oil = ing(seeded_session, "olive oil")
+    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    seeded_session.commit()
+
+    signed_in.post(
+        f"/recipes/{recipe.id}/cooked",
+        data={"servings": 1, f"proposed_{oil.id}": "30", f"qty_{oil.id}": "10"},
+    )
+    seeded_session.expire_all()
+    event = seeded_session.scalars(
+        select(InventoryEvent)
+        .where(InventoryEvent.reason == EventReason.COOK)
+        .order_by(InventoryEvent.id.desc())
+    ).first()
+    assert event is not None
+    assert event.note is not None
+    assert "proposed 30" in event.note
+    assert "used 10" in event.note
 
 
 def test_marking_cooked_debits_the_pantry(
@@ -333,6 +455,37 @@ def test_shopping_list_generates_from_the_plan(
     page = signed_in.get("/shopping")
     assert "spaghetti" in page.text
     assert "Pasta Night" in page.text  # the list says why
+
+
+def test_shopping_page_rebuilds_from_the_plan_without_a_button(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Auto Shop",
+            ingredients=["1 pound spaghetti"],
+            servings=4,
+            source_url="https://example.com/auto-shop",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=date.today() + timedelta(days=1),
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=4,
+        )
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/shopping")
+    assert "spaghetti" in page.text
+    assert "Rebuild from plan" not in page.text
+    assert "Build from this" not in page.text
 
 
 def test_audit_page_renders_with_nothing_planned(signed_in: TestClient) -> None:

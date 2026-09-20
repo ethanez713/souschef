@@ -184,6 +184,27 @@ def build_shopping_list(
     if include_restock:
         needs = add_restock_candidates(session, user_id, needs)
 
+    # One live list per kitchen: replace whatever draft is hanging around so
+    # generating never piles up stale copies, and carry ticks across the rebuild
+    # so checking off eggs then adding a meal doesn't uncheck them.
+    existing_lists = session.scalars(
+        select(ShoppingList)
+        .options(selectinload(ShoppingList.items))
+        .where(
+            ShoppingList.user_id == user_id,
+            ShoppingList.status != ShoppingListStatus.ARCHIVED,
+        )
+    ).all()
+    already_checked = {
+        item.ingredient_id
+        for lst in existing_lists
+        for item in lst.items
+        if item.is_checked and item.ingredient_id is not None
+    }
+    for lst in existing_lists:
+        session.delete(lst)
+    session.flush()
+
     shopping_list = ShoppingList(
         user_id=user_id,
         name=name,
@@ -201,9 +222,8 @@ def build_shopping_list(
 
     for position, line in enumerate(ordered):
         quantity, unit, note = to_purchase_quantity(line.ingredient, line.shortfall)
-        session.add(
+        shopping_list.items.append(
             ShoppingListItem(
-                shopping_list_id=shopping_list.id,
                 ingredient_id=line.ingredient.id,
                 label=line.ingredient.name,
                 needed_qty=line.shortfall,
@@ -214,6 +234,7 @@ def build_shopping_list(
                 source=line.source,
                 driven_by=", ".join(line.driven_by[:4]) or None,
                 aisle=line.ingredient.aisle or DEFAULT_AISLE,
+                is_checked=line.ingredient.id in already_checked,
                 sort_order=position,
             )
         )

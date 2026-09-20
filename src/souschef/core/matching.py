@@ -379,9 +379,19 @@ class IngredientMatcher:
             """How many of the phrase's own words the query actually accounts for."""
             return len(set(phrase.split()) & query_tokens)
 
+        def extra_tokens(phrase: str) -> int:
+            # token_set_ratio scores a subset as 100, so "red pepper" ties
+            # "red pepper flakes". Prefer the phrase that doesn't invent words.
+            return len(set(phrase.split()) - query_tokens)
+
         ranked = sorted(
             scored,
-            key=lambda item: (round(item[1], 2), specificity(item[0]), len(item[0])),
+            key=lambda item: (
+                round(item[1], 2),
+                specificity(item[0]),
+                -extra_tokens(item[0]),
+                -len(item[0]),
+            ),
             reverse=True,
         )
 

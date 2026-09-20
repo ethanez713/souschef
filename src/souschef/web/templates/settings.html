@@ -34,6 +34,29 @@
     </p>
   </div>
 
+  <h2>Assumed on hand</h2>
+  <div class="card">
+    <p class="muted small">
+      These skip the shopping list and show as <span class="pill good">untracked</span>
+      on recipes. Salt, oil, and basic spices belong here; pasta does not.
+    </p>
+    {% for s in staples %}
+      <div class="row" style="margin-bottom:8px">
+        <span>{{ s.name }}</span>
+        <form method="post" action="/settings/staples/{{ s.id }}/clear" class="inline">
+          <button class="small" type="submit">Stop assuming</button>
+        </form>
+      </div>
+    {% endfor %}
+    <form method="post" action="/settings/staples" class="controls" style="margin-top:12px">
+      <div class="field">
+        <label for="staple">Add one</label>
+        <input id="staple" name="name" placeholder="kosher salt" required>
+      </div>
+      <button class="primary" type="submit">Assume</button>
+    </form>
+  </div>
+
   {% if user.is_admin %}
   <h2>Invites</h2>
   <div class="card">

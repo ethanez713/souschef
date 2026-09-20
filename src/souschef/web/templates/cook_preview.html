@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% set active = 'plan' %}
+{% block title %}Cook {{ recipe.title }} · SousChef{% endblock %}
+{% block content %}
+<main>
+  <h1>About to cook</h1>
+  <p class="muted">
+    {{ recipe.title }} · {{ servings }} serving{{ '' if servings == 1 else 's' }}.
+    Edit anything that doesn’t match what you actually used — those edits are logged.
+  </p>
+
+  <form method="post" action="/recipes/{{ recipe.id }}/cooked">
+    <input type="hidden" name="servings" value="{{ servings }}">
+    {% if entry %}<input type="hidden" name="entry_id" value="{{ entry.id }}">{% endif %}
+
+    {% for d in debits %}
+      <div class="card tight">
+        <div class="row">
+          <div class="stack">
+            <strong>{{ d.ingredient.name }}</strong>
+            <span class="muted small">
+              have {{ d.have|humanize(d.ingredient.base_unit) }}
+            </span>
+          </div>
+          {% if d.is_staple %}
+            <span class="pill good">untracked</span>
+          {% endif %}
+        </div>
+        <input type="hidden" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">
+        <div class="field" style="margin:10px 0 0">
+          <label for="qty{{ d.ingredient.id }}">Using ({{ d.ingredient.base_unit }})</label>
+          <input id="qty{{ d.ingredient.id }}" name="qty_{{ d.ingredient.id }}"
+                 type="number" step="any" inputmode="decimal" value="{{ d.quantity|round(2) }}">
+        </div>
+      </div>
+    {% else %}
+      <div class="empty">Nothing to subtract — this recipe has no matched amounts.</div>
+    {% endfor %}
+
+    <button class="primary" type="submit" style="margin-top:12px">Subtract from pantry</button>
+    <p class="muted small"><a href="/recipes/{{ recipe.id }}">Cancel</a></p>
+  </form>
+</main>
+{% endblock %}

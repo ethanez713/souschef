@@ -86,7 +86,11 @@ h3 { font-size: 16px; margin: 0 0 4px; }
   display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
   min-height: 92px; text-decoration: none; color: inherit;
 }
+.carousel > .card:only-child { flex: 1 1 auto; max-width: none; }
 .carousel > .card .pill { align-self: flex-start; }
+@media (min-width: 720px) {
+  .carousel > .card { flex-basis: 240px; }
+}
 .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .stack { display: flex; flex-direction: column; gap: 2px; }
 .muted { color: var(--muted); font-size: 14px; }
@@ -141,8 +145,8 @@ form.inline { display: inline; }
    trust tier and coloured by it -- one red means "I am guessing", which is what
    the audit acts on. A count reads faster than a bar whose length is ambiguous
    between "how sure" and "how much". */
-.pips { display: inline-flex; gap: 4px; align-items: center; vertical-align: middle; }
-.pips > i { width: 7px; height: 7px; border-radius: 50%; background: var(--surface-2); }
+.pips { display: inline-flex; gap: 5px; align-items: center; vertical-align: middle; }
+.pips > i { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-2); }
 .pips.low  > i.on { background: var(--danger); }
 .pips.med  > i.on { background: var(--warn); }
 .pips.high > i.on { background: var(--accent); }
@@ -155,3 +159,15 @@ form.inline { display: inline; }
          color: var(--muted); margin: 18px 0 6px; font-weight: 700; }
 
 .checked { opacity: 0.45; text-decoration: line-through; }
+
+.daychips { display: flex; flex-wrap: wrap; gap: 6px; }
+.daychips label {
+  position: relative;
+  border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px;
+  min-height: 40px; display: inline-flex; align-items: center; cursor: pointer;
+  user-select: none; background: var(--surface-2);
+}
+.daychips input { position: absolute; opacity: 0; pointer-events: none; }
+.daychips label:has(input:checked) {
+  background: var(--accent); color: #06120c; border-color: transparent; font-weight: 650;
+}

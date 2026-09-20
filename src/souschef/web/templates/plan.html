@@ -2,40 +2,57 @@
 {% set active = 'plan' %}
 {% block content %}
 <main>
-  <h1>This week</h1>
-  <p><a class="btn primary" href="/audit">Ready to shop →</a></p>
+  <div class="row" style="margin-bottom:12px">
+    <h1 style="margin:0">This week</h1>
+    <a class="btn primary" href="/recipes">+ Add recipe</a>
+  </div>
+  <p><a class="btn" href="/audit">Ready to shop →</a></p>
 
   {% for day, entries in by_day.items() %}
+    {% if entries %}
     <div class="card tight">
       <div class="row">
         <strong>{{ day.strftime('%a %d %b') }}</strong>
-        {% if not entries %}<span class="muted small">nothing planned</span>{% endif %}
       </div>
       {% for e in entries %}
         <div class="row" style="margin-top:8px">
-          <span>{{ e.recipe.title if e.recipe else e.freeform_title }}</span>
+          {% if e.recipe %}
+            <a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>
+          {% else %}
+            <span>{{ e.freeform_title }}</span>
+          {% endif %}
           <form method="post" action="/plan/{{ e.id }}/remove" class="inline">
             <button class="small" type="submit">Remove</button>
           </form>
         </div>
       {% endfor %}
     </div>
+    {% endif %}
   {% endfor %}
+
+  {% if not has_meals %}
+    <div class="empty">Nothing planned yet. Pick days below and add a meal.</div>
+  {% endif %}
 
   <h2>Add a meal</h2>
   {% for s in suggestions %}
     <div class="card tight">
       <div class="stack" style="margin-bottom:8px">
-        <strong>{{ s.recipe.title }}</strong>
+        <a href="/recipes/{{ s.recipe.id }}"><strong>{{ s.recipe.title }}</strong></a>
         <span class="muted small">{{ s.reason }}</span>
       </div>
-      <form method="post" action="/plan/add" class="controls">
+      <form method="post" action="/plan/add">
         <input type="hidden" name="recipe_id" value="{{ s.recipe.id }}">
         <input type="hidden" name="servings" value="{{ s.recipe.servings }}">
-        <div class="field">
-          <input name="plan_date" type="date" required>
+        <div class="daychips" role="group" aria-label="Days to cook this">
+          {% for d in days %}
+            <label>
+              <input type="checkbox" name="plan_date" value="{{ d.isoformat() }}">
+              <span>{{ d.strftime('%a %-d') }}</span>
+            </label>
+          {% endfor %}
         </div>
-        <button class="small primary" type="submit">Add</button>
+        <button class="small primary" type="submit" style="margin-top:10px">Add</button>
       </form>
     </div>
   {% endfor %}

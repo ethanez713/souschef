@@ -250,12 +250,14 @@ def consume_for_recipe(
     *,
     recipe_id: int,
     occurred_at: datetime | None = None,
+    notes: dict[int, str] | None = None,
 ) -> list[InventoryEvent]:
     """Debit the pantry for a cooked recipe.
 
     ``requirements`` maps ingredient id to a quantity already in base units.
     Staples are debited too -- you really do use the oil -- but their confidence
     matters less because they are excluded from shopping decisions by default.
+    ``notes`` is per-ingredient, for when the cook preview was edited.
     """
     events: list[InventoryEvent] = []
     for ingredient_id, amount in requirements.items():
@@ -272,6 +274,7 @@ def consume_for_recipe(
                 reason=EventReason.COOK,
                 delta=-amount,
                 source_ref=f"recipe:{recipe_id}",
+                note=(notes or {}).get(ingredient_id),
                 occurred_at=occurred_at,
             )
         )

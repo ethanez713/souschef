@@ -47,9 +47,7 @@ from souschef.models import (
     Receipt,
     ReceiptLine,
     Recipe,
-    ShoppingList,
     ShoppingListItem,
-    ShoppingListStatus,
     StoredCredential,
     User,
 )
@@ -59,6 +57,8 @@ from souschef.models.settings import CredentialKind
 from souschef.planning.shopping import build_shopping_list, requirements_for_audit
 from souschef.planning.suggest import Surface, by_surface, suggest
 from souschef.web import auth
+
+PLAN_DAYS = 10
 
 WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
@@ -158,6 +158,16 @@ def _render(request: Request, template: str, **context) -> HTMLResponse:
 
 def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
+
+
+def _horizon() -> tuple[date, date]:
+    today = date.today()
+    return today, today + timedelta(days=PLAN_DAYS - 1)
+
+
+def _sync_shopping(db: Session, user_id: int):  # noqa: ANN202
+    start, end = _horizon()
+    return build_shopping_list(db, user_id, covers_from=start, covers_to=end)
 
 
 def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str):  # noqa: ANN201
@@ -342,13 +352,14 @@ def dashboard(
         (v for v in pantry if v.item.expires_on and (v.item.expires_on - today).days <= 5),
         key=lambda v: v.item.expires_on,
     )
-    stale = sorted(pantry, key=lambda v: v.confidence)[:5]
+    stale = sorted((v for v in pantry if v.confidence < 0.5), key=lambda v: v.confidence)[:5]
 
     return _render(
         request,
         "dashboard.html",
         cook_now=grouped[Surface.COOK_NOW][:10],
         nearly=grouped[Surface.NEARLY_THERE][:10],
+        bigger_shop=grouped[Surface.REACH][:10],
         upcoming=upcoming,
         expiring=expiring[:5],
         stale=stale,
@@ -539,21 +550,96 @@ def import_recipe(
     return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
 
 
-@app.post("/recipes/{recipe_id}/cooked")
-def mark_cooked(
+@app.get("/recipes/{recipe_id}/cook", response_class=HTMLResponse)
+def cook_preview(
+    request: Request,
     recipe_id: int,
-    servings: int = Form(0),
+    entry: int = 0,
+    servings: int = 0,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    plan_entry = None
+    if entry:
+        plan_entry = _owned(db, MealPlanEntry, entry, user, "plan entry")
+        if plan_entry.recipe_id != recipe.id:
+            raise HTTPException(status_code=404, detail="No such plan entry")
+        servings = servings or plan_entry.servings
+    servings = servings or recipe.servings or 1
+    requirements = recipe_requirements(db, recipe, servings=servings)
+    pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
+
+    debits: list[dict] = []
+    by_id: dict[int, dict] = {}
+    for req in requirements.requirements:
+        if req.quantity <= 0:
+            continue
+        row = by_id.get(req.ingredient.id)
+        if row is None:
+            have = pantry[req.ingredient.id].quantity if req.ingredient.id in pantry else 0.0
+            row = {
+                "ingredient": req.ingredient,
+                "quantity": 0.0,
+                "is_staple": req.is_staple,
+                "have": have,
+            }
+            by_id[req.ingredient.id] = row
+            debits.append(row)
+        row["quantity"] += req.quantity
+        row["is_staple"] = row["is_staple"] or req.is_staple
+
+    return _render(
+        request,
+        "cook_preview.html",
+        recipe=recipe,
+        debits=debits,
+        servings=servings,
+        entry=plan_entry,
+    )
+
+
+@app.post("/recipes/{recipe_id}/cooked")
+async def mark_cooked(
+    request: Request,
+    recipe_id: int,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    form = await request.form()
+    servings = int(form.get("servings") or 0)
+    entry_id = int(form.get("entry_id") or 0)
 
-    requirements = recipe_requirements(db, recipe, servings=servings or None)
-    consume_for_recipe(db, user.id, requirements.as_map(), recipe_id=recipe.id)
+    proposed: dict[int, float] = {}
+    used: dict[int, float] = {}
+    for key, raw in form.items():
+        value = str(raw).strip()
+        if not value:
+            continue
+        if key.startswith("proposed_"):
+            proposed[int(key.removeprefix("proposed_"))] = float(value)
+        elif key.startswith("qty_"):
+            used[int(key.removeprefix("qty_"))] = float(value)
+
+    if not used:
+        used = recipe_requirements(db, recipe, servings=servings or None).as_map()
+
+    notes = {
+        iid: f"cook adjust: proposed {proposed[iid]:g}, used {amount:g}"
+        for iid, amount in used.items()
+        if iid in proposed and abs(amount - proposed[iid]) > 1e-6
+    }
+    consume_for_recipe(db, user.id, used, recipe_id=recipe.id, notes=notes or None)
 
     recipe.times_cooked += 1
     recipe.last_cooked_at = datetime.now(UTC)
+    if entry_id:
+        plan_entry = _owned(db, MealPlanEntry, entry_id, user, "plan entry")
+        if plan_entry.recipe_id == recipe.id:
+            plan_entry.cooked_at = datetime.now(UTC)
     db.flush()
+    _sync_shopping(db, user.id)
     return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
 
 
@@ -563,8 +649,7 @@ def plan_page(
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    today = date.today()
-    week_end = today + timedelta(days=7)
+    today, week_end = _horizon()
     entries = db.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe))
@@ -576,40 +661,48 @@ def plan_page(
         .order_by(MealPlanEntry.plan_date)
     ).all()
 
-    days = [today + timedelta(days=offset) for offset in range(8)]
+    days = [today + timedelta(days=offset) for offset in range(PLAN_DAYS)]
     by_day = {day: [e for e in entries if e.plan_date == day] for day in days}
 
     return _render(
         request,
         "plan.html",
         by_day=by_day,
+        days=days,
+        has_meals=any(by_day.values()),
         suggestions=suggest(db, user.id, limit=10),
         week_end=week_end,
     )
 
 
 @app.post("/plan/add")
-def add_to_plan(
-    recipe_id: int = Form(...),
-    plan_date: str = Form(...),
-    servings: int = Form(4),
+async def add_to_plan(
+    request: Request,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    form = await request.form()
+    recipe_id = int(form.get("recipe_id") or 0)
+    servings = int(form.get("servings") or 4)
     # Validate the recipe is theirs before planning it: without this, posting an
     # arbitrary id would put another user's recipe on your calendar, and the
     # plan page would then render its title.
     _owned(db, Recipe, recipe_id, user, "recipe")
-    db.add(
-        MealPlanEntry(
-            user_id=user.id,
-            plan_date=date.fromisoformat(plan_date),
-            slot=MealSlot.DINNER,
-            recipe_id=recipe_id,
-            servings=servings,
+    for raw in form.getlist("plan_date"):
+        value = str(raw).strip()
+        if not value:
+            continue
+        db.add(
+            MealPlanEntry(
+                user_id=user.id,
+                plan_date=date.fromisoformat(value),
+                slot=MealSlot.DINNER,
+                recipe_id=recipe_id,
+                servings=servings,
+            )
         )
-    )
     db.flush()
+    _sync_shopping(db, user.id)
     return RedirectResponse("/plan", status_code=303)
 
 
@@ -623,6 +716,7 @@ def remove_from_plan(
     if entry is not None and entry.user_id == user.id:
         db.delete(entry)
         db.flush()
+        _sync_shopping(db, user.id)
     return RedirectResponse("/plan", status_code=303)
 
 
@@ -633,8 +727,7 @@ def audit_page(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """The pre-shop check: the few things worth physically verifying."""
-    today = date.today()
-    week_end = today + timedelta(days=7)
+    today, week_end = _horizon()
     requirements = requirements_for_audit(db, user.id, today, week_end)
     candidates = build_audit(db, user.id, requirements)
     return _render(
@@ -669,32 +762,40 @@ def shopping_page(
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    active = db.scalars(
-        select(ShoppingList)
-        .options(selectinload(ShoppingList.items))
-        .where(
-            ShoppingList.user_id == user.id,
-            ShoppingList.status != ShoppingListStatus.ARCHIVED,
+    start, end = _horizon()
+    active = _sync_shopping(db, user.id)
+    has_plan = (
+        db.scalar(
+            select(func.count())
+            .select_from(MealPlanEntry)
+            .where(
+                MealPlanEntry.user_id == user.id,
+                MealPlanEntry.plan_date >= start,
+                MealPlanEntry.plan_date <= end,
+                MealPlanEntry.cooked_at.is_(None),
+            )
         )
-        .order_by(ShoppingList.created_at.desc())
-    ).first()
+        or 0
+    ) > 0
 
     by_aisle: dict[str, list] = {}
-    if active:
-        for item in sorted(active.items, key=lambda i: (i.aisle or "", i.sort_order)):
-            by_aisle.setdefault(item.aisle or "Other", []).append(item)
+    for item in sorted(active.items, key=lambda i: (i.aisle or "", i.sort_order)):
+        by_aisle.setdefault(item.aisle or "Other", []).append(item)
 
-    return _render(request, "shopping.html", shopping_list=active, by_aisle=by_aisle)
+    return _render(
+        request,
+        "shopping.html",
+        shopping_list=active,
+        by_aisle=by_aisle,
+        has_plan=has_plan,
+    )
 
 
 @app.post("/shopping/generate")
 def generate_shopping(
     user: User = Depends(auth.current_user), db: Session = Depends(get_db)
 ) -> Response:
-    today = date.today()
-    build_shopping_list(
-        db, user.id, covers_from=today, covers_to=today + timedelta(days=7)
-    )
+    _sync_shopping(db, user.id)
     return RedirectResponse("/shopping", status_code=303)
 
 
@@ -839,17 +940,55 @@ def settings_page(
             select(Invite).order_by(Invite.created_at.desc()).limit(20)
         ).all()
 
+    staples = db.scalars(
+        select(CanonicalIngredient)
+        .where(CanonicalIngredient.is_staple.is_(True))
+        .order_by(CanonicalIngredient.name)
+    ).all()
+
     return _render(
         request,
         "settings.html",
         nyt_credential=_nyt_credential(db, user),
         settings=get_settings(),
         invites=invites,
+        staples=staples,
         # Shown once, immediately after creation. The plaintext is never stored,
         # so there is no page that can display it again.
         new_invite=new_invite,
         now=datetime.now(UTC),
     )
+
+
+@app.post("/settings/staples")
+def add_staple(
+    name: str = Form(...),
+    _user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    match = IngredientMatcher(db).match(name)
+    if not match.is_match:
+        raise HTTPException(status_code=400, detail=f"Unknown ingredient: {name}")
+    ingredient = db.get(CanonicalIngredient, match.ingredient_id)
+    if ingredient is None:
+        raise HTTPException(status_code=404, detail="No such ingredient")
+    ingredient.is_staple = True
+    db.flush()
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.post("/settings/staples/{ingredient_id}/clear")
+def clear_staple(
+    ingredient_id: int,
+    _user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    ingredient = db.get(CanonicalIngredient, ingredient_id)
+    if ingredient is None:
+        raise HTTPException(status_code=404, detail="No such ingredient")
+    ingredient.is_staple = False
+    db.flush()
+    return RedirectResponse("/settings", status_code=303)
 
 
 @app.post("/settings/password")

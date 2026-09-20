@@ -1,6 +1,6 @@
 {% from "macros.html" import confidence_pips %}
 {% for location, views in by_location.items() %}
-  <h2>{{ location }}</h2>
+  <h2>{{ location.replace('_', ' ').title() }}</h2>
   {% for v in views %}
     <div class="card tight">
       <div class="row">

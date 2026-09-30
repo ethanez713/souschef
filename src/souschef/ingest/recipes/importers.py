@@ -28,17 +28,17 @@ from sqlalchemy.orm import Session
 
 from souschef.config import get_settings
 from souschef.core.crypto import CredentialError, decrypt
-from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe
+from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe, page_key
 from souschef.logconfig import get_logger
 from souschef.models import RecipeSource, StoredCredential
 from souschef.models.settings import CredentialKind
 
 log = get_logger("souschef.import")
 
-USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/126.0 Safari/537.36"
-)
+# A browser-shaped User-Agent from a non-browser TLS stack is what Cloudflare
+# rejects. Identifying the client honestly is accepted by the sites that were
+# refusing the import; pretending to be Chrome is what produced the 403.
+USER_AGENT = "SousChef/1.0 (single-page recipe import)"
 REQUEST_TIMEOUT = 20.0
 
 _NYT_HOST = re.compile(r"(^|\.)cooking\.nytimes\.com$", re.IGNORECASE)
@@ -58,6 +58,8 @@ class ImportResult:
     recipe: RawRecipe
     source: RecipeSource
     external_id: str | None = None
+    # Set when the site sent the fetch somewhere other than the URL that was typed.
+    notice: str | None = None
 
 
 def is_nyt_url(url: str) -> bool:
@@ -104,8 +106,12 @@ def get_nyt_cookie(session: Session, user_id: int) -> str | None:
         return None
 
 
-def fetch_html(url: str, *, cookie: str | None = None) -> str:
-    """Fetch one page. The only place this module touches the network."""
+def fetch_html(url: str, *, cookie: str | None = None) -> tuple[str, str]:
+    """Fetch one page. The only place this module touches the network.
+
+    Returns the HTML and the URL after redirects. A renamed recipe often comes
+    back as a different page, and that final address is the recipe we saved.
+    """
     _guard_external(f"fetch {url}")
 
     headers = {
@@ -127,16 +133,27 @@ def fetch_html(url: str, *, cookie: str | None = None) -> str:
 
     if response.status_code == 403:
         log.warning("403 from %s (cookie present=%s)", url, bool(cookie))
+        if is_nyt_url(url):
+            raise ImportError_(
+                "NYT refused the request (403). Your saved session cookie may have "
+                "expired — re-enter it in Settings."
+            )
         raise ImportError_(
-            "The site refused the request (403). If this is a subscriber recipe, "
-            "your saved session cookie may have expired -- re-enter it in Settings."
+            "The site refused the request (403). Some recipe sites block anything "
+            "that isn't a web browser."
+        )
+    if response.status_code == 429:
+        log.warning("429 from %s", url)
+        raise ImportError_(
+            "That site is rate-limiting requests. Wait a bit and try the same URL again."
         )
     if response.status_code >= 400:
         log.warning("HTTP %d from %s", response.status_code, url)
         raise ImportError_(f"{url} returned HTTP {response.status_code}")
 
-    log.info("Fetched %s (%d bytes)", url, len(response.content))
-    return response.text
+    final_url = str(response.url)
+    log.info("Fetched %s (%d bytes)", final_url, len(response.content))
+    return response.text, final_url
 
 
 def import_from_url(session: Session, user_id: int, url: str) -> ImportResult:
@@ -159,17 +176,23 @@ def import_from_url(session: Session, user_id: int, url: str) -> ImportResult:
             "SousChef stores the cookie only, never your password."
         )
 
-    html = fetch_html(url, cookie=cookie)
+    html, final_url = fetch_html(url, cookie=cookie)
+    notice = None
+    if page_key(url) != page_key(final_url):
+        notice = (
+            "That link redirected. The saved recipe is the page it landed on: "
+            f"{final_url}"
+        )
 
-    recipe = extract_recipe(html, source_url=url)
+    recipe = extract_recipe(html, source_url=final_url)
     if recipe is None:
         # Worth a warning: JSON-LD is the stable path, so falling through to
         # site-specific scraping is the first sign a source changed its markup.
-        log.warning("No JSON-LD recipe found at %s; trying recipe-scrapers", url)
-        recipe = _scrape_fallback(html, url)
+        log.warning("No JSON-LD recipe found at %s; trying recipe-scrapers", final_url)
+        recipe = _scrape_fallback(html, final_url)
 
     if recipe is None or not recipe.is_usable:
-        log.warning("No usable recipe extracted from %s", url)
+        log.warning("No usable recipe extracted from %s", final_url)
         raise ImportError_(
             "No recipe found on that page. If it is behind a paywall, check that "
             "your session cookie is current."
@@ -186,8 +209,11 @@ def import_from_url(session: Session, user_id: int, url: str) -> ImportResult:
             recipe=recipe,
             source=RecipeSource.NYT,
             external_id=match.group(1) if match else None,
+            notice=notice,
         )
-    return ImportResult(recipe=recipe, source=RecipeSource.URL, external_id=None)
+    return ImportResult(
+        recipe=recipe, source=RecipeSource.URL, external_id=None, notice=notice
+    )
 
 
 def _scrape_fallback(html: str, url: str) -> RawRecipe | None:

@@ -19,6 +19,7 @@ from souschef.models import (
     MealPlanEntry,
     MealSlot,
     Recipe,
+    RecipeIngredient,
     RecipeSource,
 )
 from souschef.planning.shopping import build_shopping_list, to_purchase_quantity
@@ -83,6 +84,22 @@ def test_ignores_non_recipe_nodes(recipe_html: str) -> None:
 def test_unusable_pages_return_none(html: str) -> None:
     """Malformed input fails soft; a recipe with no ingredients is not usable."""
     assert extract_recipe(html) is None
+
+
+def test_jsonld_prefers_the_recipe_at_the_requested_url() -> None:
+    html = """
+    <script type="application/ld+json">
+    {"@graph":[
+      {"@type":"Recipe","name":"Other dish","url":"https://example.com/other",
+       "recipeIngredient":["1 egg"]},
+      {"@type":"Recipe","name":"The one asked for","url":"https://www.example.com/asked/",
+       "recipeIngredient":["2 eggs"]}
+    ]}
+    </script>
+    """
+    raw = extract_recipe(html, source_url="https://example.com/asked?utm=1")
+    assert raw is not None
+    assert raw.title == "The one asked for"
 
 
 def test_parses_quantity_unit_and_name() -> None:
@@ -316,6 +333,77 @@ def test_shopping_list_covers_the_gap_only(
     assert "olive oil" not in labels
 
 
+def test_a_matched_line_with_no_amount_asks_for_one_package(
+    seeded_session: Session, owner: int
+) -> None:
+    fish_sauce = ing(seeded_session, "fish sauce")
+    parsley = ing(seeded_session, "fresh parsley")
+    recipe = Recipe(user_id=owner, title="Sauce", source=RecipeSource.MANUAL, servings=2)
+    seeded_session.add(recipe)
+    seeded_session.flush()
+    seeded_session.add_all([
+        RecipeIngredient(
+            recipe_id=recipe.id, position=0, raw_text="fish sauce",
+            ingredient_id=fish_sauce.id, quantity=None, quantity_is_vague=True, is_optional=False,
+        ),
+        RecipeIngredient(
+            recipe_id=recipe.id, position=1, raw_text="parsley for garnish",
+            ingredient_id=parsley.id, quantity=None, quantity_is_vague=True, is_optional=True,
+        ),
+    ])
+    today = date.today()
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=owner, plan_date=today, slot=MealSlot.DINNER,
+            recipe_id=recipe.id, servings=2,
+        )
+    )
+    seeded_session.flush()
+
+    shopping = build_shopping_list(
+        seeded_session, owner, covers_from=today, covers_to=today
+    )
+    by_label = {item.label: item for item in shopping.items}
+    assert "fish sauce" in by_label
+    assert by_label["fish sauce"].purchase_note == "amount wasn't on the recipe"
+    assert by_label["fish sauce"].purchase_qty == 1
+    assert "fresh parsley" not in by_label
+
+
+def test_a_real_quantity_wins_over_an_unspecified_one(
+    seeded_session: Session, owner: int
+) -> None:
+    fish_sauce = ing(seeded_session, "fish sauce")
+    recipe = Recipe(user_id=owner, title="Two lines", source=RecipeSource.MANUAL, servings=1)
+    seeded_session.add(recipe)
+    seeded_session.flush()
+    seeded_session.add_all([
+        RecipeIngredient(
+            recipe_id=recipe.id, position=0, raw_text="fish sauce",
+            ingredient_id=fish_sauce.id, quantity=None, quantity_is_vague=True, is_optional=False,
+        ),
+        RecipeIngredient(
+            recipe_id=recipe.id, position=1, raw_text="2 tbsp fish sauce",
+            ingredient_id=fish_sauce.id, quantity=2, unit="tbsp", quantity_is_vague=False,
+            is_optional=False,
+        ),
+    ])
+    today = date.today()
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=owner, plan_date=today, slot=MealSlot.DINNER,
+            recipe_id=recipe.id, servings=1,
+        )
+    )
+    seeded_session.flush()
+    shopping = build_shopping_list(
+        seeded_session, owner, covers_from=today, covers_to=today
+    )
+    item = next(row for row in shopping.items if row.label == "fish sauce")
+    assert item.purchase_note != "amount wasn't on the recipe"
+    assert item.needed_qty > 0
+
+
 def test_shopping_list_records_why_each_item_is_there(
     seeded_session: Session, imported: Recipe,
     owner: int) -> None:
@@ -358,3 +446,73 @@ def test_cooked_meals_do_not_drive_shopping(
         seeded_session, owner, covers_from=today, covers_to=today + timedelta(days=7)
     )
     assert shopping.items == []
+
+
+def _allow_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    from souschef.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "no_external", False)
+
+
+def test_importer_identifies_itself_and_notices_a_redirect(
+    monkeypatch: pytest.MonkeyPatch, seeded_session: Session, owner: int
+) -> None:
+    from souschef.ingest.recipes import importers
+
+    seen: dict[str, str] = {}
+
+    class Response:
+        status_code = 200
+        content = b"x"
+        url = "https://example.com/landed"
+        text = """<script type="application/ld+json">
+        {"@type":"Recipe","name":"Landed page","recipeIngredient":["1 egg"],
+         "url":"https://example.com/landed"}
+        </script>"""
+
+    def fake_get(url: str, headers: dict[str, str], **kwargs: object) -> Response:
+        seen["ua"] = headers["User-Agent"]
+        return Response()
+
+    monkeypatch.setattr(importers.httpx, "get", fake_get)
+    _allow_network(monkeypatch)
+    result = importers.import_from_url(seeded_session, owner, "https://example.com/typed")
+    assert seen["ua"].startswith("SousChef/")
+    assert "Chrome" not in seen["ua"]
+    assert result.recipe.title == "Landed page"
+    assert result.notice is not None
+    assert "https://example.com/landed" in result.notice
+
+
+def test_a_refusal_blames_the_cookie_only_for_nyt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from souschef.ingest.recipes.importers import ImportError_, fetch_html
+
+    class Response:
+        status_code = 403
+        content = b""
+        text = ""
+        url = "https://www.seriouseats.com/recipe"
+
+    monkeypatch.setattr(
+        "souschef.ingest.recipes.importers.httpx.get", lambda *args, **kwargs: Response()
+    )
+    _allow_network(monkeypatch)
+    with pytest.raises(ImportError_, match="isn't a web browser"):
+        fetch_html("https://www.seriouseats.com/recipe")
+
+
+def test_rate_limiting_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    from souschef.ingest.recipes.importers import ImportError_, fetch_html
+
+    class Response:
+        status_code = 429
+        content = b""
+        text = ""
+        url = "https://example.com/r"
+
+    monkeypatch.setattr(
+        "souschef.ingest.recipes.importers.httpx.get", lambda *args, **kwargs: Response()
+    )
+    _allow_network(monkeypatch)
+    with pytest.raises(ImportError_, match="rate-limiting"):
+        fetch_html("https://example.com/r")

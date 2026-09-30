@@ -48,6 +48,9 @@ class NeedLine:
     have: float  # believed pantry level
     driven_by: list[str] = field(default_factory=list)
     source: ItemSource = ItemSource.RECIPE
+    # A matched line whose recipe gave no amount. Cleared if any line for the
+    # same ingredient does state one — that number is the shortfall.
+    unknown_amount: bool = False
 
     @property
     def shortfall(self) -> float:
@@ -74,7 +77,11 @@ def collect_requirements(
             if line is None:
                 line = NeedLine(ingredient=req.ingredient, needed=0.0, have=0.0)
                 needs[req.ingredient.id] = line
-            line.needed += req.quantity
+            if req.quantity > 0:
+                line.needed += req.quantity
+                line.unknown_amount = False
+            elif req.is_vague and line.needed <= 0:
+                line.unknown_amount = True
             if entry.recipe.title not in line.driven_by:
                 line.driven_by.append(entry.recipe.title)
 
@@ -158,6 +165,20 @@ def to_purchase_quantity(
     return float(packages), unit_label, note
 
 
+def _one_package(ingredient: CanonicalIngredient) -> tuple[float, str, str]:
+    """One purchasable unit, when the recipe named the food but not the amount."""
+    note = "amount wasn't on the recipe"
+    if ingredient.package_qty and ingredient.package_unit:
+        return 1.0, f"x {humanize(ingredient.package_qty, ingredient.package_unit)}", note
+    return 1.0, ingredient.base_unit, note
+
+
+def _on_the_list(line: NeedLine) -> bool:
+    if line.shortfall > 0:
+        return True
+    return line.unknown_amount and line.have <= 0 and line.needed <= 0
+
+
 def build_shopping_list(
     session: Session,
     user_id: int,
@@ -216,12 +237,15 @@ def build_shopping_list(
     session.flush()
 
     ordered = sorted(
-        (line for line in needs.values() if line.shortfall > 0),
+        (line for line in needs.values() if _on_the_list(line)),
         key=lambda line: (line.ingredient.aisle or DEFAULT_AISLE, line.ingredient.name),
     )
 
     for position, line in enumerate(ordered):
-        quantity, unit, note = to_purchase_quantity(line.ingredient, line.shortfall)
+        if line.shortfall > 0:
+            quantity, unit, note = to_purchase_quantity(line.ingredient, line.shortfall)
+        else:
+            quantity, unit, note = _one_package(line.ingredient)
         shopping_list.items.append(
             ShoppingListItem(
                 ingredient_id=line.ingredient.id,

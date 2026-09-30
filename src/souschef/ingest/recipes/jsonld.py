@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import urlsplit
 
 _ISO_DURATION = re.compile(
     r"P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?)?"
@@ -181,14 +182,40 @@ def _parse_image(value: Any) -> str | None:
     return _as_text(value)
 
 
+def page_key(url: str | None) -> tuple[str, str] | None:
+    """Host and path, ignoring scheme, a leading www, and a trailing slash.
+
+    Query strings are dropped on purpose: a recipe's canonical URL and the
+    address in the bar often differ only by tracking parameters.
+    """
+    if not url or not url.strip():
+        return None
+    try:
+        parts = urlsplit(url.strip())
+    except ValueError:
+        return None
+    host = (parts.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return None
+    return host, parts.path.rstrip("/") or "/"
+
+
 def extract_recipe(html: str, *, source_url: str | None = None) -> RawRecipe | None:
-    """Find and parse the first schema.org Recipe in a page. None if absent."""
+    """Find the schema.org Recipe for this page. None if absent.
+
+    Pages embed related recipes beside the one you asked for. Prefer the node
+    whose own URL is the page that was fetched; otherwise keep the first usable
+    recipe, which is what a page with a single recipe and no URL still is.
+    """
     collector = _JsonLdCollector()
     # Malformed markup must not raise: whatever blocks were collected before the
     # parser choked are still worth trying.
     with contextlib.suppress(Exception):
         collector.feed(html)
 
+    found: list[tuple[str | None, RawRecipe]] = []
     for block in collector.blocks:
         try:
             payload = json.loads(block)
@@ -199,6 +226,7 @@ def extract_recipe(html: str, *, source_url: str | None = None) -> RawRecipe | N
             if not _is_recipe(node):
                 continue
 
+            own_url = _as_text(node.get("url"))
             recipe = RawRecipe(
                 title=_as_text(node.get("name")) or "Untitled recipe",
                 ingredients=_as_list(node.get("recipeIngredient") or node.get("ingredients")),
@@ -211,9 +239,17 @@ def extract_recipe(html: str, *, source_url: str | None = None) -> RawRecipe | N
                 image_url=_parse_image(node.get("image")),
                 author=_as_text(node.get("author")),
                 description=_as_text(node.get("description")),
-                source_url=_as_text(node.get("url")) or source_url,
+                source_url=own_url or source_url,
             )
             if recipe.is_usable:
-                return recipe
+                found.append((own_url, recipe))
 
-    return None
+    if not found:
+        return None
+
+    wanted = page_key(source_url)
+    if wanted is not None:
+        for own_url, recipe in found:
+            if page_key(own_url) == wanted:
+                return recipe
+    return found[0][1]

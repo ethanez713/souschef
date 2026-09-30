@@ -8,9 +8,22 @@
   <p class="meta">
     {{ receipt.store_name or 'Receipt' }}
     {%- if receipt.ocr_confidence %} · scan quality <span class="num">{{ (receipt.ocr_confidence * 100)|round|int }}%</span>{% endif %}
-    · Nothing changes your pantry until you tick a line and apply.
+    {% if receipt.status == 'applied' %}
+      · Already added to the pantry. This scan can't be edited.
+    {% else %}
+      · Tick the lines you actually bought, then apply. Unticked edits are kept.
+    {% endif %}
   </p>
 
+  {% if already %}
+    <div class="notice spaced">
+      {{ icon('triangle-alert', 16) }}
+      <div>This photo was already applied, so it was not scanned again.</div>
+    </div>
+  {% endif %}
+  {% if error %}
+    <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
+  {% endif %}
   {% if receipt.ocr_confidence and receipt.ocr_confidence < 0.75 %}
     <div class="notice spaced">
       {{ icon('triangle-alert', 16) }}
@@ -18,48 +31,69 @@
     </div>
   {% endif %}
 
-  <div class="spaced">
-  {% for line in lines %}
-    <div class="card">
-      <div class="row" style="margin-bottom:var(--sp-3)">
+  {% if receipt.status == 'applied' %}
+    <div class="spaced">
+    {% for line in lines %}
+      <div class="card">
         <code>{{ line.raw_text }}</code>
-        {% if line.match_confidence < 0.88 %}
-          <span class="badge warn">needs a look</span>
-        {% endif %}
+        <p class="meta">
+          {% if line.is_confirmed and line.ingredient %}{{ line.ingredient.name }}
+          {% elif line.ingredient %}{{ line.ingredient.name }} · not added
+          {% else %}not added{% endif %}
+          {% if line.parsed_quantity %} · {{ line.parsed_quantity }} {{ line.parsed_unit or '' }}{% endif %}
+        </p>
       </div>
-      <form method="post" action="/receipts/{{ receipt.id }}/line/{{ line.id }}">
-        <div class="field">
-          <label for="ing{{ line.id }}">Ingredient</label>
-          <select id="ing{{ line.id }}" name="ingredient_id">
-            <option value="">— not food / skip —</option>
-            {% for ing in ingredients %}
-              <option value="{{ ing.id }}" {{ 'selected' if ing.id == line.ingredient_id }}>{{ ing.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="controls">
-          <div class="field">
-            <label for="qty{{ line.id }}">Amount</label>
-            <input id="qty{{ line.id }}" name="quantity" type="number" step="any" inputmode="decimal"
-                   value="{{ line.parsed_quantity or '' }}">
-          </div>
-          <div class="field">
-            <label for="unit{{ line.id }}">Unit</label>
-            <input id="unit{{ line.id }}" name="unit" value="{{ line.parsed_unit or '' }}" placeholder="g / oz / count">
-          </div>
-        </div>
-        <label class="check-line">
-          <input type="checkbox" name="confirmed" {{ 'checked' if line.is_confirmed }}>
-          <span>Add this to the pantry</span>
-        </label>
-        <button class="small" type="submit">Save line</button>
-      </form>
+    {% else %}
+      <p class="muted">No food lines on this scan.</p>
+    {% endfor %}
     </div>
-  {% endfor %}
-  </div>
-
-  <form method="post" action="/receipts/{{ receipt.id }}/apply" class="actions">
-    <button class="primary" type="submit">Apply ticked lines to pantry</button>
-  </form>
+    <div class="actions"><a class="btn primary" href="/pantry">Go to pantry</a></div>
+  {% else %}
+    <form method="post" action="/receipts/{{ receipt.id }}/apply">
+      <div class="spaced">
+      {% for line in lines %}
+        <div class="card">
+          <div class="row" style="margin-bottom:var(--sp-3)">
+            <code>{{ line.raw_text }}</code>
+            {% if line.match_confidence < 0.88 %}
+              <span class="badge warn">needs a look</span>
+            {% endif %}
+          </div>
+          <div class="field">
+            <label for="ing{{ line.id }}">Ingredient</label>
+            <select id="ing{{ line.id }}" name="ingredient_{{ line.id }}">
+              <option value="">— not food / skip —</option>
+              {% for ing in ingredients %}
+                <option value="{{ ing.id }}" {{ 'selected' if ing.id == line.ingredient_id }}>{{ ing.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="controls">
+            <div class="field">
+              <label for="qty{{ line.id }}">Amount</label>
+              <input id="qty{{ line.id }}" name="quantity_{{ line.id }}" type="number" step="any" inputmode="decimal"
+                     value="{{ line.parsed_quantity or '' }}">
+            </div>
+            <div class="field">
+              <label for="unit{{ line.id }}">Unit</label>
+              <input id="unit{{ line.id }}" name="unit_{{ line.id }}" value="{{ line.parsed_unit or '' }}" placeholder="g / oz / count">
+            </div>
+          </div>
+          <label class="check-line">
+            <input type="checkbox" name="confirmed_{{ line.id }}" {{ 'checked' if line.is_confirmed }}>
+            <span>Add this to the pantry</span>
+          </label>
+        </div>
+      {% else %}
+        <p class="muted">No food lines on this scan.</p>
+      {% endfor %}
+      </div>
+      {% if lines %}
+        <div class="actions">
+          <button class="primary" type="submit">Apply ticked lines to pantry</button>
+        </div>
+      {% endif %}
+    </form>
+  {% endif %}
 </main>
 {% endblock %}

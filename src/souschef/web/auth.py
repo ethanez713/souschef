@@ -25,6 +25,7 @@ import secrets
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote, unquote
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
@@ -43,6 +44,11 @@ log = get_logger("souschef.auth")
 
 SESSION_COOKIE = "souschef_session"
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days; this is a kitchen app, not a bank
+
+# The plaintext invite is shown once. A query parameter would land in the
+# browser history and in any access log that records the request target.
+FLASH_COOKIE = "souschef_invite_flash"
+FLASH_MAX_AGE = 120
 
 # Per (ip, username): stops someone grinding one account.
 MAX_ATTEMPTS = 8
@@ -184,6 +190,36 @@ class _Redirect(HTTPException):
         )
 
 
+def login_location(request: Request) -> str:
+    """Sign-in URL that remembers the page the person was trying to open.
+
+    The raw query is already percent-encoded. Quoting it again would turn the
+    shared recipe URL into a second encoding, and the form would not show the
+    address the person shared.
+    """
+    path = request.url.path
+    if request.url.query:
+        path = f"{path}?{unquote(request.url.query)}"
+    return "/login?next=" + quote(path, safe="")
+
+
+def issue_invite_flash(code: str) -> str:
+    return _serializer().dumps({"code": code})
+
+
+def read_invite_flash(token: str | None) -> str | None:
+    if not token:
+        return None
+    try:
+        data = _serializer().loads(token, max_age=FLASH_MAX_AGE)
+    except BadSignature:
+        return None
+    if not isinstance(data, dict):
+        return None
+    code = data.get("code")
+    return code if isinstance(code, str) and code.strip() else None
+
+
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """FastAPI dependency resolving the signed-in user.
 
@@ -193,12 +229,12 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """
     parsed = read_session(request.cookies.get(SESSION_COOKIE))
     if parsed is None:
-        raise _Redirect()
+        raise _Redirect(login_location(request))
 
     user_id, epoch = parsed
     user = db.get(User, user_id)
     if user is None or not user.is_active or user.session_epoch != epoch:
-        raise _Redirect()
+        raise _Redirect(login_location(request))
 
     # Stashed so template rendering can pick it up without every route having to
     # pass it through explicitly -- the nav needs it on every authenticated page.

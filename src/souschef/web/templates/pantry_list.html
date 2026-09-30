@@ -1,5 +1,8 @@
 {% from "icons.html" import icon %}
 {% from "macros.html" import confidence_pips %}
+{% if level_error %}
+  <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>
+{% endif %}
 {% for location, views in by_location.items() %}
   <h2>{{ location.replace('_', ' ').title() }}</h2>
   {% for v in views %}
@@ -42,7 +45,35 @@
     </div>
     {% endif %}
   {% endfor %}
-{% else %}
+{% endfor %}
+{% if out %}
+  <h2>Out</h2>
+  {% for v in out %}
+    <div class="card tight item">
+      <input class="edit-toggle" type="checkbox" id="edit{{ v.ingredient.id }}" aria-label="Set {{ v.ingredient.name }} level">
+      <div class="row">
+        <div class="stack">
+          <strong>{{ v.ingredient.name }}</strong>
+          <span class="meta">out</span>
+        </div>
+        <div class="trail">
+          <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
+        </div>
+      </div>
+      <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
+            hx-post="/pantry/{{ v.ingredient.id }}/level" hx-target="#pantry-list" hx-swap="innerHTML">
+        <input type="hidden" name="q" value="{{ query }}">
+        <div class="field">
+          <input name="quantity" type="number" step="any" inputmode="decimal" required
+                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient.base_unit }})"
+                 placeholder="Set to… ({{ v.ingredient.base_unit }})">
+        </div>
+        <button type="submit">Set</button>
+      </form>
+    </div>
+  {% endfor %}
+{% endif %}
+{% if not by_location and not out %}
   <div class="empty">
     {% if query %}
       <p>Nothing in the pantry matches “{{ query }}”.</p>
@@ -51,4 +82,4 @@
       <a class="btn primary" href="/receipts">{{ icon('camera', 16) }}Scan a receipt</a>
     {% endif %}
   </div>
-{% endfor %}
+{% endif %}

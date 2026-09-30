@@ -260,8 +260,14 @@ def cmd_invite(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
+    # The app already logs method and path. Uvicorn's access line includes the
+    # query string, which is where an invite code and a shared recipe URL sit.
     uvicorn.run(
-        "souschef.web.app:app", host=args.host, port=args.port, reload=args.reload
+        "souschef.web.app:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        access_log=False,
     )
     return 0
 

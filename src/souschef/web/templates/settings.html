@@ -3,6 +3,8 @@
 {% block content %}
 <main>
   <h1>Settings</h1>
+  {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
+  {% if saved == 'password' %}<div class="notice good">{{ icon('circle-check', 16) }}<div>Password changed.</div></div>{% endif %}
 
   <h2>Assumed on hand</h2>
   <div class="card">

@@ -15,22 +15,23 @@
            hx-target="#pantry-list" hx-swap="innerHTML" hx-push-url="true">
   </form>
 
-  <details class="card">
+  <details class="card" {% if add_open %}open{% endif %}>
     <summary>Add something</summary>
     <form method="post" action="/pantry/add" style="margin-top:var(--sp-4)">
       <input type="hidden" name="q" value="{{ query }}">
+      {% if add_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>{% endif %}
       <div class="field">
         <label for="n">Ingredient</label>
-        <input id="n" name="name" placeholder="spinach" required>
+        <input id="n" name="name" placeholder="spinach" value="{{ add_name or '' }}" required {% if add_open %}autofocus{% endif %}>
       </div>
       <div class="controls">
         <div class="field">
           <label for="q2">Amount</label>
-          <input id="q2" name="quantity" type="number" step="any" inputmode="decimal" required>
+          <input id="q2" name="quantity" type="number" step="any" inputmode="decimal" required value="{{ add_quantity or '' }}">
         </div>
         <div class="field">
           <label for="u">Unit</label>
-          <input id="u" name="unit" placeholder="g / ml / count">
+          <input id="u" name="unit" placeholder="g / ml / count" value="{{ add_unit or '' }}">
         </div>
         <button class="primary" type="submit">Add</button>
       </div>

@@ -23,10 +23,16 @@
     </div>
   {% else %}
     <p class="muted">
-      Only these {{ candidates|length }} need a physical look. Everything else is either
+      {% if candidates|length == 1 %}
+        Only this one needs a physical look. Everything else is either
+      {% else %}
+        Only these {{ candidates|length }} need a physical look. Everything else is either
+      {% endif %}
       confidently stocked, confidently empty, or not needed this week.
     </p>
+    {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
 
+    <form method="post" action="/audit">
     <div class="spaced">
     {% for c in candidates %}
       <div class="card">
@@ -50,20 +56,22 @@
           </span>
         </div>
 
-        <form method="post" action="/audit/{{ c.ingredient.id }}" class="controls" style="margin-top:var(--sp-4)">
+        <div class="controls" style="margin-top:var(--sp-4)">
           <div class="field">
             <label for="q{{ c.ingredient.id }}">Actual amount ({{ c.ingredient.base_unit }})</label>
-            <input id="q{{ c.ingredient.id }}" name="quantity" type="number" step="any"
+            <input id="q{{ c.ingredient.id }}" name="quantity_{{ c.ingredient.id }}" type="number" step="any"
                    inputmode="decimal" placeholder="{{ c.believed|round(1) }}">
           </div>
-          <button type="submit">Save</button>
-        </form>
-        <p class="note">Leave blank and save if the best guess looks right.</p>
+        </div>
+        <p class="note">Leave blank if the best guess looks right.</p>
       </div>
     {% endfor %}
     </div>
-
-    <div class="actions"><a class="btn primary" href="/shopping">Build the list</a></div>
+    <div class="actions">
+      <button class="primary" type="submit">Save</button>
+      <a class="btn" href="/shopping">Build the list</a>
+    </div>
+    </form>
   {% endif %}
 </main>
 {% endblock %}

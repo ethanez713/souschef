@@ -11,6 +11,10 @@
     {% endif %}
   </div>
 
+  {% if skipped %}
+    <div class="notice spaced">That meal is already on one of the days you picked, so it wasn't added again.</div>
+  {% endif %}
+
   {% for day, entries in by_day.items() %}
     {% if entries %}
     <div class="card tight {{ 'today' if day == today }}">

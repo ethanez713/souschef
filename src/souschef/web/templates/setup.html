@@ -5,8 +5,7 @@
   <h1>Claim this SousChef</h1>
   <p class="muted">
     Nobody has set this instance up yet, so this form creates the first account and makes
-    it the admin. It is reachable from the internet and stores your NYT session cookie, so
-    pick something strong — minimum 12 characters.
+    it the admin. Pick a strong password — minimum 12 characters.
   </p>
   <p class="note">
     Once you finish, this page stops working: everyone after you needs an invite you
@@ -17,7 +16,7 @@
     <div class="field">
       <label for="u">Username</label>
       <input id="u" name="username" autocomplete="username" value="{{ username or '' }}"
-             pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" autofocus required>
+             pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" autofocus required>
     </div>
     <div class="field">
       <label for="pw">Password</label>

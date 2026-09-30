@@ -20,11 +20,17 @@ from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
+    IngredientAlias,
     InventoryEvent,
     MealPlanEntry,
     MealSlot,
+    PantryItem,
+    Receipt,
+    ReceiptLine,
+    ReceiptStatus,
     Recipe,
     RecipeSource,
+    ShoppingListItem,
     StoredCredential,
     User,
 )
@@ -46,7 +52,7 @@ def test_protected_routes_redirect_when_signed_out(client: TestClient) -> None:
     for path in ("/", "/pantry", "/recipes", "/plan", "/shopping", "/audit", "/settings"):
         response = client.get(path)
         assert response.status_code == 303, path
-        assert response.headers["location"] == "/login"
+        assert response.headers["location"].split("?", 1)[0] == "/login"
 
 
 def test_setup_then_access(client: TestClient) -> None:
@@ -728,3 +734,372 @@ def test_shopping_page_points_at_the_pre_shop_check_only_when_it_has_something(
     signed_in: TestClient,
 ) -> None:
     assert 'href="/audit"' not in signed_in.get("/shopping").text
+
+
+def _pantry_row(session: Session, user: User, name: str) -> PantryItem | None:
+    session.expire_all()
+    ingredient = ing(session, name)
+    return session.scalar(
+        select(PantryItem).where(
+            PantryItem.user_id == user.id,
+            PantryItem.ingredient_id == ingredient.id,
+        )
+    )
+
+
+def test_a_bunch_of_cilantro_stays_on_the_form_instead_of_crashing(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    response = signed_in.post(
+        "/pantry/add", data={"name": "cilantro", "quantity": "1", "unit": "bunch"}
+    )
+    assert response.status_code == 400
+    assert "per-item weight" in response.text
+    assert "<details" in response.text and "open" in response.text
+    assert _pantry_row(seeded_session, web_user, "fresh cilantro") is None
+
+
+def test_a_bag_of_spinach_is_not_stored_as_a_sack_of_cement(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    response = signed_in.post(
+        "/pantry/add", data={"name": "spinach", "quantity": "1", "unit": "bag"}
+    )
+    assert response.status_code == 400
+    assert "one bag weighs" in response.text
+    assert _pantry_row(seeded_session, web_user, "spinach") is None
+
+
+def test_a_negative_pantry_amount_is_refused(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    response = signed_in.post(
+        "/pantry/add", data={"name": "pasta", "quantity": "-1", "unit": "lb"}
+    )
+    assert response.status_code == 400
+    assert "more than zero" in response.text
+    seeded_session.expire_all()
+    assert (
+        seeded_session.scalar(
+            select(CanonicalIngredient).where(CanonicalIngredient.name == "pasta")
+        )
+        is None
+    )
+
+    eggs = ing(seeded_session, "eggs")
+    corrected = signed_in.post(f"/pantry/{eggs.id}/level", data={"quantity": "-3"})
+    assert corrected.status_code == 400
+    assert "zero or more" in corrected.text
+    assert _pantry_row(seeded_session, web_user, "eggs") is None
+
+
+def test_a_finished_item_is_shown_as_out_rather_than_in_stock(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    eggs = ing(seeded_session, "eggs")
+    record_event(
+        seeded_session, web_user.id, eggs, reason=EventReason.PURCHASE, delta=4
+    )
+    seeded_session.commit()
+    assert signed_in.post(f"/pantry/{eggs.id}/level", data={"quantity": "0"}).status_code == 303
+
+    page = signed_in.get("/pantry")
+    assert "<h2>Out</h2>" in page.text
+    assert "eggs" in page.text
+    assert "High confidence" not in page.text
+    assert _pantry_row(seeded_session, web_user, "eggs").quantity == 0
+
+
+def test_a_missing_page_is_html(signed_in: TestClient) -> None:
+    response = signed_in.get("/recipes/99999")
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "No such recipe" in response.text
+    assert "Not found" in response.text
+    assert '"detail"' not in response.text
+
+
+def test_a_wrong_current_password_is_shown_on_the_settings_page(
+    signed_in: TestClient,
+) -> None:
+    response = signed_in.post(
+        "/settings/password",
+        data={"current": "not-the-password", "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+    )
+    assert response.status_code == 400
+    assert "Current password is incorrect" in response.text
+    assert signed_in.get("/settings").status_code == 200
+
+
+def test_an_unknown_staple_is_shown_on_the_settings_page(signed_in: TestClient) -> None:
+    response = signed_in.post("/settings/staples", data={"name": "garam masala"})
+    assert response.status_code == 400
+    assert "Unknown ingredient: garam masala" in response.text
+
+
+def test_sign_in_returns_to_the_page_that_was_requested(signed_in: TestClient) -> None:
+    signed_in.cookies.clear()
+    denied = signed_in.get("/pantry")
+    assert denied.headers["location"] == "/login?next=%2Fpantry"
+    assert 'name="next" value="/pantry"' in signed_in.get("/login?next=%2Fpantry").text
+
+    retry = signed_in.post(
+        "/login",
+        data={"username": WEB_USERNAME, "password": "nope-nope-nope-x", "next": "/pantry"},
+    )
+    assert 'name="next" value="/pantry"' in retry.text
+
+    logged_in = signed_in.post(
+        "/login",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "next": "/pantry"},
+    )
+    assert logged_in.headers["location"] == "/pantry"
+
+
+def test_sign_in_keeps_a_recipe_shared_from_the_phone(signed_in: TestClient) -> None:
+    signed_in.cookies.clear()
+    shared = "https://example.com/shakshuka"
+    denied = signed_in.get("/share", params={"url": shared})
+    assert denied.status_code == 303
+    assert denied.headers["location"].startswith("/login?next=")
+    assert shared in signed_in.get(denied.headers["location"]).text
+
+    logged_in = signed_in.post(
+        "/login",
+        data={
+            "username": WEB_USERNAME,
+            "password": WEB_PASSWORD,
+            "next": f"/share?url={shared}",
+        },
+    )
+    assert logged_in.headers["location"] == f"/share?url={shared}"
+    onward = signed_in.get(logged_in.headers["location"])
+    assert onward.headers["location"] == f"/recipes?import_url={shared}"
+
+
+def test_sign_in_drops_an_off_site_return_path(signed_in: TestClient) -> None:
+    signed_in.cookies.clear()
+    absolute = signed_in.post(
+        "/login",
+        data={
+            "username": WEB_USERNAME,
+            "password": WEB_PASSWORD,
+            "next": "https://evil.example/steal",
+        },
+    )
+    assert absolute.headers["location"] == "/"
+
+    signed_in.cookies.clear()
+    schemeless = signed_in.post(
+        "/login",
+        data={
+            "username": WEB_USERNAME,
+            "password": WEB_PASSWORD,
+            "next": "//evil.example",
+        },
+    )
+    assert schemeless.headers["location"] == "/"
+
+
+def test_the_same_meal_is_not_planned_twice_in_one_day(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Once",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/once",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    payload = {"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()}
+    assert signed_in.post("/plan/add", data=payload).headers["location"] == "/plan"
+
+    again = signed_in.post("/plan/add", data=payload)
+    assert again.headers["location"] == "/plan?skipped=1"
+    assert "wasn't added again" in signed_in.get("/plan?skipped=1").text
+
+    seeded_session.expire_all()
+    planned = seeded_session.scalars(
+        select(MealPlanEntry).where(MealPlanEntry.recipe_id == recipe.id)
+    ).all()
+    assert len(planned) == 1
+    bought = seeded_session.scalars(select(ShoppingListItem)).all()
+    assert len(bought) == 1
+    assert bought[0].needed_qty < 600
+
+
+def test_one_audit_save_records_every_answer(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    oil = ing(seeded_session, "olive oil")
+    eggs = ing(seeded_session, "eggs")
+    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=100)
+    record_event(seeded_session, web_user.id, eggs, reason=EventReason.PURCHASE, delta=2)
+    seeded_session.commit()
+
+    response = signed_in.post(
+        "/audit",
+        data={f"quantity_{oil.id}": "80", f"quantity_{eggs.id}": "5"},
+    )
+    assert response.status_code == 303
+    assert _pantry_row(seeded_session, web_user, "olive oil").quantity == 80
+    assert _pantry_row(seeded_session, web_user, "eggs").quantity == 5
+
+
+def test_applying_a_receipt_saves_the_line_on_the_same_form(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    eggs = ing(seeded_session, "eggs")
+    receipt = Receipt(
+        user_id=web_user.id,
+        image_path="eggs.png",
+        image_sha256="apply-form",
+        status=ReceiptStatus.NEEDS_REVIEW,
+    )
+    seeded_session.add(receipt)
+    seeded_session.flush()
+    line = ReceiptLine(
+        receipt_id=receipt.id,
+        position=0,
+        raw_text="LG EGGS",
+        parsed_quantity=12,
+        parsed_unit="count",
+        ingredient_id=eggs.id,
+    )
+    seeded_session.add(line)
+    seeded_session.commit()
+
+    response = signed_in.post(
+        f"/receipts/{receipt.id}/apply",
+        data={
+            f"ingredient_{line.id}": str(eggs.id),
+            f"quantity_{line.id}": "6",
+            f"unit_{line.id}": "count",
+            f"confirmed_{line.id}": "on",
+        },
+    )
+    assert response.status_code == 200
+    assert "1 line added" in response.text
+    seeded_session.expire_all()
+    assert seeded_session.get(Receipt, receipt.id).status == ReceiptStatus.APPLIED
+    assert _pantry_row(seeded_session, web_user, "eggs").quantity == 6
+
+
+def test_applying_a_receipt_with_nothing_ticked_does_not_lock_it(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    eggs = ing(seeded_session, "eggs")
+    receipt = Receipt(
+        user_id=web_user.id,
+        image_path="eggs2.png",
+        image_sha256="apply-empty",
+        status=ReceiptStatus.NEEDS_REVIEW,
+    )
+    seeded_session.add(receipt)
+    seeded_session.flush()
+    seeded_session.add(
+        ReceiptLine(
+            receipt_id=receipt.id,
+            position=0,
+            raw_text="LG EGGS",
+            ingredient_id=eggs.id,
+        )
+    )
+    seeded_session.commit()
+
+    response = signed_in.post(f"/receipts/{receipt.id}/apply")
+    assert response.status_code == 400
+    assert "No lines were confirmed" in response.text
+    seeded_session.expire_all()
+    assert seeded_session.get(Receipt, receipt.id).status == ReceiptStatus.NEEDS_REVIEW
+    assert _pantry_row(seeded_session, web_user, "eggs") is None
+
+
+def test_uploading_an_applied_receipt_again_does_not_rescan_it(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    import io
+
+    from PIL import Image
+
+    from souschef.ingest.receipt_service import create_receipt
+
+    buffer = io.BytesIO()
+    Image.new("RGB", (2, 2), "white").save(buffer, format="PNG")
+    png = buffer.getvalue()
+
+    receipt = create_receipt(seeded_session, web_user.id, png, "receipt.png")
+    receipt.status = ReceiptStatus.APPLIED
+    seeded_session.add(
+        ReceiptLine(
+            receipt_id=receipt.id,
+            position=0,
+            raw_text="EGGS",
+            is_confirmed=True,
+            ingredient_id=ing(seeded_session, "eggs").id,
+        )
+    )
+    seeded_session.commit()
+
+    response = signed_in.post(
+        "/receipts/upload",
+        files={"image": ("receipt.png", png, "image/png")},
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/receipts/{receipt.id}?already=1"
+    page = signed_in.get(response.headers["location"])
+    assert "already" in page.text.lower()
+
+    seeded_session.expire_all()
+    saved = seeded_session.get(Receipt, receipt.id)
+    assert saved.status == ReceiptStatus.APPLIED
+    assert [line.raw_text for line in saved.lines] == ["EGGS"]
+    assert saved.lines[0].is_confirmed
+
+
+def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Mirin Dish",
+            ingredients=["2 Tbsp mirin"],
+            servings=2,
+            source_url="https://example.com/mirin",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    line = recipe.ingredients[0]
+    assert line.ingredient_id is None
+    assert "steak" not in signed_in.get(f"/recipes/{recipe.id}").text
+
+    corrected = signed_in.post(
+        f"/recipes/{recipe.id}/match",
+        data={"raw_text": line.raw_text, "name": "mirin"},
+    )
+    assert corrected.status_code == 303
+    seeded_session.expire_all()
+    saved = seeded_session.get(Recipe, recipe.id)
+    assert saved.ingredients[0].ingredient.name == "mirin"
+    learned = seeded_session.scalars(select(IngredientAlias)).all()
+    assert any(alias.raw_text.casefold() == "mirin" for alias in learned)
+    assert not any("tbsp" in alias.raw_text.casefold() for alias in learned)
+
+    signed_in.post(
+        "/plan/add",
+        data={"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()},
+    )
+    assert "steak" not in signed_in.get("/shopping").text.casefold()
+
+
+def test_setup_username_pattern_escapes_the_hyphen(client: TestClient) -> None:
+    page = client.get("/login").text
+    assert 'pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{2,31}"' in page

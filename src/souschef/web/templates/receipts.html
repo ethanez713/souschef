@@ -4,6 +4,7 @@
 {% block content %}
 <main>
   <h1>Receipts</h1>
+  {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
 
   <div class="card">
     <form method="post" action="/receipts/upload" enctype="multipart/form-data">

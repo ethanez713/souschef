@@ -20,7 +20,12 @@ from souschef.core.inventory import record_event
 from souschef.core.matching import IngredientMatcher
 from souschef.core.units import UnitConversionError
 from souschef.ingest.ocr import OcrUnavailable, run_ocr
-from souschef.ingest.receipt import detect_store, detect_total, parse_receipt
+from souschef.ingest.receipt import (
+    detect_store,
+    detect_total,
+    parse_receipt,
+    redact_receipt_text,
+)
 from souschef.logconfig import get_logger
 from souschef.models import (
     CanonicalIngredient,
@@ -139,7 +144,9 @@ def scan_receipt(session: Session, receipt: Receipt) -> ScanSummary:
         session.flush()
         raise ReceiptError(str(exc)) from exc
 
-    receipt.raw_ocr = result.text
+    # Card numbers are not needed to review a match, and the raw text is what
+    # the review page prints.
+    receipt.raw_ocr = redact_receipt_text(result.text)
     receipt.ocr_confidence = result.mean_confidence
     receipt.engine = OcrEngine.RAPIDOCR
     receipt.store_name = detect_store(result.lines)
@@ -166,7 +173,7 @@ def scan_receipt(session: Session, receipt: Receipt) -> ScanSummary:
             ReceiptLine(
                 receipt_id=receipt.id,
                 position=position,
-                raw_text=parsed.raw_text[:300],
+                raw_text=redact_receipt_text(parsed.raw_text)[:300],
                 ocr_confidence=parsed.ocr_confidence,
                 parsed_description=parsed.description[:200] or None,
                 parsed_quantity=parsed.quantity,
@@ -217,11 +224,12 @@ def apply_receipt(
     receipt: Receipt,
     *,
     purchased_on: date | None = None,
-) -> list[str]:
+) -> tuple[int, list[str]]:
     """Write confirmed lines into the pantry ledger.
 
-    Returns human-readable warnings for lines that could not be applied, so a
-    partial success is reported honestly rather than silently swallowed.
+    Returns how many lines were written, and human-readable warnings for lines
+    that could not be applied. Confirming nothing does not mark the receipt
+    applied: that lock is permanent, and it used to throw away the review.
     """
     if receipt.status == ReceiptStatus.APPLIED:
         raise ReceiptError("This receipt has already been applied.")
@@ -292,18 +300,19 @@ def apply_receipt(
                 is_receipt=True,
             )
 
-    if purchased_on:
-        receipt.purchased_on = purchased_on
-    receipt.status = ReceiptStatus.APPLIED
-    session.flush()
-
     log.info(
         "Receipt %d applied: %d lines written to the pantry, %d warnings",
         receipt.id, applied, len(warnings),
     )
     if applied == 0:
         warnings.append("No lines were confirmed, so nothing was added to the pantry.")
-    return warnings
+        return 0, warnings
+
+    if purchased_on:
+        receipt.purchased_on = purchased_on
+    receipt.status = ReceiptStatus.APPLIED
+    session.flush()
+    return applied, warnings
 
 
 def _resolve_quantity(

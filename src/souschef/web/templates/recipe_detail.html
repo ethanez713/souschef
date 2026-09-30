@@ -19,6 +19,12 @@
       <div>Pantry updated. <a href="/plan">Back to plan</a> · <a href="/">Home</a></div>
     </div>
   {% endif %}
+  {% if notice %}
+    <div class="notice spaced">{{ icon('triangle-alert', 16) }}<div>{{ notice }}</div></div>
+  {% endif %}
+  {% if match_error %}
+    <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ match_error }}</div></div>
+  {% endif %}
 
   <div class="actions" style="margin-top:var(--sp-4)">
     <a class="btn primary" href="/recipes/{{ recipe.id }}/cook">{{ icon('chef-hat', 16) }}I cooked this</a>
@@ -28,8 +34,21 @@
   {% if requirements.unmatched %}
     <div class="notice spaced">
       {{ icon('triangle-alert', 16) }}
-      <div>Couldn't identify: {{ requirements.unmatched|join('; ') }}. These are ignored when checking your pantry.</div>
+      <div>Couldn't identify: {{ requirements.unmatched|join('; ') }}. These are ignored when checking your pantry until you name them.</div>
     </div>
+    {% for raw in requirements.unmatched %}
+      <form method="post" action="/recipes/{{ recipe.id }}/match" class="card tight">
+        <p>{{ raw }}</p>
+        <div class="controls">
+          <div class="field">
+            <label for="fix{{ loop.index }}">This is</label>
+            <input id="fix{{ loop.index }}" name="name" required placeholder="the ingredient">
+          </div>
+          <input type="hidden" name="raw_text" value="{{ raw }}">
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    {% endfor %}
   {% endif %}
 
   <h2>Ingredients</h2>
@@ -54,6 +73,17 @@
         <span class="badge {{ 'good' if ok else 'warn' }}">{{ 'have' if ok else 'buy' }}</span>
       {% endif %}
     </div>
+    <details class="card tight">
+      <summary>Wrong match</summary>
+      <form method="post" action="/recipes/{{ recipe.id }}/match" class="controls">
+        <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
+        <div class="field">
+          <label for="wrong{{ loop.index }}">This is actually</label>
+          <input id="wrong{{ loop.index }}" name="name" required placeholder="{{ r.ingredient.name }}">
+        </div>
+        <button type="submit">Save</button>
+      </form>
+    </details>
   {% endfor %}
 
   {% if recipe.instructions %}

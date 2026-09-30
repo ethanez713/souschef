@@ -13,6 +13,7 @@ actually broken.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -315,12 +316,21 @@ def test_registration_is_closed_without_an_invite(signed_in: TestClient) -> None
     assert "invalid, already used, or expired" in response.text
 
 
+def _invite_code(client: TestClient) -> str:
+    created = client.post("/settings/invites", data={"note": "for a friend"})
+    assert created.status_code == 303
+    assert "new_invite" not in created.headers["location"]
+    assert "code=" not in created.headers["location"]
+    page = client.get("/settings")
+    found = re.search(r"/join\?code=([A-Za-z0-9_\-]+)", page.text)
+    assert found is not None
+    return found.group(1)
+
+
 def test_invite_lets_exactly_one_person_join(
     signed_in: TestClient, seeded_session: Session
 ) -> None:
-    created = signed_in.post("/settings/invites", data={"note": "for a friend"})
-    assert created.status_code == 303
-    code = created.headers["location"].split("new_invite=")[1]
+    code = _invite_code(signed_in)
 
     signed_in.cookies.clear()
     joined = signed_in.post(
@@ -366,8 +376,7 @@ def test_a_new_account_starts_with_an_empty_kitchen(
     seeded_session.commit()
     assert "heavy cream" in signed_in.get("/pantry").text
 
-    created = signed_in.post("/settings/invites", data={"note": ""})
-    code = created.headers["location"].split("new_invite=")[1]
+    code = _invite_code(signed_in)
 
     signed_in.cookies.clear()
     signed_in.post(
@@ -405,8 +414,7 @@ def test_invite_codes_are_not_stored_in_the_clear(
 def test_only_admins_can_create_invites(
     signed_in: TestClient, seeded_session: Session
 ) -> None:
-    created = signed_in.post("/settings/invites", data={"note": ""})
-    code = created.headers["location"].split("new_invite=")[1]
+    code = _invite_code(signed_in)
 
     signed_in.cookies.clear()
     signed_in.post(

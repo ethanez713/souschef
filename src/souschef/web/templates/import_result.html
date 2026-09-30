@@ -5,6 +5,13 @@
 <main>
   <h1>Import failed</h1>
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
+  <form method="post" action="/recipes/import" class="card">
+    <div class="field">
+      <label for="url">Recipe URL</label>
+      <input id="url" name="url" type="url" required value="{{ url or '' }}">
+    </div>
+    <button class="primary" type="submit">Try again</button>
+  </form>
   <div class="actions"><a class="btn" href="/recipes?import=1">Back to recipes</a></div>
 </main>
 {% endblock %}

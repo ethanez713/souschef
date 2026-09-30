@@ -3,7 +3,8 @@
 {% set active = 'pantry' %}
 {% block content %}
 <main>
-  <h1>Applied with warnings</h1>
+  <h1>{% if warnings %}Applied with warnings{% else %}Added to the pantry{% endif %}</h1>
+  <p>{{ added }} line{{ '' if added == 1 else 's' }} added.</p>
   {% for w in warnings %}<div class="notice">{{ icon('triangle-alert', 16) }}<div>{{ w }}</div></div>{% endfor %}
   <div class="actions"><a class="btn primary" href="/pantry">Go to pantry</a></div>
 </main>

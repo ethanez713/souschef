@@ -5,6 +5,7 @@
   <h1>Sign in</h1>
   {% if error %}<div class="notice bad">{{ icon("triangle-alert", 16) }}<div>{{ error }}</div></div>{% endif %}
   <form method="post" action="/login">
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
     <div class="field">
       <label for="u">Username</label>
       <input id="u" name="username" autocomplete="username" value="{{ username or '' }}" autofocus required>

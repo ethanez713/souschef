@@ -213,6 +213,33 @@ def test_a_typed_name_is_exact(matcher: IngredientMatcher, seeded_session: Sessi
     assert matcher.match_exact("smoked paprika").name == "smoked paprika"
     assert IngredientMatcher(seeded_session).match_exact("smoked paprika").name == "smoked paprika"
 
+
+def _alias_owners(session: Session, text: str) -> set[int]:
+    from souschef.models.ingredient import IngredientAlias
+
+    return set(
+        session.scalars(
+            select(IngredientAlias.ingredient_id).where(IngredientAlias.normalized_text == text)
+        )
+    )
+
+
+def test_reseeding_prunes_a_dropped_seed_alias_and_keeps_a_taught_one(
+    matcher: IngredientMatcher, seeded_session: Session
+) -> None:
+    """An upgraded database still holds seed aliases the seed file no longer lists."""
+    from souschef.core.seeding import seed_ingredients
+
+    paprika_id = matcher.match_exact("paprika").ingredient_id
+    matcher.learn("smoked paprika", paprika_id, source=AliasSource.SEED)
+    matcher.learn("pimenton", paprika_id, source=AliasSource.MANUAL)
+    seeded_session.flush()
+
+    seed_ingredients(seeded_session)
+
+    assert paprika_id not in _alias_owners(seeded_session, "smoked paprika")
+    assert _alias_owners(seeded_session, "pimenton") == {paprika_id}
+
     # A correction the user actually made does outrank the catalog name.
     matcher.learn("smoked paprika", paprika_id, source=AliasSource.MANUAL)
     seeded_session.flush()

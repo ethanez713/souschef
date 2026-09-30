@@ -69,12 +69,16 @@ def seed_ingredients(session: Session, path: Path | None = None) -> tuple[int, i
         alias_texts.update(normalize(a) for a in rec.get("aliases", []))
         alias_texts.discard("")
 
-        known = {
-            a.normalized_text
-            for a in session.scalars(
-                select(IngredientAlias).where(IngredientAlias.ingredient_id == ing.id)
-            )
-        }
+        aliases = session.scalars(
+            select(IngredientAlias).where(IngredientAlias.ingredient_id == ing.id)
+        ).all()
+        # A seed alias the seed file dropped would keep resolving to the old food
+        # ("smoked paprika" stayed paprika after it became its own ingredient).
+        # Aliases a user taught are theirs and are never pruned.
+        for alias in aliases:
+            if alias.source == AliasSource.SEED and alias.normalized_text not in alias_texts:
+                session.delete(alias)
+        known = {a.normalized_text for a in aliases}
         for text in alias_texts - known:
             session.add(
                 IngredientAlias(

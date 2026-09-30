@@ -137,6 +137,28 @@ class IngredientPhysical:
     density_g_per_ml: float | None = None
     grams_per_count: float | None = None
     base_unit: str = BASE_MASS
+    # Named count-units that are not one of the ingredient's base counts.
+    # "head" of garlic is many cloves; "head" of lettuce is already one count.
+    count_factors: dict[str, float] | None = None
+
+
+# pint's ``bag`` is a 94 lb sack of cement. Kitchen speech ("a bag of spinach")
+# is not that unit, and guessing a weight here has stored 40 kg of leaves.
+_NOT_A_KITCHEN_UNIT = frozenset({
+    "bag", "bags", "box", "boxes", "jar", "jars", "carton", "cartons",
+    "bottle", "bottles", "pack", "packs", "packet", "packets",
+})
+
+# Garlic is counted in cloves (its grams_per_count is one clove). A typical
+# head is about 10 of those. Ingredients absent from this map keep every named
+# count-unit as one count, which is right for "1 head" of lettuce.
+_COUNT_FACTORS: dict[str, dict[str, float]] = {
+    "garlic": {"head": 10.0, "bulb": 10.0},
+}
+
+
+def count_factors_for(name: str) -> dict[str, float]:
+    return dict(_COUNT_FACTORS.get(name, ()))
 
 
 def normalize_unit(unit: str | None) -> str:
@@ -149,9 +171,19 @@ def normalize_unit(unit: str | None) -> str:
     return cleaned or BASE_COUNT
 
 
+def _count_scale(unit: str, physical: IngredientPhysical) -> float:
+    factors = physical.count_factors or {}
+    return float(factors.get(normalize_unit(unit), 1.0))
+
+
 def dimension_of(unit: str) -> str:
     """Classify a unit as mass, volume, or count."""
     normalized = normalize_unit(unit)
+    if normalized in _NOT_A_KITCHEN_UNIT:
+        raise UnitConversionError(
+            f"Don't know how much one {normalized} weighs. "
+            "Enter grams, ounces, pounds, or a count."
+        )
     if normalized in (BASE_COUNT, "piece", "clove", "slice", "can", "package",
                       "bunch", "head", "stalk", "sprig"):
         return Dimension.COUNT
@@ -188,7 +220,7 @@ def to_grams(quantity: float, unit: str, physical: IngredientPhysical) -> float:
         raise UnitConversionError(
             f"Cannot convert {quantity} {unit} to mass without a per-item weight"
         )
-    return quantity * physical.grams_per_count
+    return quantity * _count_scale(normalized, physical) * physical.grams_per_count
 
 
 def convert(
@@ -210,7 +242,8 @@ def convert(
     # Same dimension: pure pint, no ingredient facts needed.
     if src_dim == dst_dim:
         if src_dim == Dimension.COUNT:
-            return float(quantity)
+            scale = _count_scale(src, physical) / _count_scale(dst, physical)
+            return float(quantity) * scale
         return float(_ureg.Quantity(quantity, src).to(dst).magnitude)
 
     # Cross-dimension: route through grams.

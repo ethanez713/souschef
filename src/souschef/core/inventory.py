@@ -21,7 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from souschef.core.estimation import confidence_for_item
-from souschef.core.units import IngredientPhysical, UnitConversionError, to_base
+from souschef.core.units import (
+    IngredientPhysical,
+    UnitConversionError,
+    count_factors_for,
+    to_base,
+)
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
@@ -36,6 +41,7 @@ def physical_of(ingredient: CanonicalIngredient) -> IngredientPhysical:
         density_g_per_ml=ingredient.density_g_per_ml,
         grams_per_count=ingredient.grams_per_count,
         base_unit=ingredient.base_unit,
+        count_factors=count_factors_for(ingredient.name) or None,
     )
 
 
@@ -126,15 +132,17 @@ def record_event(
     unit) and converted before storage, so callers can speak in whatever units
     their source used.
     """
-    item = get_or_create_item(session, user_id, ingredient)
     physical = physical_of(ingredient)
-
+    # Convert before creating the pantry row. A unit we can't convert used to
+    # leave a zero row behind, because the row was inserted first and the
+    # request then caught the error and committed.
     if unit is not None and delta:
         delta_base = to_base(abs(delta), unit, physical)
         delta_base = -delta_base if delta < 0 else delta_base
     else:
         delta_base = delta
 
+    item = get_or_create_item(session, user_id, ingredient)
     new_quantity = max(0.0, item.quantity + delta_base)
 
     event = InventoryEvent(
@@ -201,10 +209,12 @@ def set_level(
     Recorded as a MANUAL delta rather than an overwrite so the ledger still
     explains the jump.
     """
-    item = get_or_create_item(session, user_id, ingredient)
+    if quantity < 0:
+        raise ValueError("Amount has to be zero or more.")
     target = (
         to_base(quantity, unit, physical_of(ingredient)) if unit is not None else quantity
     )
+    item = get_or_create_item(session, user_id, ingredient)
     return record_event(
         session,
         user_id,

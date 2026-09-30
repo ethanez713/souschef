@@ -14,6 +14,7 @@ from souschef.core.units import (
     IngredientPhysical,
     UnitConversionError,
     convert,
+    count_factors_for,
     dimension_of,
     humanize,
     normalize_unit,
@@ -102,6 +103,22 @@ def test_dimension_classification(unit: str, expected: str) -> None:
 def test_unknown_unit_raises() -> None:
     with pytest.raises(UnitConversionError):
         dimension_of("furlong-per-fortnight")
+
+
+def test_bag_is_not_converted_as_a_sack_of_cement() -> None:
+    """pint's bag is 94 lb. A bag of spinach is not that."""
+    with pytest.raises(UnitConversionError, match="bag"):
+        to_base(1, "bag", IngredientPhysical(base_unit="g", density_g_per_ml=0.2))
+
+
+def test_a_head_of_garlic_is_ten_cloves() -> None:
+    assert count_factors_for("garlic")["head"] == 10
+    assert count_factors_for("spinach") == {}
+    physical = IngredientPhysical(
+        base_unit="count", grams_per_count=3.0, count_factors={"head": 10.0}
+    )
+    assert to_base(1, "head", physical) == 10
+    assert to_base(2, "clove", physical) == 2
 
 
 @pytest.mark.parametrize(

@@ -1,60 +1,50 @@
 {% extends "base.html" %}
-{% from "macros.html" import confidence_pips %}
+{% from "icons.html" import icon %}
+{% from "macros.html" import confidence_pips, suggestion_card, day_label %}
 {% set active = 'home' %}
 {% block content %}
 <main>
   <h1>Tonight</h1>
 
   {% if expiring %}
-    <div class="alert">
-      <strong>Use soon:</strong>
-      {{ expiring|map(attribute='ingredient.name')|join(', ') }}
+    <div class="notice">
+      {{ icon('triangle-alert', 16) }}
+      <div><strong>Use soon:</strong> {{ expiring|map(attribute='ingredient.name')|join(', ') }}</div>
     </div>
+  {% endif %}
+
+  {% if upcoming %}
+    <div class="sechead"><h2>Planned</h2><a href="/plan">Plan</a></div>
+    {% for e in upcoming %}
+      <div class="card tight row {{ 'today' if e.plan_date == today }}">
+        <div class="stack">
+          {% if e.recipe %}
+            <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
+          {% else %}
+            <strong>{{ e.freeform_title }}</strong>
+          {% endif %}
+          <span class="meta">{{ day_label(e.plan_date, today) }}</span>
+        </div>
+        {% if e.recipe %}
+          <a class="btn small {{ 'primary' if e.plan_date == today }}" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>
+        {% endif %}
+      </div>
+    {% endfor %}
   {% endif %}
 
   {% if cook_now %}
-    <h2>Cook now</h2>
-    <div class="carousel">
-      {% for s in cook_now %}
-        <a class="card" href="/recipes/{{ s.recipe.id }}">
-          <div class="stack">
-            <h3>{{ s.recipe.title }}</h3>
-            <span class="muted small">{{ s.reason }}</span>
-          </div>
-          <span class="pill good">ready</span>
-        </a>
-      {% endfor %}
-    </div>
+    <div class="sechead"><h2>Cook now</h2><a href="/recipes">All recipes</a></div>
+    <div class="carousel">{% for s in cook_now %}{{ suggestion_card(s) }}{% endfor %}</div>
   {% endif %}
 
   {% if nearly %}
-    <h2>Missing a few things</h2>
-    <div class="carousel">
-      {% for s in nearly %}
-        <a class="card" href="/recipes/{{ s.recipe.id }}">
-          <div class="stack">
-            <h3>{{ s.recipe.title }}</h3>
-            <span class="muted small">{{ s.reason }}</span>
-          </div>
-          <span class="pill warn">{{ s.missing_count }} to buy</span>
-        </a>
-      {% endfor %}
-    </div>
+    <div class="sechead"><h2>Missing a few things</h2>{% if not cook_now %}<a href="/recipes">All recipes</a>{% endif %}</div>
+    <div class="carousel">{% for s in nearly %}{{ suggestion_card(s) }}{% endfor %}</div>
   {% endif %}
 
   {% if bigger_shop %}
-    <h2>Bigger shop</h2>
-    <div class="carousel">
-      {% for s in bigger_shop %}
-        <a class="card" href="/recipes/{{ s.recipe.id }}">
-          <div class="stack">
-            <h3>{{ s.recipe.title }}</h3>
-            <span class="muted small">{{ s.reason }}</span>
-          </div>
-          <span class="pill warn">{{ s.missing_count }} to buy</span>
-        </a>
-      {% endfor %}
-    </div>
+    <div class="sechead"><h2>Bigger shop</h2>{% if not cook_now and not nearly %}<a href="/recipes">All recipes</a>{% endif %}</div>
+    <div class="carousel">{% for s in bigger_shop %}{{ suggestion_card(s) }}{% endfor %}</div>
   {% endif %}
 
   {% if not cook_now and not nearly and not bigger_shop %}
@@ -64,46 +54,22 @@
         <a class="btn primary" href="/recipes">See all recipes</a>
       {% else %}
         <p>No recipes yet.</p>
-        <a class="btn primary" href="/recipes">Import one</a>
+        <a class="btn primary" href="/recipes?import=1">Import a recipe</a>
       {% endif %}
     </div>
   {% endif %}
 
-  {% if upcoming %}
-    <h2>Planned</h2>
-    {% for e in upcoming %}
-      <div class="card tight row">
-        <div class="stack">
-          {% if e.recipe %}
-            <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
-          {% else %}
-            <strong>{{ e.freeform_title }}</strong>
-          {% endif %}
-          <span class="muted small">{{ e.plan_date.strftime('%a %d %b') }}</span>
-        </div>
-        {% if e.recipe %}
-          <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">I cooked this</a>
-        {% endif %}
-      </div>
-    {% endfor %}
-  {% endif %}
-
   {% if stale %}
-    <h2>Least certain levels</h2>
+    <div class="sechead"><h2>Least certain levels</h2><a href="/pantry">Pantry</a></div>
     {% for v in stale %}
-      <div class="card tight row">
+      <a class="card tight row" href="/pantry?q={{ v.ingredient.name|urlencode }}">
         <div class="stack">
           <span>{{ v.ingredient.name }}</span>
-          <span class="muted small">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
+          <span class="meta num">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
         </div>
         {{ confidence_pips(v.confidence) }}
-      </div>
+      </a>
     {% endfor %}
   {% endif %}
-
-  <p class="muted small" style="margin-top:20px">
-    {{ pantry_count }} items tracked · {{ recipe_count }} recipes
-    · <a href="/recipes">All recipes</a>
-  </p>
 </main>
 {% endblock %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% set active = 'receipts' %}
+{% from "icons.html" import icon %}
+{% set active = 'pantry' %}
 {% block content %}
 <main>
   <h1>Receipts</h1>
@@ -11,25 +12,24 @@
         <!-- capture= opens the camera directly on Android -->
         <input id="img" name="image" type="file" accept="image/*" capture="environment" required>
       </div>
-      <button class="primary" type="submit">Scan</button>
+      <button class="primary" type="submit">{{ icon('camera', 16) }}Scan</button>
     </form>
-    <p class="muted small" style="margin-bottom:0">
+    <p class="note">
       Scanning runs on your own server. Nothing is sent anywhere else.
     </p>
   </div>
 
+  {% if receipts %}<h2>Recent</h2>{% endif %}
   {% for r in receipts %}
-    <a class="card" href="/receipts/{{ r.id }}" style="display:block;text-decoration:none;color:inherit">
-      <div class="row">
-        <div class="stack">
-          <strong>{{ r.store_name or 'Receipt' }}</strong>
-          <span class="muted small">
-            {{ r.created_at.strftime('%d %b') }}
-            {%- if r.total_amount %} · {{ '%.2f'|format(r.total_amount) }}{% endif %}
-          </span>
-        </div>
-        <span class="pill {{ 'good' if r.status|string == 'applied' else 'warn' }}">{{ r.status }}</span>
+    <a class="card tight row" href="/receipts/{{ r.id }}">
+      <div class="stack">
+        <strong>{{ r.store_name or 'Receipt' }}</strong>
+        <span class="meta num">
+          {{ r.created_at.strftime('%Y-%m-%d') }}
+          {%- if r.total_amount %} · {{ '%.2f'|format(r.total_amount) }}{% endif %}
+        </span>
       </div>
+      <span class="badge {{ 'good' if r.status|string == 'applied' else 'warn' }}">{{ r.status }}</span>
     </a>
   {% else %}
     <div class="empty">No receipts scanned yet.</div>

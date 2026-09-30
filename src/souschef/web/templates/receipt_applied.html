@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% set active = 'receipts' %}
+{% from "icons.html" import icon %}
+{% set active = 'pantry' %}
 {% block content %}
 <main>
   <h1>Applied with warnings</h1>
-  {% for w in warnings %}<div class="alert">{{ w }}</div>{% endfor %}
-  <p><a class="btn primary" href="/pantry">Go to pantry</a></p>
+  {% for w in warnings %}<div class="notice">{{ icon('triangle-alert', 16) }}<div>{{ w }}</div></div>{% endfor %}
+  <div class="actions"><a class="btn primary" href="/pantry">Go to pantry</a></div>
 </main>
 {% endblock %}

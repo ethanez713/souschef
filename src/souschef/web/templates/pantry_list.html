@@ -1,3 +1,4 @@
+{% from "icons.html" import icon %}
 {% from "macros.html" import confidence_pips %}
 {% for location, views in by_location.items() %}
   <h2>{{ location.replace('_', ' ').title() }}</h2>
@@ -5,37 +6,38 @@
     {% if v.is_staple %}
     <div class="card tight">
       <strong>{{ v.ingredient.name }}</strong>
-      <span class="muted small">staple · assumed stocked</span>
+      <span class="meta"> · staple, assumed stocked</span>
     </div>
     {% else %}
-    <div class="card tight">
+    <div class="card tight item">
+      <input class="edit-toggle" type="checkbox" id="edit{{ v.ingredient.id }}" aria-label="Set {{ v.ingredient.name }} level">
       <div class="row">
         <div class="stack">
-          <strong>{{ v.ingredient.name }}
-            {%- if v.ingredient.package_qty %}
-              <span class="muted small">· {{ v.ingredient.package_qty|humanize(v.ingredient.package_unit) }}</span>
-            {%- endif %}
-          </strong>
-          <span class="muted small">
-            {{ v.quantity|humanize(v.ingredient.base_unit) }}
-            {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%d %b') }}{% endif %}
+          <strong>{{ v.ingredient.name }}</strong>
+          <span class="meta">
+            <span class="num">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
+            {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
           </span>
         </div>
-        <div class="row" style="gap:10px">
+        <div class="trail">
           {{ confidence_pips(v.confidence) }}
-          <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline">
+          <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline"
+                hx-post="/pantry/{{ v.ingredient.id }}/confirm" hx-target="#pantry-list" hx-swap="innerHTML">
             <input type="hidden" name="q" value="{{ query }}">
-            <button class="small" type="submit" title="Confirm this level is right">Confirm</button>
+            <button class="iconbtn bare" type="submit" aria-label="Confirm {{ v.ingredient.name }} level is right" title="Confirm this level is right">{{ icon('check', 18) }}</button>
           </form>
+          <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
         </div>
       </div>
-      <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls" style="margin-top:8px">
+      <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
+            hx-post="/pantry/{{ v.ingredient.id }}/level" hx-target="#pantry-list" hx-swap="innerHTML">
         <input type="hidden" name="q" value="{{ query }}">
         <div class="field">
-          <input name="quantity" type="number" step="any" inputmode="decimal"
-                 placeholder="set to… ({{ v.ingredient.base_unit }})">
+          <input name="quantity" type="number" step="any" inputmode="decimal" required
+                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient.base_unit }})"
+                 placeholder="Set to… ({{ v.ingredient.base_unit }})">
         </div>
-        <button class="small" type="submit">Set</button>
+        <button type="submit">Set</button>
       </form>
     </div>
     {% endif %}
@@ -45,8 +47,8 @@
     {% if query %}
       <p>Nothing in the pantry matches “{{ query }}”.</p>
     {% else %}
-      <p>Nothing tracked yet.</p>
-      <a class="btn primary" href="/receipts">Scan a receipt</a>
+      <p>Nothing tracked yet. A receipt is the fastest way to fill the pantry.</p>
+      <a class="btn primary" href="/receipts">{{ icon('camera', 16) }}Scan a receipt</a>
     {% endif %}
   </div>
 {% endfor %}

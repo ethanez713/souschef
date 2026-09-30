@@ -23,7 +23,7 @@ is a failed journey, not a missing feature.
 2. **Check only the uncertain things before shopping.** Before I shop, I open
    `/audit`; it lists the handful of items whose uncertainty would change what I
    buy. I walk to the cupboard and confirm or correct each (`/audit/{id}`). → *Supported*
-   (audit ranks by P(wrong) × cost; staples down-weighted).
+   (audit ranks by P(wrong) × cost; staples never appear).
 
 3. **Shop the list.** I generate the list (`/shopping/generate`): grouped by aisle,
    rounded to real package sizes, each line saying which meal it's for. I tick items
@@ -37,7 +37,7 @@ is a failed journey, not a missing feature.
 5. **Cook and let it debit.** When I cook a planned meal I open its cook preview
    (`/recipes/{id}/cook`), nudge quantities to what I actually used, and tap
    **I cooked this** (`/recipes/{id}/cooked`). Levels drop; confidence on estimated
-   (bulk) items falls, staples are debited but stay silent. → *Supported*.
+   (bulk) items falls, staples are never debited or listed. → *Supported*.
 
 ## Pantry maintenance (between loops, ad hoc)
 

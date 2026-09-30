@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
 {% block content %}
-<main>
+<main class="auth">
   <h1>Create your account</h1>
 
-  {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+  {% if error %}<div class="notice bad">{{ icon("triangle-alert", 16) }}<div>{{ error }}</div></div>{% endif %}
 
   {% if invite_ok %}
     <p class="muted">
@@ -25,7 +26,7 @@
         <label for="pw2">Confirm</label>
         <input id="pw2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
       </div>
-      <button class="primary" type="submit">Create account</button>
+      <button class="primary block" type="submit">Create account</button>
     </form>
   {% else %}
     <p class="muted">

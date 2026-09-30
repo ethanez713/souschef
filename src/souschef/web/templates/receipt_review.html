@@ -1,37 +1,36 @@
 {% extends "base.html" %}
-{% set active = 'receipts' %}
+{% from "icons.html" import icon %}
+{% set active = 'pantry' %}
 {% block title %}Review receipt · SousChef{% endblock %}
 {% block content %}
 <main>
   <h1>Check this scan</h1>
-  <p class="muted small">
+  <p class="meta">
     {{ receipt.store_name or 'Receipt' }}
-    {%- if receipt.ocr_confidence %} · scan quality {{ (receipt.ocr_confidence * 100)|round|int }}%{% endif %}
+    {%- if receipt.ocr_confidence %} · scan quality <span class="num">{{ (receipt.ocr_confidence * 100)|round|int }}%</span>{% endif %}
+    · Nothing changes your pantry until you tick a line and apply.
   </p>
 
   {% if receipt.ocr_confidence and receipt.ocr_confidence < 0.75 %}
-    <div class="alert">
-      This scan came out poorly. Check each line carefully, or retake the photo
-      in better light.
+    <div class="notice spaced">
+      {{ icon('triangle-alert', 16) }}
+      <div>This scan came out poorly. Check each line carefully, or retake the photo in better light.</div>
     </div>
   {% endif %}
 
-  <p class="muted small">
-    Nothing changes your pantry until you tick a line and apply.
-  </p>
-
+  <div class="spaced">
   {% for line in lines %}
     <div class="card">
-      <div class="stack" style="margin-bottom:8px">
-        <code class="small">{{ line.raw_text }}</code>
+      <div class="row" style="margin-bottom:var(--sp-3)">
+        <code>{{ line.raw_text }}</code>
         {% if line.match_confidence < 0.88 %}
-          <span class="pill bad">needs a look</span>
+          <span class="badge warn">needs a look</span>
         {% endif %}
       </div>
       <form method="post" action="/receipts/{{ receipt.id }}/line/{{ line.id }}">
         <div class="field">
-          <label>Ingredient</label>
-          <select name="ingredient_id">
+          <label for="ing{{ line.id }}">Ingredient</label>
+          <select id="ing{{ line.id }}" name="ingredient_id">
             <option value="">— not food / skip —</option>
             {% for ing in ingredients %}
               <option value="{{ ing.id }}" {{ 'selected' if ing.id == line.ingredient_id }}>{{ ing.name }}</option>
@@ -40,16 +39,16 @@
         </div>
         <div class="controls">
           <div class="field">
-            <label>Amount</label>
-            <input name="quantity" type="number" step="any" inputmode="decimal"
+            <label for="qty{{ line.id }}">Amount</label>
+            <input id="qty{{ line.id }}" name="quantity" type="number" step="any" inputmode="decimal"
                    value="{{ line.parsed_quantity or '' }}">
           </div>
           <div class="field">
-            <label>Unit</label>
-            <input name="unit" value="{{ line.parsed_unit or '' }}" placeholder="g / oz / count">
+            <label for="unit{{ line.id }}">Unit</label>
+            <input id="unit{{ line.id }}" name="unit" value="{{ line.parsed_unit or '' }}" placeholder="g / oz / count">
           </div>
         </div>
-        <label style="display:flex;align-items:center;gap:10px;margin:10px 0">
+        <label class="check-line">
           <input type="checkbox" name="confirmed" {{ 'checked' if line.is_confirmed }}>
           <span>Add this to the pantry</span>
         </label>
@@ -57,8 +56,9 @@
       </form>
     </div>
   {% endfor %}
+  </div>
 
-  <form method="post" action="/receipts/{{ receipt.id }}/apply" style="margin-top:16px">
+  <form method="post" action="/receipts/{{ receipt.id }}/apply" class="actions">
     <button class="primary" type="submit">Apply ticked lines to pantry</button>
   </form>
 </main>

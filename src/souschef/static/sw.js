@@ -1,8 +1,10 @@
 // Minimal service worker. Its job is to make the app installable and to keep
 // the shell usable when the kitchen wifi drops -- not to cache application data,
 // which would risk showing stale pantry levels and defeat the whole premise.
-const SHELL = 'souschef-shell-v1';
-const ASSETS = ['/static/app.css', '/static/htmx.min.js'];
+const SHELL = 'souschef-shell-v2';
+const ASSETS = [
+  '/static/app.css', '/static/ds.css', '/static/fonts/fonts.css', '/static/htmx.min.js',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(SHELL).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

@@ -1,0 +1,26 @@
+{% set labels = {'cook_now': 'Cook now', 'nearly_there': 'Nearly there', 'reach': 'Bigger shop'} %}
+{% for surface, items in grouped.items() %}
+  {% if items %}
+    <h2>{{ labels.get(surface|string, surface) }}</h2>
+    {% for s in items %}
+      <a class="card tight row {{ 'tint-jade' if surface|string == 'cook_now' else ('tint-orange' if surface|string == 'nearly_there' else 'tint-grey') }}" href="/recipes/{{ s.recipe.id }}">
+        <div class="stack">
+          <h3>{{ s.recipe.title }}</h3>
+          <span class="meta">{{ s.reason }}</span>
+        </div>
+        <span class="badge {{ 'good' if surface|string == 'cook_now' else 'warn' }}">
+          {{ (s.availability * 100)|round|int }}% on hand
+        </span>
+      </a>
+    {% endfor %}
+  {% endif %}
+{% endfor %}
+{% if not grouped.values()|select|list %}
+  <div class="empty">
+    {% if query %}
+      <p>No recipe matches “{{ query }}”.</p>
+    {% else %}
+      <p>No recipes yet. Import one above.</p>
+    {% endif %}
+  </div>
+{% endif %}

@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% set active = 'plan' %}
+{% from "icons.html" import icon %}
+{% set active = 'recipes' %}
 {% block content %}
 <main>
   <h1>Import failed</h1>
-  <div class="alert bad">{{ error }}</div>
-  <p><a class="btn" href="/recipes">Back to recipes</a></p>
+  <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
+  <div class="actions"><a class="btn" href="/recipes?import=1">Back to recipes</a></div>
 </main>
 {% endblock %}

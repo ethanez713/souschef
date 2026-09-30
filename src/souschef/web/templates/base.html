@@ -1,42 +1,37 @@
+{% from "icons.html" import icon %}
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}SousChef{% endblock %}</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#12151a">
+<meta name="theme-color" content="#F8F6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1A1712" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
+<link rel="stylesheet" href="/static/ds.css">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
 {# Chrome only for signed-in users: the login, setup and join pages have no
-   account to sign out of and nowhere to navigate to. #}
-{% if user %}
+   account to manage and nowhere to navigate to. #}
 <header class="topbar">
   <a class="brand" href="/">SousChef</a>
-  <div class="row" style="gap:10px">
-    <a class="muted small" href="/settings">{{ user.display_name }}</a>
-    <form method="post" action="/logout" class="inline">
-      <button class="link" type="submit">Sign out</button>
-    </form>
-  </div>
+  {% if user %}
+  <a class="btn ghost iconbtn" href="/settings" aria-label="Settings" title="Settings">{{ icon('settings', 18) }}</a>
+  {% endif %}
 </header>
-{% else %}
-<header class="topbar">
-  <a class="brand" href="/">SousChef</a>
-</header>
-{% endif %}
 
 {% block content %}{% endblock %}
 
 {% if user %}
-<nav class="tabbar">
-  <a href="/" class="{{ 'on' if active == 'home' }}"><span>Home</span></a>
-  <a href="/pantry" class="{{ 'on' if active == 'pantry' }}"><span>Pantry</span></a>
-  <a href="/plan" class="{{ 'on' if active == 'plan' }}"><span>Plan</span></a>
-  <a href="/shopping" class="{{ 'on' if active == 'shopping' }}"><span>Shop</span></a>
-  <a href="/receipts" class="{{ 'on' if active == 'receipts' }}"><span>Scan</span></a>
+<nav class="tabbar" aria-label="Main">
+  <a href="/" class="{{ 'on' if active == 'home' }}">{{ icon('house', 18) }}<span>Home</span></a>
+  <a href="/recipes" class="{{ 'on' if active == 'recipes' }}">{{ icon('book-open', 18) }}<span>Recipes</span></a>
+  <a href="/plan" class="{{ 'on' if active == 'plan' }}">{{ icon('calendar-days', 18) }}<span>Plan</span></a>
+  <a href="/shopping" class="{{ 'on' if active == 'shopping' }}">{{ icon('shopping-basket', 18) }}<span>Shop</span></a>
+  <a href="/pantry" class="{{ 'on' if active == 'pantry' }}">{{ icon('refrigerator', 18) }}<span>Pantry</span></a>
 </nav>
 {% endif %}
 

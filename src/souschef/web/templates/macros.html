@@ -9,3 +9,40 @@
   {%- endfor -%}
 </span>
 {% endmacro %}
+
+{# Day-chip form that puts a recipe on the plan; used wherever a recipe can be planned. #}
+{% macro plan_form(recipe, days, today, label='Add to plan') %}
+<details class="plan">
+  <summary>{{ label }}</summary>
+  <form method="post" action="/plan/add">
+    <input type="hidden" name="recipe_id" value="{{ recipe.id }}">
+    <input type="hidden" name="servings" value="{{ recipe.servings }}">
+    <div class="daychips" role="group" aria-label="Days to cook {{ recipe.title }}">
+      {% for d in days %}
+        <label>
+          <input type="checkbox" name="plan_date" value="{{ d.isoformat() }}">
+          <span>{{ 'Today' if d == today else d.strftime('%a %-d') }}</span>
+        </label>
+      {% endfor %}
+    </div>
+    <button class="primary small" type="submit" style="margin-top:var(--sp-3)">Add to plan</button>
+  </form>
+</details>
+{% endmacro %}
+
+{% macro day_label(d, today) -%}
+{{ 'Today' if d == today else ('Tomorrow' if (d - today).days == 1 else d.strftime('%a %-d %b')) }}
+{%- endmacro %}
+
+{# One recipe suggestion as a carousel/list card, tinted and badged by its surface. #}
+{% macro suggestion_card(s) %}
+{% set surface = s.surface|string %}
+<a class="card {{ 'tint-jade' if surface == 'cook_now' else ('tint-orange' if surface == 'nearly_there' else 'tint-grey') }}" href="/recipes/{{ s.recipe.id }}">
+  <div class="stack">
+    <h3>{{ s.recipe.title }}</h3>
+    <span class="meta">{{ s.reason }}</span>
+  </div>
+  {% if surface == 'cook_now' %}<span class="badge good">Ready</span>
+  {% else %}<span class="badge warn">{{ s.missing_count }} to buy</span>{% endif %}
+</a>
+{% endmacro %}

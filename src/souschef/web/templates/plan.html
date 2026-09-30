@@ -1,29 +1,38 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
+{% from "macros.html" import plan_form, day_label %}
 {% set active = 'plan' %}
 {% block content %}
 <main>
-  <div class="row" style="margin-bottom:12px">
-    <h1 style="margin:0">This week</h1>
-    <a class="btn primary" href="/recipes">+ Add recipe</a>
+  <div class="page-head">
+    <h1>This week</h1>
+    {% if has_meals %}
+      <a class="btn primary" href="/audit">{{ icon('shopping-basket', 16) }}Shop for this plan</a>
+    {% endif %}
   </div>
-  <p><a class="btn" href="/audit">Ready to shop →</a></p>
 
   {% for day, entries in by_day.items() %}
     {% if entries %}
-    <div class="card tight">
-      <div class="row">
-        <strong>{{ day.strftime('%a %d %b') }}</strong>
-      </div>
+    <div class="card tight {{ 'today' if day == today }}">
+      <div class="daylabel">{{ day.strftime('%a %-d %b') }}{% if day == today %}<span class="rel">Today</span>{% elif (day - today).days == 1 %}<span class="rel">Tomorrow</span>{% endif %}</div>
       {% for e in entries %}
-        <div class="row" style="margin-top:8px">
-          {% if e.recipe %}
-            <a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>
-          {% else %}
-            <span>{{ e.freeform_title }}</span>
-          {% endif %}
-          <form method="post" action="/plan/{{ e.id }}/remove" class="inline">
-            <button class="small" type="submit">Remove</button>
-          </form>
+        <div class="entry">
+          <div class="stack">
+            {% if e.recipe %}
+              <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
+            {% else %}
+              <strong>{{ e.freeform_title }}</strong>
+            {% endif %}
+            {% if e.cooked_at %}<span class="meta">Cooked</span>{% endif %}
+          </div>
+          <div class="btns">
+            {% if e.recipe and not e.cooked_at %}
+              <a class="btn small quiet" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>
+            {% endif %}
+            <form method="post" action="/plan/{{ e.id }}/remove" class="inline">
+              <button class="iconbtn bare small" type="submit" aria-label="Remove from plan" title="Remove from plan">{{ icon('x', 16) }}</button>
+            </form>
+          </div>
         </div>
       {% endfor %}
     </div>
@@ -31,29 +40,22 @@
   {% endfor %}
 
   {% if not has_meals %}
-    <div class="empty">Nothing planned yet. Pick days below and add a meal.</div>
+    <div class="empty">Nothing planned yet. Pick a meal below and choose its days.</div>
   {% endif %}
 
-  <h2>Add a meal</h2>
+  <div class="sechead"><h2>Add a meal</h2><a href="/recipes">All recipes</a></div>
   {% for s in suggestions %}
     <div class="card tight">
-      <div class="stack" style="margin-bottom:8px">
+      <div class="stack">
         <a href="/recipes/{{ s.recipe.id }}"><strong>{{ s.recipe.title }}</strong></a>
-        <span class="muted small">{{ s.reason }}</span>
+        <span class="meta">{{ s.reason }}</span>
       </div>
-      <form method="post" action="/plan/add">
-        <input type="hidden" name="recipe_id" value="{{ s.recipe.id }}">
-        <input type="hidden" name="servings" value="{{ s.recipe.servings }}">
-        <div class="daychips" role="group" aria-label="Days to cook this">
-          {% for d in days %}
-            <label>
-              <input type="checkbox" name="plan_date" value="{{ d.isoformat() }}">
-              <span>{{ d.strftime('%a %-d') }}</span>
-            </label>
-          {% endfor %}
-        </div>
-        <button class="small primary" type="submit" style="margin-top:10px">Add</button>
-      </form>
+      {{ plan_form(s.recipe, days, today, label='Choose days') }}
+    </div>
+  {% else %}
+    <div class="empty">
+      <p>No recipes to plan from yet.</p>
+      <a class="btn primary" href="/recipes?import=1">Import a recipe</a>
     </div>
   {% endfor %}
 </main>

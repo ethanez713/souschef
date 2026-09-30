@@ -1,0 +1,438 @@
+/* Ethan design system tokens, concatenated from ethan_design_system/tokens/ (fonts excluded: see fonts/fonts.css). Values change in the design system, not here. */
+:root,[data-theme="light"]{
+/* --- Neutrals: warm dark grey through off-white. No pure black, no pure white. --- */
+--ink-900:#211D18;--ink-800:#2E2924;--ink-700:#3E3830;--ink-600:#574F45;--ink-500:#70685B;--ink-400:#93897A;--ink-300:#B5AC9C;--ink-200:#D8D1C5;--ink-100:#E8E2D8;--ink-050:#F2EFE8;
+
+/* --- Off-white ground. Three warmth/darkness steps; --paper-0 is the lightest surface in the system. --- */
+--paper-0:#FDFCF9;--paper-1:#F8F6F1;--paper-2:#F1EDE5;
+/* shorthand aliases */
+--paper:var(--paper-1);--paper-deep:var(--paper-2);
+
+/* --- Warm orange, slightly yellow-leaning: the single brand accent --- */
+--orange-700:#944A17;--orange-600:#BF6321;--orange-500:#DD7A32;--orange-400:#E9A05E;--orange-200:#F4D2AC;--orange-100:#FBE8D6;--orange-050:#FDF5EE;
+
+/* --- Semantic hues (used sparingly, never as decoration) --- */
+--jade-600:#0B6E5D;--jade-500:#0E8A73;--jade-100:#DCF0EB;
+--amber-600:#8A6403;--amber-500:#F0C41A;--amber-100:#FDF4CB;
+--azure-600:#145A76;--azure-500:#1A7296;--azure-100:#DCEDF4; /* info: a 75/25 mix of --success and --danger, so it sits between them, much nearer success */
+
+/* Danger is deliberately OUTSIDE the brand family: a near-pure neon hazard blue
+   (poison / contamination / hazard signage) so destructive actions can never be
+   confused with the orange accent's primary actions. */
+--hazard-600:#3A16F5;--hazard-500:#5326FF;--hazard-200:#C9C2FF;--hazard-100:#E8E5FF;
+
+/* --- Semantic aliases: prefer these in components --- */
+--bg-app:var(--paper-1);
+--bg-sunken:var(--paper-2);
+--surface-card:var(--paper-0);
+--surface-raised:var(--paper-0);
+--surface-hover:var(--ink-050);
+--surface-active:var(--ink-100);
+--surface-inverse:var(--ink-800);
+--surface-accent-soft:var(--orange-050);
+
+--text-heading:var(--ink-900);
+--text-body:var(--ink-700);
+--text-muted:var(--ink-600);
+--text-faint:var(--ink-500);/* 400 is a border/dot step, never text: it cannot clear 4.5:1 on paper */
+--text-inverse:var(--paper-0);
+/* Foreground on a fill. The accent carries warm white in both themes; on the pale accent
+   tint the label is --orange-700 with a dimmed warm brown for secondary copy. Grey on
+   orange is forbidden at any lightness. --knob is the thumb on a filled track. */
+--on-accent:#FFF8F1;
+--on-danger:#FDFCFF;
+--on-accent-soft:var(--orange-700);
+--on-accent-soft-muted:#8A6440;
+--knob:var(--paper-0);
+--text-accent:var(--orange-700);/* 600 lands at 4.1:1 on paper, below AA for body text */
+--text-link:var(--orange-700);
+--text-link-hover:#6E3510;
+
+--border-subtle:var(--ink-100);
+--border-default:var(--ink-200);
+--border-strong:var(--ink-300);
+--border-accent:var(--orange-500);
+--focus-ring:var(--orange-500);
+
+--accent:var(--orange-500);
+--accent-hover:var(--orange-600);/* the accent label is white, so states darken — same direction in both themes */
+--accent-press:var(--orange-700);
+--accent-quiet:var(--orange-100);
+
+--success:var(--jade-500);--success-soft:var(--jade-100);
+--warning:var(--amber-500);--warning-soft:var(--amber-100);
+--text-danger:var(--hazard-600);/* error copy on a ground; --danger is the fill, never the text */
+--danger:var(--hazard-500);--danger-hover:var(--hazard-600);--danger-soft:var(--hazard-100);--danger-text:var(--hazard-600);
+--info:var(--azure-500);--info-soft:var(--azure-100);
+
+/* --- Ink-on-paper motifs --- */
+--ink-rule:rgba(33,29,24,.14);      /* hairline pen rule over paper */
+--ink-rule-strong:rgba(33,29,24,.28);
+--ink-wash:rgba(33,29,24,.06);      /* faintest wash for sunken/hover fills */
+--marker:var(--orange-200);          /* highlighter pass behind text */
+--marker-soft:var(--orange-100);
+--underline-ink:var(--orange-500);   /* pen underline under links and titles */
+
+
+/* CONTENT ENCODING — hues that carry meaning INSIDE content (a grammatical role, a match
+   class, a diff state), as distinct from category tints, which organise items in a list.
+   These are FOREGROUND colours: text or a glyph on paper, never a fill, never labelled on
+   top of. Each clears 4.5:1 on all three paper steps and on --surface-raised, in both
+   themes. --encode-neutral is the unclassified case. */
+--encode-red:#A8321F;--encode-blue:#1F4FA8;--encode-violet:#6B2E9E;--encode-neutral:var(--ink-600);
+
+/* Category tints — four hue-named pairs for whatever a product categorises: lists, tags,
+   series, filters, calendars. Each is a solid + soft fill. The solid step doubles as the
+   LABEL and 2px left border on its own soft fill, so each pair clears 4.5:1 internally. */
+--tint-azure:var(--azure-600);--tint-azure-soft:var(--azure-100);
+--tint-jade:var(--jade-600);--tint-jade-soft:var(--jade-100);
+--tint-orange:var(--orange-700);--tint-orange-soft:var(--orange-100);
+--tint-grey:var(--ink-600);--tint-grey-soft:var(--ink-050);
+}
+
+/* ============================================================
+   DARK THEME
+   ------------------------------------------------------------
+   Set data-theme on <html>, or on any subtree for side-by-side
+   previews and dark sections inside a light page. "dark" and
+   "light" pin a theme, "auto" follows the OS; no attribute means
+   light.
+
+   Both blocks below are declared at specificity (0,2,0) so they
+   beat any bare :root declaration regardless of import order,
+   while the :not(:root) half keeps dark subtrees working.
+
+   Four rules govern both themes:
+     1. Ramp steps are ROLES, not lightness. 900/700/600 is the
+        foreground end and 050/100/200 the fill end in both;
+        dark reverses lightness and keeps the roles. Surfaces
+        follow the same principle: --paper-0 is the card and
+        --paper-2 the sunken panel in both themes, and a raised
+        surface moves AWAY from the app ground toward the
+        theme's foreground end.
+     2. The brand colour does not move. --orange-500 is #DD7A32
+        in both themes and carries a warm white label in both.
+     3. A soft fill is a lightness lift with a hint of hue, held
+        to oklch C/L <= .09.
+     4. Semantic aliases are re-declared per scope, never
+        inherited.
+   ============================================================ */
+
+:root[data-theme="dark"],[data-theme="dark"]:not(:root){
+color-scheme:dark;
+
+/* GROUNDS — warm charcoal, same hue family as the light stock. Roles match light,
+   lightness reverses: --paper-0 is always the raised card surface, --paper-2 the sunken one. */
+--paper-0:#232019;--paper-1:#1A1712;--paper-2:#12100C;
+--paper:var(--paper-1);--paper-deep:var(--paper-2);
+
+/* INK — role-flipped: 900 is the brightest foreground, 050 the faintest lift off the ground. */
+--ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#9A9385;--ink-400:#6F6A5E;--ink-300:#565046;--ink-200:#423D34;--ink-100:#322E27;--ink-050:#2A2620;
+
+/* ORANGE — --orange-500 is the same #DD7A32 as light and carries the same warm white
+   label. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
+--orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#493B31;--orange-100:#372F28;--orange-050:#2E2925;
+
+/* SEMANTIC HUES — 600 for text and icons, 500 for fills and dots, 100 for soft backgrounds.
+   Status softs run more saturated than category tints: a status chip is meant to signal.
+   Each 600 clears 4.5:1 on its own 100. */
+--jade-600:#8FE9C4;--jade-500:#33B98A;--jade-100:#123A2C;
+--amber-600:#FFD98A;--amber-500:#E5AF2B;--amber-100:#3E2D07;
+--azure-600:#8FD3F0;--azure-500:#3FA6D2;--azure-100:#0E3346;
+
+/* Danger sits outside the brand family. The dark fill lifts to #6A3DFF so white on it
+   clears 5.5:1 against the darker ground. */
+--hazard-600:#BCA9FF;--hazard-500:#6A3DFF;--hazard-200:#4A2ADB;--hazard-100:#251852;
+
+/* Semantic aliases are re-declared, not inherited: a custom property resolves where it is
+   DECLARED, so a dark subtree inside a light page would otherwise keep the light values. */
+--bg-app:var(--paper-1);
+--bg-sunken:var(--paper-2);
+--surface-card:var(--paper-0);
+--surface-raised:#2B271F;
+--surface-hover:#2C2820;
+--surface-active:#363126;
+--surface-inverse:#EDE8DF;
+--surface-accent-soft:var(--orange-050);
+
+--text-heading:var(--ink-900);
+--text-body:var(--ink-700);
+--text-muted:var(--ink-600);
+--text-faint:var(--ink-500);/* 400 is a border/dot step, never text */
+--text-inverse:var(--paper-1);
+
+/* Foreground on a fill. The accent carries warm white in both themes. On the soft accent
+   fill the label is a mid-bright orange, not the brightest step. Grey on orange is
+   forbidden at any lightness — --on-accent-soft-muted is a dimmed warm tone. */
+--on-accent:#FFF8F1;
+--on-accent-soft:#EAB988;
+--on-accent-soft-muted:#C3A184;
+--on-danger:#FFFFFF;
+--knob:#FFF8F1;
+
+--text-accent:var(--orange-700);
+--text-link:var(--orange-700);
+--text-link-hover:#FFD9B4;
+
+--border-subtle:var(--ink-100);
+--border-default:var(--ink-200);
+--border-strong:var(--ink-300);
+--border-accent:var(--orange-500);
+--focus-ring:var(--orange-500);
+
+/* The accent label is white, so states darken in both themes. */
+--accent:var(--orange-500);
+--accent-hover:#E68A42;
+--accent-press:var(--orange-400);
+--accent-quiet:var(--orange-100);
+
+--success:var(--jade-500);--success-soft:var(--jade-100);
+--warning:var(--amber-500);--warning-soft:var(--amber-100);
+--text-danger:var(--hazard-600);/* error copy on a ground; --danger is the fill, never the text */
+--danger:var(--hazard-500);--danger-hover:#7C55FF;--danger-soft:var(--hazard-100);--danger-text:var(--hazard-600);
+--info:var(--azure-500);--info-soft:var(--azure-100);
+
+/* Ink motifs, light-on-dark. */
+--ink-rule:rgba(247,244,237,.14);
+--ink-rule-strong:rgba(247,244,237,.26);
+--ink-wash:rgba(247,244,237,.06);
+--marker:#504032;
+--marker-soft:var(--orange-100);
+--underline-ink:var(--orange-500);
+
+/* Elevation reads from the hairline ring, not the blur: a soft black shadow is invisible
+   on a dark ground, so every raised surface carries a 1px light ring as well. */
+--shadow-none:none;
+--shadow-hairline:0 1px 0 rgba(0,0,0,.30);
+--shadow-1:0 1px 2px rgba(0,0,0,.40),0 0 0 1px rgba(247,244,237,.07);
+--shadow-2:0 3px 10px rgba(0,0,0,.48),0 0 0 1px rgba(247,244,237,.08);
+--shadow-3:0 16px 38px -12px rgba(0,0,0,.66),0 0 0 1px rgba(247,244,237,.10);
+--shadow-inset:inset 0 1px 0 rgba(247,244,237,.06);
+--ring-focus:0 0 0 2px var(--paper-1),0 0 0 4px color-mix(in oklch,var(--focus-ring) 60%,transparent);
+--scrim:rgba(8,7,5,.66)/* @kind color */;
+
+
+/* CONTENT ENCODING — hues that carry meaning INSIDE content (a grammatical role, a match
+   class, a diff state), as distinct from category tints, which organise items in a list.
+   These are FOREGROUND colours: text or a glyph on paper, never a fill, never labelled on
+   top of. Each clears 4.5:1 on all three paper steps and on --surface-raised, in both
+   themes. --encode-neutral is the unclassified case. */
+--encode-red:#E88B7A;--encode-blue:#8FB6E8;--encode-violet:#C4A2EA;--encode-neutral:var(--ink-600);
+
+/* CATEGORY TINTS — four hue-named pairs. Every soft fill obeys two numbers:
+     luminance      1.13-1.25:1 off the card ground, so the fill reads as a distinct block
+     relative chroma (oklch C/L)  <= .09, past which a dark fill becomes a coloured panel
+   Absolute chroma does not predict the second: the same C is a whisper at L .94 and a
+   block at L .28, so a light tint's chroma cannot be copied into dark. These sit at
+   L .310, C/L .02-.06. The solid step doubles as the label and 2px left border on its
+   own soft fill, so it sits mid-ramp and clears 4.5:1 there. */
+--tint-azure:#7FB8D6;--tint-azure-soft:#283238;
+--tint-jade:#7FCCAA;--tint-jade-soft:#28332F;
+--tint-orange:#D9A876;--tint-orange-soft:var(--orange-100);
+--tint-grey:#B5AEA3;--tint-grey-soft:#32302D;
+}
+
+/* A dark (or light) subtree paints its own ground, so previews can sit side by side. */
+:where([data-theme]:not(:root)){background:var(--bg-app);color:var(--text-body)}
+
+/* data-theme="auto" hands the choice to the OS. Identical body, different selector. */
+@media (prefers-color-scheme:dark){
+:root[data-theme="auto"],[data-theme="auto"]:not(:root){
+color-scheme:dark;
+
+/* GROUNDS — warm charcoal, same hue family as the light stock. Roles match light,
+   lightness reverses: --paper-0 is always the raised card surface, --paper-2 the sunken one. */
+--paper-0:#232019;--paper-1:#1A1712;--paper-2:#12100C;
+--paper:var(--paper-1);--paper-deep:var(--paper-2);
+
+/* INK — role-flipped: 900 is the brightest foreground, 050 the faintest lift off the ground. */
+--ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#9A9385;--ink-400:#6F6A5E;--ink-300:#565046;--ink-200:#423D34;--ink-100:#322E27;--ink-050:#2A2620;
+
+/* ORANGE — --orange-500 is the same #DD7A32 as light and carries the same warm white
+   label. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
+--orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#493B31;--orange-100:#372F28;--orange-050:#2E2925;
+
+/* SEMANTIC HUES — 600 for text and icons, 500 for fills and dots, 100 for soft backgrounds.
+   Status softs run more saturated than category tints: a status chip is meant to signal.
+   Each 600 clears 4.5:1 on its own 100. */
+--jade-600:#8FE9C4;--jade-500:#33B98A;--jade-100:#123A2C;
+--amber-600:#FFD98A;--amber-500:#E5AF2B;--amber-100:#3E2D07;
+--azure-600:#8FD3F0;--azure-500:#3FA6D2;--azure-100:#0E3346;
+
+/* Danger sits outside the brand family. The dark fill lifts to #6A3DFF so white on it
+   clears 5.5:1 against the darker ground. */
+--hazard-600:#BCA9FF;--hazard-500:#6A3DFF;--hazard-200:#4A2ADB;--hazard-100:#251852;
+
+/* Semantic aliases are re-declared, not inherited: a custom property resolves where it is
+   DECLARED, so a dark subtree inside a light page would otherwise keep the light values. */
+--bg-app:var(--paper-1);
+--bg-sunken:var(--paper-2);
+--surface-card:var(--paper-0);
+--surface-raised:#2B271F;
+--surface-hover:#2C2820;
+--surface-active:#363126;
+--surface-inverse:#EDE8DF;
+--surface-accent-soft:var(--orange-050);
+
+--text-heading:var(--ink-900);
+--text-body:var(--ink-700);
+--text-muted:var(--ink-600);
+--text-faint:var(--ink-500);/* 400 is a border/dot step, never text */
+--text-inverse:var(--paper-1);
+
+/* Foreground on a fill. The accent carries warm white in both themes. On the soft accent
+   fill the label is a mid-bright orange, not the brightest step. Grey on orange is
+   forbidden at any lightness — --on-accent-soft-muted is a dimmed warm tone. */
+--on-accent:#FFF8F1;
+--on-accent-soft:#EAB988;
+--on-accent-soft-muted:#C3A184;
+--on-danger:#FFFFFF;
+--knob:#FFF8F1;
+
+--text-accent:var(--orange-700);
+--text-link:var(--orange-700);
+--text-link-hover:#FFD9B4;
+
+--border-subtle:var(--ink-100);
+--border-default:var(--ink-200);
+--border-strong:var(--ink-300);
+--border-accent:var(--orange-500);
+--focus-ring:var(--orange-500);
+
+/* The accent label is white, so states darken in both themes. */
+--accent:var(--orange-500);
+--accent-hover:#E68A42;
+--accent-press:var(--orange-400);
+--accent-quiet:var(--orange-100);
+
+--success:var(--jade-500);--success-soft:var(--jade-100);
+--warning:var(--amber-500);--warning-soft:var(--amber-100);
+--text-danger:var(--hazard-600);/* error copy on a ground; --danger is the fill, never the text */
+--danger:var(--hazard-500);--danger-hover:#7C55FF;--danger-soft:var(--hazard-100);--danger-text:var(--hazard-600);
+--info:var(--azure-500);--info-soft:var(--azure-100);
+
+/* Ink motifs, light-on-dark. */
+--ink-rule:rgba(247,244,237,.14);
+--ink-rule-strong:rgba(247,244,237,.26);
+--ink-wash:rgba(247,244,237,.06);
+--marker:#504032;
+--marker-soft:var(--orange-100);
+--underline-ink:var(--orange-500);
+
+/* Elevation reads from the hairline ring, not the blur: a soft black shadow is invisible
+   on a dark ground, so every raised surface carries a 1px light ring as well. */
+--shadow-none:none;
+--shadow-hairline:0 1px 0 rgba(0,0,0,.30);
+--shadow-1:0 1px 2px rgba(0,0,0,.40),0 0 0 1px rgba(247,244,237,.07);
+--shadow-2:0 3px 10px rgba(0,0,0,.48),0 0 0 1px rgba(247,244,237,.08);
+--shadow-3:0 16px 38px -12px rgba(0,0,0,.66),0 0 0 1px rgba(247,244,237,.10);
+--shadow-inset:inset 0 1px 0 rgba(247,244,237,.06);
+--ring-focus:0 0 0 2px var(--paper-1),0 0 0 4px color-mix(in oklch,var(--focus-ring) 60%,transparent);
+--scrim:rgba(8,7,5,.66)/* @kind color */;
+
+
+/* CONTENT ENCODING — hues that carry meaning INSIDE content (a grammatical role, a match
+   class, a diff state), as distinct from category tints, which organise items in a list.
+   These are FOREGROUND colours: text or a glyph on paper, never a fill, never labelled on
+   top of. Each clears 4.5:1 on all three paper steps and on --surface-raised, in both
+   themes. --encode-neutral is the unclassified case. */
+--encode-red:#E88B7A;--encode-blue:#8FB6E8;--encode-violet:#C4A2EA;--encode-neutral:var(--ink-600);
+
+/* CATEGORY TINTS — four hue-named pairs. Every soft fill obeys two numbers:
+     luminance      1.13-1.25:1 off the card ground, so the fill reads as a distinct block
+     relative chroma (oklch C/L)  <= .09, past which a dark fill becomes a coloured panel
+   Absolute chroma does not predict the second: the same C is a whisper at L .94 and a
+   block at L .28, so a light tint's chroma cannot be copied into dark. These sit at
+   L .310, C/L .02-.06. The solid step doubles as the label and 2px left border on its
+   own soft fill, so it sits mid-ramp and clears 4.5:1 there. */
+--tint-azure:#7FB8D6;--tint-azure-soft:#283238;
+--tint-jade:#7FCCAA;--tint-jade-soft:#28332F;
+--tint-orange:#D9A876;--tint-orange-soft:var(--orange-100);
+--tint-grey:#B5AEA3;--tint-grey-soft:#32302D;
+}}
+
+:root{
+--font-serif:"Piazzolla",Georgia,"Times New Roman",serif;
+--font-sans:"Instrument Sans","Helvetica Neue",Arial,sans-serif;
+--font-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+/* Display and headings are serif; dense UI text and controls are sans. */
+--font-display:var(--font-serif);
+--font-heading:var(--font-serif);
+--font-ui:var(--font-sans);
+
+/* Compact ramp. Serif display sizes carry lighter tracking than a grotesk would. */
+--fs-display-1:46px;--lh-display-1:1.04/* @kind font */;--tr-display-1:-0.018em/* @kind font */;
+--fs-display-2:35px;--lh-display-2:1.08/* @kind font */;--tr-display-2:-0.015em/* @kind font */;
+--fs-title-1:25px;--lh-title-1:1.16/* @kind font */;--tr-title-1:-0.012em/* @kind font */;
+--fs-title-2:20px;--lh-title-2:1.22/* @kind font */;--tr-title-2:-0.009em/* @kind font */;
+--fs-title-3:16px;--lh-title-3:1.28/* @kind font */;--tr-title-3:-0.006em/* @kind font */;
+--fs-body:14px;--lh-body:1.5/* @kind font */;--tr-body:0em/* @kind font */;
+--fs-body-sm:13px;--lh-body-sm:1.45/* @kind font */;--tr-body-sm:0em/* @kind font */;
+--fs-caption:12px;--lh-caption:1.35/* @kind font */;--tr-caption:0.002em/* @kind font */;
+--fs-micro:11px;--lh-micro:1.3/* @kind font */;--tr-micro:0.04em/* @kind font */;
+/* Annotation: mono only, one or two words, never a sentence and never interactive. At this
+   size the 4.5:1 floor applies with no large-text allowance. */
+--fs-annotation:9px;--lh-annotation:1.25/* @kind font */;--tr-annotation:0.06em/* @kind font */;
+
+--fw-regular:400/* @kind font */;--fw-medium:500/* @kind font */;--fw-semibold:600/* @kind font */;--fw-bold:700/* @kind font */;
+--label-caps:0.075em/* @kind font */; /* letter-spacing for uppercase micro labels */
+}
+
+:root{
+/* 2px base. Dense by default: UI padding rarely exceeds --sp-4. */
+--sp-0:0px;--sp-05:2px;--sp-1:4px;--sp-15:6px;--sp-2:8px;--sp-3:10px;--sp-4:12px;--sp-5:16px;--sp-6:20px;--sp-7:24px;--sp-8:32px;--sp-9:40px;--sp-10:56px;--sp-11:72px;--sp-12:96px;
+
+--control-h-sm:24px;--control-h-md:30px;--control-h-lg:36px;
+--gutter-app:12px;
+--sidebar-w:232px;
+--rail-w:52px;
+--content-max:1080px;
+--prose-max:60ch/* @kind spacing */;
+}
+
+:root{
+/* Tight and rounded — nothing in the product has a true 90° corner. */
+--r-xs:3px;--r-sm:5px;--r-md:7px;--r-lg:10px;--r-xl:14px;--r-2xl:20px;--r-full:999px;
+--r-control:7px;--r-card:10px;--r-sheet:14px;--r-chip:999px;
+}
+
+:root,[data-theme="light"]{
+/* Borders do the work; shadows are near-invisible and warm-tinted. */
+--shadow-none:none;
+--shadow-hairline:0 1px 0 rgba(33,29,24,.04);
+--shadow-1:0 1px 2px rgba(33,29,24,.05),0 0 0 1px rgba(33,29,24,.04);
+--shadow-2:0 2px 6px rgba(33,29,24,.06),0 0 0 1px rgba(33,29,24,.05);
+--shadow-3:0 10px 28px -8px rgba(33,29,24,.16),0 0 0 1px rgba(33,29,24,.06);
+--shadow-inset:inset 0 1px 0 rgba(253,252,249,.6);
+--ring-focus:0 0 0 2px var(--paper-1),0 0 0 4px color-mix(in oklch,var(--focus-ring) 55%,transparent);
+--blur-sheet:saturate(140%) blur(12px)/* @kind other */;
+--scrim:rgba(33,29,24,.32)/* @kind color */;
+}
+
+:root{
+--ease-out:cubic-bezier(.22,.61,.36,1)/* @kind other */;
+--ease-in-out:cubic-bezier(.4,0,.2,1)/* @kind other */;
+--ease-snap:cubic-bezier(.2,.9,.3,1)/* @kind other */;
+--dur-1:90ms/* @kind other */;--dur-2:140ms/* @kind other */;--dur-3:200ms/* @kind other */;--dur-4:280ms/* @kind other */;
+--t-control:all var(--dur-1) var(--ease-out)/* @kind other */;
+--t-surface:all var(--dur-2) var(--ease-out)/* @kind other */;
+--t-sheet:all var(--dur-3) var(--ease-snap)/* @kind other */;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg-app);color:var(--text-body);font-family:var(--font-ui);font-size:var(--fs-body);line-height:var(--lh-body);-webkit-font-smoothing:antialiased;text-wrap:pretty}
+h1,h2,h3,h4,h5,h6{margin:0;color:var(--text-heading);font-family:var(--font-heading);font-weight:var(--fw-semibold);font-optical-sizing:auto}
+p{margin:0}
+a{color:var(--text-link);text-decoration:underline;text-decoration-thickness:1px;text-decoration-color:color-mix(in oklch,var(--underline-ink) 45%,transparent);text-underline-offset:2px}
+a:hover{color:var(--text-link-hover);text-decoration-color:var(--underline-ink)}
+button,input,select,textarea{font-family:var(--font-ui);font-size:inherit;line-height:inherit;color:inherit}
+:focus-visible{outline:none;box-shadow:var(--ring-focus)}
+::selection{background:var(--marker);color:var(--ink-900)}
+code,kbd,pre{font-family:var(--font-mono);font-size:var(--fs-body-sm)}
+hr{border:0;border-top:1px solid var(--ink-rule);margin:var(--sp-5) 0}
+.eyebrow{font-family:var(--font-ui);font-size:var(--fs-micro);line-height:var(--lh-micro);letter-spacing:var(--label-caps);text-transform:uppercase;color:var(--text-muted);font-weight:var(--fw-semibold)}
+.serif{font-family:var(--font-serif)}
+/* Ink motifs: a highlighter pass behind text, and a pen rule under a heading. */
+.marker{background:linear-gradient(to top,var(--marker) 0 38%,transparent 38%);padding:0 .08em}
+.penrule{padding-bottom:.18em;border-bottom:1.5px solid var(--underline-ink)}
+

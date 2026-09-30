@@ -364,6 +364,7 @@ def dashboard(
         nearly=grouped[Surface.NEARLY_THERE][:10],
         bigger_shop=grouped[Surface.REACH][:10],
         upcoming=upcoming,
+        today=today,
         expiring=expiring[:5],
         stale=stale,
         pantry_count=len(pantry),
@@ -513,25 +514,54 @@ def add_to_pantry(
 @app.get("/recipes", response_class=HTMLResponse)
 def recipes_page(
     request: Request,
+    q: str = "",
+    import_url: str = "",
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     suggestions = suggest(db, user.id, limit=200)
-    return _render(request, "recipes.html", grouped=by_surface(suggestions))
+    needle = q.strip().casefold()
+    if needle:
+        suggestions = [
+            s
+            for s in suggestions
+            if needle in s.recipe.title.casefold() or needle in (s.recipe.author or "").casefold()
+        ]
+    template = "recipes_list.html" if _is_htmx(request) else "recipes.html"
+    return _render(
+        request,
+        template,
+        grouped=by_surface(suggestions),
+        query=q,
+        import_url=import_url if import_url.startswith(("http://", "https://")) else "",
+        # Open the importer when a share landed here, or when there is nothing else to do.
+        import_open=bool(
+            import_url or request.query_params.get("import") or (not suggestions and not needle)
+        ),
+    )
 
 
 @app.get("/recipes/{recipe_id}", response_class=HTMLResponse)
 def recipe_detail(
     request: Request,
     recipe_id: int,
+    cooked: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
     requirements = recipe_requirements(db, recipe)
     pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
+    today, _ = _horizon()
     return _render(
-        request, "recipe_detail.html", recipe=recipe, requirements=requirements, pantry=pantry
+        request,
+        "recipe_detail.html",
+        recipe=recipe,
+        requirements=requirements,
+        pantry=pantry,
+        cooked=bool(cooked),
+        today=today,
+        days=[today + timedelta(days=offset) for offset in range(PLAN_DAYS)],
     )
 
 
@@ -641,7 +671,7 @@ async def mark_cooked(
             plan_entry.cooked_at = datetime.now(UTC)
     db.flush()
     _sync_shopping(db, user.id)
-    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
+    return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
 
 
 @app.get("/plan", response_class=HTMLResponse)
@@ -670,6 +700,7 @@ def plan_page(
         "plan.html",
         by_day=by_day,
         days=days,
+        today=today,
         has_meals=any(by_day.values()),
         suggestions=suggest(db, user.id, limit=10),
         week_end=week_end,
@@ -780,7 +811,7 @@ def shopping_page(
     ) > 0
 
     by_aisle: dict[str, list] = {}
-    for item in sorted(active.items, key=lambda i: (i.aisle or "", i.sort_order)):
+    for item in sorted(active.items, key=lambda i: (i.aisle or "", i.is_checked, i.sort_order)):
         by_aisle.setdefault(item.aisle or "Other", []).append(item)
 
     return _render(
@@ -789,6 +820,7 @@ def shopping_page(
         shopping_list=active,
         by_aisle=by_aisle,
         has_plan=has_plan,
+        audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
     )
 
 
@@ -1115,8 +1147,8 @@ def manifest() -> JSONResponse:
             "short_name": "SousChef",
             "start_url": "/",
             "display": "standalone",
-            "background_color": "#12151a",
-            "theme_color": "#12151a",
+            "background_color": "#F8F6F1",
+            "theme_color": "#F8F6F1",
             "icons": [
                 {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
                 {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},

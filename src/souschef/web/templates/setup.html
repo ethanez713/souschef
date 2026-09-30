@@ -1,17 +1,18 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
 {% block content %}
-<main>
+<main class="auth">
   <h1>Claim this SousChef</h1>
   <p class="muted">
     Nobody has set this instance up yet, so this form creates the first account and makes
     it the admin. It is reachable from the internet and stores your NYT session cookie, so
     pick something strong — minimum 12 characters.
   </p>
-  <p class="muted small">
+  <p class="note">
     Once you finish, this page stops working: everyone after you needs an invite you
     generate in Settings.
   </p>
-  {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+  {% if error %}<div class="notice bad">{{ icon("triangle-alert", 16) }}<div>{{ error }}</div></div>{% endif %}
   <form method="post" action="/setup">
     <div class="field">
       <label for="u">Username</label>
@@ -26,7 +27,7 @@
       <label for="pw2">Confirm</label>
       <input id="pw2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
     </div>
-    <button class="primary" type="submit">Create account</button>
+    <button class="primary block" type="submit">Create account</button>
   </form>
 </main>
 {% endblock %}

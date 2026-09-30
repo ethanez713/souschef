@@ -1,20 +1,34 @@
 {% extends "base.html" %}
-{% set active = 'plan' %}
+{% from "icons.html" import icon %}
+{% from "macros.html" import plan_form %}
+{% set active = 'recipes' %}
 {% block title %}{{ recipe.title }} · SousChef{% endblock %}
 {% block content %}
 <main>
   <h1>{{ recipe.title }}</h1>
-  <p class="muted small">
+  <p class="meta">
     {% if recipe.author %}{{ recipe.author }} · {% endif %}
     serves {{ recipe.servings }}
     {%- if recipe.total_minutes %} · {{ recipe.total_minutes }} min{% endif %}
     {%- if recipe.times_cooked %} · cooked {{ recipe.times_cooked }}×{% endif %}
   </p>
 
+  {% if cooked %}
+    <div class="notice good spaced">
+      {{ icon('circle-check', 16) }}
+      <div>Pantry updated. <a href="/plan">Back to plan</a> · <a href="/">Home</a></div>
+    </div>
+  {% endif %}
+
+  <div class="actions" style="margin-top:var(--sp-4)">
+    <a class="btn primary" href="/recipes/{{ recipe.id }}/cook">{{ icon('chef-hat', 16) }}I cooked this</a>
+  </div>
+  {{ plan_form(recipe, days, today) }}
+
   {% if requirements.unmatched %}
-    <div class="alert">
-      Couldn't identify: {{ requirements.unmatched|join('; ') }}.
-      These are ignored when checking your pantry.
+    <div class="notice spaced">
+      {{ icon('triangle-alert', 16) }}
+      <div>Couldn't identify: {{ requirements.unmatched|join('; ') }}. These are ignored when checking your pantry.</div>
     </div>
   {% endif %}
 
@@ -26,37 +40,33 @@
     <div class="card tight row">
       <div class="stack">
         <span>{{ r.raw_text }}</span>
-        <span class="muted small">
+        <span class="meta">
           {{ r.ingredient.name }}
-          {%- if r.is_staple %} · staple, assumed on hand
+          {%- if r.is_staple %} · assumed on hand
           {%- elif r.is_vague %} · amount unspecified
-          {%- else %} · need {{ r.quantity|humanize(r.ingredient.base_unit) }},
-            have {{ have|humanize(r.ingredient.base_unit) }}{% endif %}
+          {%- else %} · need <span class="num">{{ r.quantity|humanize(r.ingredient.base_unit) }}</span>,
+            have <span class="num">{{ have|humanize(r.ingredient.base_unit) }}</span>{% endif %}
         </span>
       </div>
       {% if r.is_staple %}
-        <span class="pill good">untracked</span>
+        <span class="badge">staple</span>
       {% else %}
-        <span class="pill {{ 'good' if ok else 'bad' }}">{{ 'ok' if ok else 'buy' }}</span>
+        <span class="badge {{ 'good' if ok else 'warn' }}">{{ 'have' if ok else 'buy' }}</span>
       {% endif %}
     </div>
   {% endfor %}
 
   {% if recipe.instructions %}
     <h2>Method</h2>
-    <div class="card">
+    <div class="card method">
       {% for step in recipe.instructions.split('\n\n') %}
         {% if step.strip() %}<p>{{ step }}</p>{% endif %}
       {% endfor %}
     </div>
   {% endif %}
 
-  <p style="margin-top:16px">
-    <a class="btn primary" href="/recipes/{{ recipe.id }}/cook">I cooked this</a>
-  </p>
-
   {% if recipe.source_url %}
-    <p class="muted small"><a href="{{ recipe.source_url }}" rel="noreferrer">Original recipe</a></p>
+    <p class="note"><a href="{{ recipe.source_url }}" rel="noreferrer">Original recipe</a></p>
   {% endif %}
 </main>
 {% endblock %}

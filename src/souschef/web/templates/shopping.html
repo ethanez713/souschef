@@ -1,44 +1,64 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
 {% set active = 'shopping' %}
 {% block content %}
 <main>
   <h1>Shopping list</h1>
 
+  <div id="shop-list">
   {% if shopping_list and shopping_list.items %}
-    <p class="muted small">
-      Covers {{ shopping_list.covers_from.strftime('%d %b') }}–{{ shopping_list.covers_to.strftime('%d %b') }}
-      · {{ shopping_list.items|length }} items
+    {% set total = shopping_list.items|length %}
+    {% set left = shopping_list.items|rejectattr('is_checked')|list|length %}
+    <p class="meta">
+      Covers {{ shopping_list.covers_from.strftime('%-d %b') }}–{{ shopping_list.covers_to.strftime('%-d %b') }}
+      · <span class="num">{{ left }}</span> of <span class="num">{{ total }}</span> to get
     </p>
 
-    {% for aisle, items in by_aisle.items() %}
-      <p class="aisle">{{ aisle }}</p>
-      {% for it in items %}
-        <div class="card tight row {{ 'checked' if it.is_checked }}">
-          <div class="stack">
-            <strong>
-              {% if it.purchase_qty and it.purchase_unit == 'count' %}{{ it.purchase_qty|round|int }}×
-              {% elif it.purchase_qty %}{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}
-              {% endif %}
-              {{ it.label }}
-            </strong>
-            <span class="muted small">
-              {%- if it.purchase_note %}{{ it.purchase_note }} · {% endif -%}
-              for {{ it.driven_by or 'restock' }}
-            </span>
-          </div>
-          <form method="post" action="/shopping/item/{{ it.id }}/toggle" class="inline">
-            <button class="small" type="submit">{{ '↺' if it.is_checked else '✓' }}</button>
-          </form>
+    {% if audit_count and left > 0 %}
+      <a class="notice spaced" href="/audit" style="text-decoration:none;color:inherit">
+        {{ icon('triangle-alert', 16) }}
+        <div>
+          <strong>{{ audit_count }} level{{ '' if audit_count == 1 else 's' }} worth a look before you shop.</strong>
+          <span class="meta"> A quick check can shorten this list.</span>
         </div>
+      </a>
+    {% endif %}
+
+    {% for aisle, items in by_aisle.items() %}
+      <h2 class="aisle">{{ aisle }}</h2>
+      {% for it in items %}
+        <form method="post" action="/shopping/item/{{ it.id }}/toggle" class="shop-item {{ 'checked' if it.is_checked }}"
+              hx-post="/shopping/item/{{ it.id }}/toggle" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+          <button type="submit" aria-pressed="{{ 'true' if it.is_checked else 'false' }}">
+            <span class="tick">{{ icon('check', 14) }}</span>
+            <span class="stack">
+              <strong>
+                {% if it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
+                {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}</span>
+                {% endif %}
+                {{ it.label }}
+              </strong>
+              <span class="meta">
+                {%- if it.purchase_note %}{{ it.purchase_note }} · {% endif -%}
+                for {{ it.driven_by or 'restock' }}
+              </span>
+            </span>
+          </button>
+        </form>
       {% endfor %}
     {% endfor %}
+
+    <div class="actions">
+      <a class="btn {{ 'primary' if left == 0 }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
+    </div>
   {% elif has_plan %}
-    <div class="empty">Nothing to buy — the pantry covers this week’s plan.</div>
+    <div class="empty"><p>Nothing to buy — the pantry covers this week’s plan.</p></div>
   {% else %}
     <div class="empty">
-      <p>No list yet.</p>
-      <a class="btn" href="/plan">Plan some meals first</a>
+      <p>No list yet. It is built from your meal plan.</p>
+      <a class="btn primary" href="/plan">Plan some meals</a>
     </div>
   {% endif %}
+  </div>
 </main>
 {% endblock %}

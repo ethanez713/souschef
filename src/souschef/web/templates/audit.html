@@ -1,6 +1,7 @@
 {% extends "base.html" %}
-{% set active = 'plan' %}
-{% block title %}Pre-shop check · SousChef{% endblock %}
+{% from "icons.html" import icon %}
+{% set active = 'shopping' %}
+{% block title %}Before you shop · SousChef{% endblock %}
 
 {% block content %}
 <main>
@@ -9,16 +10,16 @@
   {% if checked_everything %}
     <div class="card">
       <h3>Nothing worth checking</h3>
-      <p class="muted">
+      <p class="muted" style="margin-top:var(--sp-2)">
         {% if planned_items %}
           Your levels for this week's {{ planned_items }} planned ingredient{{ '' if planned_items == 1 else 's' }}
-          are either confident enough to trust, or clearly on one side of the buy/don't-buy line.
+          are either confident enough to trust, or clearly on one side of the buy line.
           Go straight to the list.
         {% else %}
           Nothing is planned for the week yet, so there is nothing to verify.
         {% endif %}
       </p>
-      <p><a class="btn primary" href="/shopping">Go to shopping list</a></p>
+      <div class="actions"><a class="btn primary" href="/shopping">Go to shopping list</a></div>
     </div>
   {% else %}
     <p class="muted">
@@ -26,47 +27,43 @@
       confidently stocked, confidently empty, or not needed this week.
     </p>
 
+    <div class="spaced">
     {% for c in candidates %}
       <div class="card">
         <div class="row">
           <div class="stack">
             <h3>{{ c.ingredient.name }}</h3>
-            <span class="muted small">
+            <span class="meta">
               {% if c.reason == 'needed_this_week' %}
-                Recipes need about {{ c.required|humanize(c.ingredient.base_unit) }}.
-                Best guess: {{ c.believed|humanize(c.ingredient.base_unit) }}.
+                Recipes need about <span class="num">{{ c.required|humanize(c.ingredient.base_unit) }}</span>.
+                Best guess: <span class="num">{{ c.believed|humanize(c.ingredient.base_unit) }}</span>.
               {% else %}
                 Might be below your restock level.
-                Best guess: {{ c.believed|humanize(c.ingredient.base_unit) }}.
+                Best guess: <span class="num">{{ c.believed|humanize(c.ingredient.base_unit) }}</span>.
               {% endif %}
-            </span>
-            <span class="muted small">
-              Could be anywhere from {{ c.low|humanize(c.ingredient.base_unit) }}
-              to {{ c.high|humanize(c.ingredient.base_unit) }}.
+              Could be anywhere from <span class="num">{{ c.low|humanize(c.ingredient.base_unit) }}</span>
+              to <span class="num">{{ c.high|humanize(c.ingredient.base_unit) }}</span>.
             </span>
           </div>
-          <span class="pill {{ 'bad' if c.confidence < 0.35 else 'warn' }}">
+          <span class="badge warn">
             {{ (c.confidence * 100)|round|int }}% sure
           </span>
         </div>
 
-        <form method="post" action="/audit/{{ c.ingredient.id }}" class="controls" style="margin-top:12px">
+        <form method="post" action="/audit/{{ c.ingredient.id }}" class="controls" style="margin-top:var(--sp-4)">
           <div class="field">
             <label for="q{{ c.ingredient.id }}">Actual amount ({{ c.ingredient.base_unit }})</label>
             <input id="q{{ c.ingredient.id }}" name="quantity" type="number" step="any"
                    inputmode="decimal" placeholder="{{ c.believed|round(1) }}">
           </div>
-          <button class="primary" type="submit">Save</button>
+          <button type="submit">Save</button>
         </form>
-        <p class="muted small" style="margin:8px 0 0">
-          Leave blank and hit Save if the guess above looks right.
-        </p>
+        <p class="note">Leave blank and save if the best guess looks right.</p>
       </div>
     {% endfor %}
+    </div>
 
-    <p style="margin-top:18px">
-      <a class="btn" href="/shopping">Skip and build the list</a>
-    </p>
+    <div class="actions"><a class="btn primary" href="/shopping">Build the list</a></div>
   {% endif %}
 </main>
 {% endblock %}

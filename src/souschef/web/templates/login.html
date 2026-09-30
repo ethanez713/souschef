@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
 {% block content %}
-<main>
+<main class="auth">
   <h1>Sign in</h1>
-  {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+  {% if error %}<div class="notice bad">{{ icon("triangle-alert", 16) }}<div>{{ error }}</div></div>{% endif %}
   <form method="post" action="/login">
     <div class="field">
       <label for="u">Username</label>
@@ -12,9 +13,9 @@
       <label for="pw">Password</label>
       <input id="pw" name="password" type="password" autocomplete="current-password" required>
     </div>
-    <button class="primary" type="submit">Sign in</button>
+    <button class="primary block" type="submit">Sign in</button>
   </form>
-  <p class="muted small">
+  <p class="note">
     Accounts are invite-only. If someone sent you an invite link, open that instead.
   </p>
 </main>

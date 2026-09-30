@@ -1,11 +1,15 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
 {% set active = 'pantry' %}
 {% block content %}
 <main>
-  <h1>Pantry</h1>
+  <div class="page-head">
+    <h1>Pantry</h1>
+    <a class="btn" href="/receipts">{{ icon('camera', 16) }}Scan receipt</a>
+  </div>
 
   <form method="get" action="/pantry" class="field" role="search">
-    <input name="q" value="{{ query }}" placeholder="Search pantry" inputmode="search"
+    <input name="q" value="{{ query }}" placeholder="Search pantry" inputmode="search" aria-label="Search pantry"
            autocomplete="off"
            hx-get="/pantry" hx-trigger="input changed delay:200ms, search"
            hx-target="#pantry-list" hx-swap="innerHTML" hx-push-url="true">
@@ -13,11 +17,11 @@
 
   <details class="card">
     <summary>Add something</summary>
-    <form method="post" action="/pantry/add" style="margin-top:12px">
+    <form method="post" action="/pantry/add" style="margin-top:var(--sp-4)">
       <input type="hidden" name="q" value="{{ query }}">
       <div class="field">
         <label for="n">Ingredient</label>
-        <input id="n" name="name" placeholder="olive oil" required>
+        <input id="n" name="name" placeholder="spinach" required>
       </div>
       <div class="controls">
         <div class="field">

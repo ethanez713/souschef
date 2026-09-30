@@ -287,7 +287,7 @@ def test_plan_page_offers_day_chips_and_an_add_recipe_button(
 
     page = signed_in.get("/plan")
     assert page.status_code == 200
-    assert "+ Add recipe" in page.text
+    assert 'href="/recipes"' in page.text
     assert 'name="plan_date"' in page.text
     assert 'type="checkbox"' in page.text
     assert 'type="date"' not in page.text
@@ -318,7 +318,7 @@ def test_recipe_pages_render(
     assert "Boil." in detail.text
 
 
-def test_staples_show_as_untracked_on_a_recipe(
+def test_staples_show_as_staples_on_a_recipe(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     recipe = save_imported_recipe(
@@ -334,7 +334,7 @@ def test_staples_show_as_untracked_on_a_recipe(
     )
     seeded_session.commit()
     page = signed_in.get(f"/recipes/{recipe.id}")
-    assert "untracked" in page.text
+    assert "assumed on hand" in page.text
     assert "olive oil" in page.text
 
 
@@ -630,3 +630,101 @@ def test_security_headers_are_set(client: TestClient) -> None:
 
 def test_healthz(client: TestClient) -> None:
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_a_recipe_can_be_planned_from_its_own_page(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Plan From Detail",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/plan-from-detail",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    page = signed_in.get(f"/recipes/{recipe.id}")
+    assert 'action="/plan/add"' in page.text
+    assert 'name="plan_date"' in page.text
+
+
+def test_planned_meals_offer_a_cook_button(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Plan Then Cook",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/plan-then-cook",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    signed_in.post(
+        "/plan/add",
+        data={"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()},
+    )
+
+    page = signed_in.get("/plan")
+    assert f"/recipes/{recipe.id}/cook?entry=" in page.text
+
+
+def test_cooking_confirms_on_the_recipe_page(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Confirm Cook",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/confirm-cook",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    response = signed_in.post(f"/recipes/{recipe.id}/cooked", data={"servings": 1})
+    assert response.headers["location"] == f"/recipes/{recipe.id}?cooked=1"
+    assert "Pantry updated" in signed_in.get(response.headers["location"]).text
+
+
+def test_recipes_can_be_searched_and_a_shared_url_prefills_the_importer(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    for title in ("Lemon Chicken", "Bean Stew"):
+        save_imported_recipe(
+            seeded_session,
+            web_user.id,
+            RawRecipe(
+                title=title,
+                ingredients=["1 pound spaghetti"],
+                servings=2,
+                source_url=f"https://example.com/{title.replace(' ', '-')}",
+            ),
+            source=RecipeSource.URL,
+        )
+    seeded_session.commit()
+
+    found = signed_in.get("/recipes", params={"q": "lemon"}).text
+    assert "Lemon Chicken" in found
+    assert "Bean Stew" not in found
+
+    shared = signed_in.get("/recipes", params={"import_url": "https://cooking.nytimes.com/recipes/9"})
+    assert 'value="https://cooking.nytimes.com/recipes/9"' in shared.text
+    assert "<details class=\"card\" open>" in shared.text
+
+
+def test_shopping_page_points_at_the_pre_shop_check_only_when_it_has_something(
+    signed_in: TestClient,
+) -> None:
+    assert 'href="/audit"' not in signed_in.get("/shopping").text

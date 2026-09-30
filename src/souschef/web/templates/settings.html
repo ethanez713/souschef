@@ -1,71 +1,93 @@
 {% extends "base.html" %}
+{% from "icons.html" import icon %}
 {% block content %}
 <main>
   <h1>Settings</h1>
 
-  <h2>Your account</h2>
-  <div class="card">
-    <div class="row">
-      <div class="stack">
-        <strong>{{ user.username }}</strong>
-        <span class="muted small">
-          {{ 'Admin — can invite people' if user.is_admin else 'Standard account' }}
-        </span>
-      </div>
-    </div>
-
-    <form method="post" action="/settings/password" style="margin-top:12px">
-      <div class="field">
-        <label for="cur">Current password</label>
-        <input id="cur" name="current" type="password" autocomplete="current-password" required>
-      </div>
-      <div class="field">
-        <label for="np">New password</label>
-        <input id="np" name="password" type="password" autocomplete="new-password" required minlength="12">
-      </div>
-      <div class="field">
-        <label for="np2">Confirm</label>
-        <input id="np2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
-      </div>
-      <button class="primary" type="submit">Change password</button>
-    </form>
-    <p class="muted small">
-      Changing your password signs out every other device you are signed in on.
-    </p>
-  </div>
-
   <h2>Assumed on hand</h2>
   <div class="card">
-    <p class="muted small">
-      These skip the shopping list and show as <span class="pill good">untracked</span>
-      on recipes. Salt, oil, and basic spices belong here; pasta does not.
+    <p class="muted">
+      Staples are never tracked, listed for shopping or checked before a shop. Salt, oil and
+      basic spices belong here; pasta does not. Remove one to track it like any other item.
     </p>
+    <div style="margin-top:var(--sp-3)">
     {% for s in staples %}
-      <div class="row" style="margin-bottom:8px">
+      <div class="row" style="border-top:1px solid var(--border-subtle);padding:var(--sp-1) 0">
         <span>{{ s.name }}</span>
         <form method="post" action="/settings/staples/{{ s.id }}/clear" class="inline">
-          <button class="small" type="submit">Stop assuming</button>
+          <button class="small ghost" type="submit" aria-label="Stop assuming {{ s.name }}">Stop assuming</button>
         </form>
       </div>
     {% endfor %}
-    <form method="post" action="/settings/staples" class="controls" style="margin-top:12px">
+    </div>
+    <form method="post" action="/settings/staples" class="controls" style="margin-top:var(--sp-4)">
       <div class="field">
         <label for="staple">Add one</label>
         <input id="staple" name="name" placeholder="kosher salt" required>
       </div>
-      <button class="primary" type="submit">Assume</button>
+      <button type="submit">Assume</button>
     </form>
+  </div>
+
+  <h2>NYT Cooking</h2>
+  <div class="card">
+    {% if nyt_credential %}
+      <div class="row">
+        <div class="stack">
+          <strong>Session cookie saved</strong>
+          <span class="meta">
+            {{ nyt_credential.label }}
+            {%- if not nyt_credential.is_working %} · not working, please re-enter{% endif %}
+          </span>
+        </div>
+        <span class="badge {{ 'good' if nyt_credential.is_working else 'warn' }}">
+          {{ 'active' if nyt_credential.is_working else 'expired' }}
+        </span>
+      </div>
+      <form method="post" action="/settings/nyt-cookie/delete" style="margin-top:var(--sp-3)">
+        <button class="small danger" type="submit">Remove cookie</button>
+      </form>
+    {% endif %}
+
+    <form method="post" action="/settings/nyt-cookie" style="margin-top:var(--sp-4)">
+      <div class="field">
+        <label for="ck">{{ 'Replace cookie' if nyt_credential else 'Paste your NYT-S cookie' }}</label>
+        <input id="ck" name="cookie" placeholder="NYT-S=..." required>
+      </div>
+      <button type="submit">Save</button>
+    </form>
+
+    <details style="margin-top:var(--sp-4)">
+      <summary class="small" style="cursor:pointer;color:var(--text-link)">How this works and how to find the cookie</summary>
+      <p class="note">
+        SousChef only ever stores the session cookie, never your password — NYT blocks
+        automated logins, and a stored password would be far more damaging if this server
+        were ever compromised. The cookie is encrypted with a key held outside the database.
+        It expires periodically; paste a fresh one when imports start failing.
+      </p>
+      <p class="note">
+        Sign in to NYT Cooking in your browser, open DevTools → Application →
+        Cookies → nytimes.com, and copy the <code>NYT-S</code> value.
+      </p>
+      <p class="note">
+        Recipes are fetched one at a time, only when you ask for one — the same page your
+        browser would load. SousChef does not crawl or bulk-download from any site.
+      </p>
+    </details>
   </div>
 
   {% if user.is_admin %}
   <h2>Invites</h2>
   <div class="card">
     {% if new_invite %}
-      <div class="alert">
-        <strong>Send this link. It is shown once and cannot be recovered.</strong>
-        <p style="word-break:break-all;margin:8px 0 0">
-          <code>{{ request.url.scheme }}://{{ request.url.netloc }}/join?code={{ new_invite }}</code>
-        </p>
+      <div class="notice">
+        {{ icon('triangle-alert', 16) }}
+        <div>
+          <strong>Send this link. It is shown once and cannot be recovered.</strong>
+          <p style="word-break:break-all;margin-top:var(--sp-2)">
+            <code>{{ request.url.scheme }}://{{ request.url.netloc }}/join?code={{ new_invite }}</code>
+          </p>
+        </div>
       </div>
     {% endif %}
 
@@ -74,24 +96,24 @@
         <label for="note">Who is it for? (optional)</label>
         <input id="note" name="note" placeholder="Jordan" maxlength="120">
       </div>
-      <button class="primary" type="submit">Create invite</button>
+      <button type="submit">Create invite</button>
     </form>
 
     {% if invites %}
-      <table style="margin-top:14px;width:100%">
+      <table style="margin-top:var(--sp-4);width:100%">
         <tbody>
         {% for invite in invites %}
           <tr>
             <td>
               <div class="stack">
                 <span>{{ invite.note or 'No note' }}</span>
-                <span class="muted small">
+                <span class="meta">
                   {% if invite.redeemed_at %}
                     used by {{ invite.redeemed_by.username if invite.redeemed_by else 'a deleted account' }}
                   {% elif invite.expires_at.replace(tzinfo=None) < now.replace(tzinfo=None) %}
                     expired
                   {% else %}
-                    expires {{ invite.expires_at.strftime('%d %b') }}
+                    expires {{ invite.expires_at.strftime('%-d %b') }}
                   {% endif %}
                 </span>
               </div>
@@ -99,10 +121,10 @@
             <td style="text-align:right">
               {% if not invite.redeemed_at %}
                 <form method="post" action="/settings/invites/{{ invite.id }}/revoke" class="inline">
-                  <button class="small" type="submit">Revoke</button>
+                  <button class="small danger" type="submit">Revoke</button>
                 </form>
               {% else %}
-                <span class="pill good">used</span>
+                <span class="badge good">used</span>
               {% endif %}
             </td>
           </tr>
@@ -111,70 +133,55 @@
       </table>
     {% endif %}
 
-    <p class="muted small">
+    <p class="note">
       Each invite creates one account and then stops working. Codes are stored hashed, so a
       lost link is reissued rather than looked up.
     </p>
   </div>
   {% endif %}
 
-  <h2>NYT Cooking</h2>
+  <h2>Your account</h2>
   <div class="card">
-    {% if nyt_credential %}
-      <div class="row">
-        <div class="stack">
-          <strong>Session cookie saved</strong>
-          <span class="muted small">
-            {{ nyt_credential.label }}
-            {%- if not nyt_credential.is_working %} · not working, please re-enter{% endif %}
-          </span>
-        </div>
-        <span class="pill {{ 'good' if nyt_credential.is_working else 'bad' }}">
-          {{ 'active' if nyt_credential.is_working else 'expired' }}
-        </span>
+    <div class="row">
+      <div class="stack">
+        <strong>{{ user.username }}</strong>
+        <span class="meta">{{ 'Admin — can invite people' if user.is_admin else 'Standard account' }}</span>
       </div>
-      <form method="post" action="/settings/nyt-cookie/delete" style="margin-top:10px">
-        <button class="small" type="submit">Remove</button>
+      <form method="post" action="/logout" class="inline">
+        <button type="submit">{{ icon('log-out', 16) }}Sign out</button>
       </form>
-    {% endif %}
+    </div>
 
-    <form method="post" action="/settings/nyt-cookie" style="margin-top:12px">
-      <div class="field">
-        <label for="ck">{{ 'Replace cookie' if nyt_credential else 'Paste your NYT-S cookie' }}</label>
-        <input id="ck" name="cookie" placeholder="NYT-S=..." required>
-      </div>
-      <button class="primary" type="submit">Save</button>
-    </form>
-
-    <p class="muted small">
-      SousChef only ever stores the session cookie, never your password — NYT blocks
-      automated logins, and a stored password would be far more damaging if this server
-      were ever compromised. The cookie is encrypted with a key held outside the database.
-      It expires periodically; paste a fresh one when imports start failing.
-    </p>
-    <p class="muted small">
-      To find it: sign in to NYT Cooking in your browser, open DevTools → Application →
-      Cookies → nytimes.com, and copy the <code>NYT-S</code> value.
-    </p>
-  </div>
-
-  <h2>Recipe imports</h2>
-  <div class="card">
-    <p class="muted small" style="margin:0">
-      Recipes are fetched one at a time, only when you ask for one — the same page your
-      browser would load. SousChef does not crawl or bulk-download from any site.
-    </p>
+    <details style="margin-top:var(--sp-4)">
+      <summary class="small" style="cursor:pointer;color:var(--text-link)">Change password</summary>
+      <form method="post" action="/settings/password" style="margin-top:var(--sp-3)">
+        <div class="field">
+          <label for="cur">Current password</label>
+          <input id="cur" name="current" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="field">
+          <label for="np">New password</label>
+          <input id="np" name="password" type="password" autocomplete="new-password" required minlength="12">
+        </div>
+        <div class="field">
+          <label for="np2">Confirm</label>
+          <input id="np2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
+        </div>
+        <button type="submit">Change password</button>
+        <p class="note">Changing your password signs out every other device you are signed in on.</p>
+      </form>
+    </details>
   </div>
 
   <h2>External access</h2>
   <div class="card">
     <div class="row">
       <span>Outbound calls</span>
-      <span class="pill {{ 'bad' if settings.no_external else 'good' }}">
+      <span class="badge {{ 'warn' if settings.no_external else 'good' }}">
         {{ 'blocked' if settings.no_external else 'allowed' }}
       </span>
     </div>
-    <p class="muted small" style="margin-bottom:0">
+    <p class="note">
       When blocked, recipe imports are disabled. Set <code>SOUSCHEF_NO_EXTERNAL=false</code>
       to allow them.
     </p>

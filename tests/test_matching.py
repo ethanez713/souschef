@@ -129,6 +129,35 @@ def test_unmatchable_text_returns_no_match(matcher: IngredientMatcher) -> None:
         assert not matcher.match(text).is_match
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2 Tbsp mirin",
+        "1 Tbsp sake",
+        "ground coffee",
+        "ginger snaps",
+        "deviled egg",
+        "1 cup bean sprouts",
+        "1 tbsp Oyster Sauce",
+        "1 tbsp Chinese Cooking Wine",
+        "2-3 fresh green chilies",
+    ],
+)
+def test_a_shared_word_is_not_another_food(matcher: IngredientMatcher, text: str) -> None:
+    """token_set_ratio scores a shared modifier as a perfect match."""
+    assert not matcher.match(text).is_match
+
+
+def test_receipt_shorthand_does_not_match_on_one_shared_word(matcher: IngredientMatcher) -> None:
+    assert not matcher.match("JOE COFFEE MEDIUM ROAST GROUND", is_receipt=True).is_match
+    assert not matcher.match("PRG CHED SC", is_receipt=True).is_match
+
+
+def test_frozen_abbreviation_matches_frozen_spinach(matcher: IngredientMatcher) -> None:
+    result = matcher.match("FZN ORGANIC SPINACH", is_receipt=True)
+    assert result.name == "frozen spinach"
+
+
 def test_learning_an_alias_makes_the_next_match_exact(
     matcher: IngredientMatcher, seeded_session: Session
 ) -> None:

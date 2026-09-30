@@ -38,6 +38,20 @@ _NOISE_PATTERNS = [
 ]
 _NOISE = re.compile("|".join(_NOISE_PATTERNS), re.IGNORECASE)
 
+# A card number, or the masked last digits stores print after VISA / CARD.
+_CARD_NUMBER = re.compile(r"(?:\d[ -]?){13,19}")
+_MASKED_CARD = re.compile(
+    r"(?:\b(?:card|acct|account|visa|mastercard|amex|discover|debit|credit)\b[^0-9]{0,8})?\*{2,}\s*\d{3,4}",
+    re.IGNORECASE,
+)
+_STATE_ZIP = re.compile(r"\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b")
+_STATES = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "IA", "ID",
+    "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", "MI", "MN", "MO", "MS", "MT",
+    "NC", "ND", "NE", "NH", "NJ", "NM", "NV", "NY", "OH", "OK", "OR", "PA", "RI",
+    "SC", "SD", "TN", "TX", "UT", "VA", "VT", "WA", "WI", "WV", "WY", "DC",
+})
+
 # A row that is only digits, punctuation and currency is a number, not an item.
 _ONLY_NUMERIC = re.compile(r"^[\s\d.,:$#*/x@-]+$")
 # Dates and times.
@@ -101,6 +115,28 @@ class ParsedReceiptLine:
         return not self.match.is_auto
 
 
+def redact_receipt_text(text: str) -> str:
+    """Remove card numbers before a receipt line is stored or shown.
+
+    The review has to show the printed words so a person can correct a match.
+    It does not have to keep a card number to do that. A shopper's name is left
+    alone: guessing which capitalized word is a person eats real product lines.
+    """
+    text = _CARD_NUMBER.sub("[card]", text)
+    return _MASKED_CARD.sub("[card]", text)
+
+
+def _for_noise_check(text: str) -> str:
+    """Undo the OCR confusions that hide an otherwise obvious furniture word.
+
+    ``T0TAL`` and ``GTOTAL`` are the same row as ``TOTAL``, and the noise list
+    already knows that word. Replacing every zero would also rewrite prices.
+    """
+    upper = text.upper()
+    upper = re.sub(r"(?<=[A-Z])0(?=[A-Z])", "O", upper)
+    return re.sub(r"\bG+TOTAL\b", "TOTAL", upper)
+
+
 def is_noise_line(text: str) -> bool:
     """True for rows that are receipt furniture rather than purchases."""
     stripped = text.strip()
@@ -112,7 +148,13 @@ def is_noise_line(text: str) -> bool:
         return True
     if _LONG_DIGITS.search(stripped):
         return True
-    if _NOISE.search(stripped):
+    if _CARD_NUMBER.search(stripped) or _MASKED_CARD.search(stripped):
+        return True
+    state_zip = _STATE_ZIP.search(stripped.upper())
+    if state_zip and state_zip.group(1) in _STATES:
+        return True
+    folded = _for_noise_check(stripped)
+    if _NOISE.search(stripped) or _NOISE.search(folded):
         return True
     # A product name needs some letters -- but count them across the row rather
     # than demanding a run of three. OCR breaks runs with digit substitutions,

@@ -74,10 +74,15 @@ _NOISE_WORDS = {
     "or", "the", "of", "a", "an", "at", "to", "in", "with", "without", "toasted",
     "rinsed", "drained", "halved", "quartered", "lightly", "well", "very", "if",
     "needed", "desired", "reserved", "washed", "scrubbed", "stemmed",
+    "grade",
     "torn", "shaved", "julienned", "cubed", "crumbled", "mashed", "beaten",
     "whisked", "separated", "zested", "juiced", "deveined", "butterflied",
     "pounded", "scored", "blanched", "pitted", "hulled", "shucked", "squeezed",
     "level", "heaping", "scant", "generous", "thick", "thin", "wide",
+    # "juice of 1 lemon" is a lemon. There is no separate juice in the catalog,
+    # and leaving the word on makes "pomegranate juice" look like whatever juice
+    # scored highest.
+    "juice", "juices",
     # Measurement words. These survive quantity-stripping when written out
     # ("1 (28-ounce) can ...") and otherwise pollute the fuzzy comparison.
     "ounce", "ounces", "pound", "pounds", "gram", "grams", "kilogram", "kilograms",
@@ -114,6 +119,7 @@ _RECEIPT_ABBREVIATIONS = {
     "wht": "white",
     "chz": "cheese",
     "chse": "cheese",
+    "shrd": "shredded",
     "ched": "cheddar",
     "mozz": "mozzarella",
     "parm": "parmesan",
@@ -129,6 +135,7 @@ _RECEIPT_ABBREVIATIONS = {
     "veg": "vegetable",
     "frz": "frozen",
     "frzn": "frozen",
+    "fzn": "frozen",
     "sze": "size",
     "pkt": "packet",
     "bnch": "bunch",
@@ -145,6 +152,7 @@ _RECEIPT_ABBREVIATIONS = {
     "musrm": "mushrooms",
     "crm": "cream",
     "hvy": "heavy",
+    "whip": "whipping",
     "sc": "sauce",
     "sauc": "sauce",
     "sug": "sugar",
@@ -173,15 +181,18 @@ _BRAND_PREFIXES = {
     "market pantry", "good gather", "good & gather", "365", "simple truth",
     "private selection", "trader joes", "tj", "essential everyday", "hy vee",
     "wegmans", "safeway", "kroger", "heb", "publix", "aldi", "store brand",
+    "kraft",
 }
 
 _SIZE_TOKEN = re.compile(
     r"\b\d+\.?\d*\s*(?:z|oz|ozs|lb|lbs|g|kg|ml|l|ct|pk|pc|qt|pt|gal|fz|floz)\b",
     re.IGNORECASE,
 )
-# A trailing tax flag is often glued to the price ("8.47F"), so the price
-# pattern must not depend on a word boundary after the cents.
-_PRICE = re.compile(r"\$?\d+\.\d{2}(?!\d)[A-Za-z]?")
+# A trailing tax flag is glued to the price ("8.47F"), so the cents are not
+# always followed by a boundary. A unit is glued too ("2.34lb"); taking that
+# first letter leaves a stray token the food no longer matches. One letter,
+# and only when another letter does not follow.
+_PRICE = re.compile(r"\$?\d+\.\d{2}(?!\d)(?:[A-Za-z](?![A-Za-z]))?")
 _PLU_CODE = re.compile(r"\b\d{4,14}\b")  # UPC / PLU / item codes
 _TRAILING_FLAGS = re.compile(r"\s+[A-Z]{1,2}$")  # tax flags: " F", " T", " FT"
 _NON_ALNUM = re.compile(r"[^a-z0-9\s]+")
@@ -196,8 +207,85 @@ def normalize(text: str) -> str:
     return _WS.sub(" ", out).strip()
 
 
+# Written-out counts ("one 14.5 ounce can") are amounts, same as digits.
+_NUMBER_WORDS = frozenset({
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+})
+
+
 def _is_number(token: str) -> bool:
-    return token.replace("/", "").replace(".", "").isdigit()
+    """Digits, written counts, and size fragments such as ``a12ct`` or ``80z``."""
+    if token in _NUMBER_WORDS:
+        return True
+    return any(character.isdigit() for character in token)
+
+
+# A measure beside a food word is an amount ("2 cloves garlic"). A line that is
+# only that word can be the food itself — the spice cloves — so it is dropped
+# only when something else on the line is left to identify.
+_MEASURE_WORDS = frozenset({
+    "clove", "cloves", "slice", "slices", "stalk", "stalks", "sprig", "sprigs",
+    "piece", "bulb", "bulbs", "count", "each",
+})
+
+
+def _content_tokens(text: str) -> list[str]:
+    tokens = [
+        t for t in text.split() if t and t not in _NOISE_WORDS and not _is_number(t)
+    ]
+    food = [t for t in tokens if t not in _MEASURE_WORDS]
+    return food or tokens
+
+
+def _token_forms(token: str) -> set[str]:
+    """The token plus the plural shapes recipes and receipts actually use."""
+    forms = {token}
+    if len(token) > 3 and token.endswith("ies"):
+        forms.add(token[:-3] + "y")
+    if len(token) > 3 and token.endswith("es"):
+        forms.add(token[:-2])
+    if len(token) > 3 and token.endswith("s") and not token.endswith("ss"):
+        forms.add(token[:-1])
+    return forms
+
+
+def _token_covered(token: str, have: set[str], phrase: str) -> bool:
+    """A query word is accounted for when the candidate spells it.
+
+    Receipt OCR sometimes jams the words together (``DICEDTOMATOES``). That
+    token is the candidate's own words concatenated, including a preparation
+    word the content filter would otherwise drop.
+    """
+    forms = _token_forms(token)
+    if not forms.isdisjoint(have):
+        return True
+    parts = [part for part in phrase.split() if part and not _is_number(part)]
+    for start in range(len(parts)):
+        joined = ""
+        for part in parts[start:]:
+            joined += part
+            if len(joined) > len(token):
+                break
+            if not forms.isdisjoint(_token_forms(joined)):
+                return True
+    return False
+
+
+def _covers(query: str, phrase: str) -> bool:
+    """True when every content word of the query is a word of the candidate.
+
+    ``token_set_ratio`` scores a shared modifier as a perfect match, so
+    "ground coffee" ties "ground beef" and "ginger snaps" ties "ginger". A
+    candidate that doesn't account for the query's own words is a different
+    food, and returning it writes the wrong thing into the pantry.
+    """
+    wanted = _content_tokens(query)
+    if not wanted:
+        return False
+    have: set[str] = set()
+    for token in _content_tokens(phrase):
+        have |= _token_forms(token)
+    return all(_token_covered(token, have, phrase) for token in wanted)
 
 
 def head_segment(text: str) -> str:
@@ -334,6 +422,12 @@ class IngredientMatcher:
             # which is what separates "tomatoes, diced" from "diced tomatoes".
             forms.append(strip_noise(head_segment(text), self._protected))
             forms.append(strip_noise(text, self._protected))
+            # "kosher salt and freshly ground pepper" names two foods. The match
+            # is the first; a candidate cannot cover both, so the line would
+            # otherwise match nothing.
+            primary, separator, _rest = text.partition(" and ")
+            if separator:
+                forms.append(strip_noise(head_segment(primary), self._protected))
 
         seen: set[str] = set()
         return [f for f in forms if f and not (f in seen or seen.add(f))]
@@ -385,7 +479,10 @@ class IngredientMatcher:
             return len(set(phrase.split()) - query_tokens)
 
         ranked = sorted(
-            scored,
+            (
+                item for item in scored
+                if _covers(cleaned, item[0])
+            ),
             key=lambda item: (
                 round(item[1], 2),
                 specificity(item[0]),

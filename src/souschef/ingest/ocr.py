@@ -204,28 +204,77 @@ def _get_engine():  # noqa: ANN202
     return _engine
 
 
+# 180 is omitted: an upside-down receipt is rare, and rotating it reads the
+# show-through on the back as if it were the front.
+_ORIENTATIONS = (0, 90, 270)
+
+
+def _orientation_key(result: OcrResult) -> tuple[float, int, int]:
+    characters = sum(len(line.text) for line in result.lines)
+    return (round(result.mean_confidence, 4), len(result.lines), characters)
+
+
+def choose_orientation(candidates: list[tuple[int, OcrResult]]) -> tuple[int, OcrResult]:
+    """Pick the rotation whose text is the most confident, then the fullest.
+
+    ``candidates`` is ``(degrees, result)`` pairs. The caller decides which
+    angles exist; this only ranks results it is given.
+    """
+    if not candidates:
+        raise ValueError("choose_orientation requires at least one result")
+    return max(candidates, key=lambda item: _orientation_key(item[1]))
+
+
+def _fill_color(image: object) -> int | tuple[int, ...]:
+    mode = getattr(image, "mode", "RGB")
+    if mode == "L":
+        return 255
+    if mode == "RGBA":
+        return (255, 255, 255, 255)
+    return (255, 255, 255)
+
+
+def _read_frame(engine: object, image: object) -> OcrResult:
+    raw_result, _timing = engine(image)  # type: ignore[operator]
+    return OcrResult(lines=group_boxes_into_lines(_to_boxes(raw_result)), engine="rapidocr")
+
+
 def run_ocr(image_path: str | Path) -> OcrResult:
-    """Extract text rows from a receipt image."""
+    """Extract text rows from a receipt image.
+
+    A phone photo of a long receipt is often sideways. Each of 0, 90 and 270
+    degrees is read, and the orientation with the best text is kept.
+    """
     path = Path(image_path)
     if not path.is_file():
         log.error("Receipt image missing: %s", path)
         raise OcrUnavailable(f"No such image: {path}")
 
+    from PIL import Image
+
     engine = _get_engine()
+    image = Image.open(path)
+    image.load()
     started = time.perf_counter()
     try:
-        raw_result, _timing = engine(str(path))
+        candidates: list[tuple[int, OcrResult]] = []
+        for angle in _ORIENTATIONS:
+            frame = image if angle == 0 else image.rotate(
+                angle, expand=True, fillcolor=_fill_color(image)
+            )
+            candidates.append((angle, _read_frame(engine, frame)))
     except Exception as exc:
         log.exception("OCR failed on %s", path.name)
         raise OcrUnavailable(f"OCR failed on {path.name}: {exc}") from exc
 
-    boxes = _to_boxes(raw_result)
-    lines = group_boxes_into_lines(boxes)
-    result = OcrResult(lines=lines, engine="rapidocr")
+    angle, result = choose_orientation(candidates)
+    lines = result.lines
+    if angle:
+        log.info("OCR rotated %s by %d degrees", path.name, angle)
 
     log.info(
-        "OCR %s: %d boxes -> %d lines, confidence %.2f, %.1fs",
-        path.name, len(boxes), len(lines), result.mean_confidence,
+        "OCR %s: %d lines, confidence %.2f, %.1fs",
+        path.name, len(lines), result.mean_confidence,
         time.perf_counter() - started,
     )
     if not lines:

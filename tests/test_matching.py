@@ -9,15 +9,18 @@ failing to match at all, because nothing surfaces it for review.
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from souschef.core.matching import (
     AUTO_ACCEPT,
     IngredientMatcher,
+    MatchMethod,
     head_segment,
     normalize,
     strip_noise,
 )
+from souschef.models import CanonicalIngredient
 from souschef.models.ingredient import AliasSource
 
 # (text, expected canonical name, is_receipt)
@@ -45,6 +48,20 @@ RECIPE_CASES = [
     ("1 pound ground beef", "ground beef"),
     ("1 large red pepper", "bell pepper"),
     ("1 teaspoon red pepper flakes", "red pepper flakes"),
+    # Journal strings. Each one was "Couldn't identify" after 74918fc.
+    ("1 cup long-grain white rice (uncooked)", "white rice"),
+    ("1 medium white or yellow onion, finely diced", "yellow onion"),
+    ("1 tbsp cornflour / corn starch", "cornstarch"),
+    ("1/2 tsp baking soda / bi-carb", "baking soda"),
+    ("Dash of white pepper ((or black))", "black pepper"),
+    ("2 large egg yolks", "eggs"),
+    ("1 (28-ounce) can crushed, or finely diced tomatoes", "canned crushed tomatoes"),
+    ("6 oz bittersweet chocolate or semisweet chocolate chips", "chocolate chips"),
+    ("2-3 tsp coconut sugar (or other sweetener)", "coconut sugar"),
+    ("4 (6- to 8-oz.) boneless, skinless chicken breasts", "chicken breast"),
+    ("Lemon wedges, for serving", "lemon"),
+    ("1 can puréed tomatoes", "canned crushed tomatoes"),
+    ("2 tsp paprika", "paprika"),
 ]
 
 RECEIPT_CASES = [
@@ -58,6 +75,23 @@ RECEIPT_CASES = [
     ("KRAFT PARM CHZ 8OZ   5.99 F", "parmesan cheese"),
     ("BANANAS  1.24 lb  0.71", "banana"),
     ("ORG BABY SPINACH 5OZ 3.99", "spinach"),
+    ("PASTA ORG SPAGHETTI", "spaghetti"),
+    ("SALAD SPINACH BABY 6OZ", "spinach"),
+    ("FZN ORGANIC SPINACH", "frozen spinach"),
+    ("ORANGE ORIGINAL FROM CONCENTRA", "orange"),
+    ("CLIF CRUNCHY PEANUT BUTTER", "peanut butter"),
+    ("PASTA SAUCE ORG VODKA", "tomato sauce"),
+    ("PASTA SAUCE BOLOGNESE 24 OZ", "tomato sauce"),
+    ("FZN ORGANIC PEAS", "frozen peas"),
+    ("IZN ORGANIC PEAS 661", "frozen peas"),
+    # One slipped letter, the confusions that show up on thermal paper.
+    ("PASIA ORG SPAGHETTI", "spaghetti"),
+    ("PASTA ORG SPAGHETII", "spaghetti"),
+    ("PASIA ORG SPACHETTI", "spaghetti"),
+    ("FZN URGANIC SPINACH", "frozen spinach"),
+    ("BRUSSELS SPROUIS 1LB", "brussels sprouts"),
+    ("BRUSSELSPROUIS 1LB", "brussels sprouts"),
+    ("BRUSSEISPROUTS1LB", "brussels sprouts"),
 ]
 
 # The pairs that distinguish a preserved product from its fresh counterpart.
@@ -151,6 +185,51 @@ def test_a_shared_word_is_not_another_food(matcher: IngredientMatcher, text: str
 def test_receipt_shorthand_does_not_match_on_one_shared_word(matcher: IngredientMatcher) -> None:
     assert not matcher.match("JOE COFFEE MEDIUM ROAST GROUND", is_receipt=True).is_match
     assert not matcher.match("PRG CHED SC", is_receipt=True).is_match
+    assert not matcher.match("RIDGE CUT POTATO CHIPS", is_receipt=True).is_match
+    for furniture in ("TOTAL", "TAX", "PURCHASE APPROVED", "ARC:00"):
+        assert not matcher.match(furniture, is_receipt=True).is_match, furniture
+
+
+def test_white_onion_is_not_silently_yellow(matcher: IngredientMatcher) -> None:
+    """The onion line names both. A line that only says white onion does not."""
+    assert not matcher.match("1 medium white onion").is_match
+
+
+def test_a_typed_name_is_exact(matcher: IngredientMatcher, seeded_session: Session) -> None:
+    """'This is' / 'Wrong match' must not fuzzy back onto the row being corrected."""
+    paprika = matcher.match_exact("paprika")
+    smoked = matcher.match_exact("smoked paprika")
+    assert paprika.name == "paprika"
+    assert paprika.method == MatchMethod.NAME_EXACT
+    assert smoked.name == "smoked paprika"
+    assert smoked.ingredient_id != paprika.ingredient_id
+    assert not matcher.match_exact("no such spice").is_match
+
+    # A seed alias left over from when smoked paprika was an alias of paprika.
+    paprika_id = paprika.ingredient_id
+    assert paprika_id is not None
+    matcher.learn("smoked paprika", paprika_id, source=AliasSource.SEED)
+    seeded_session.flush()
+    assert matcher.match_exact("smoked paprika").name == "smoked paprika"
+    assert IngredientMatcher(seeded_session).match_exact("smoked paprika").name == "smoked paprika"
+
+    # A correction the user actually made does outrank the catalog name.
+    matcher.learn("smoked paprika", paprika_id, source=AliasSource.MANUAL)
+    seeded_session.flush()
+    assert matcher.match_exact("smoked paprika").name == "paprika"
+    assert IngredientMatcher(seeded_session).match_exact("smoked paprika").name == "paprika"
+
+
+def test_a_recipe_learned_alias_does_not_outrank_the_catalog_name(
+    matcher: IngredientMatcher, seeded_session: Session
+) -> None:
+    paprika_id = seeded_session.scalar(
+        select(CanonicalIngredient.id).where(CanonicalIngredient.name == "paprika")
+    )
+    assert paprika_id is not None
+    matcher.learn("smoked paprika", paprika_id, source=AliasSource.RECIPE)
+    seeded_session.flush()
+    assert matcher.match_exact("smoked paprika").name == "smoked paprika"
 
 
 def test_frozen_abbreviation_matches_frozen_spinach(matcher: IngredientMatcher) -> None:

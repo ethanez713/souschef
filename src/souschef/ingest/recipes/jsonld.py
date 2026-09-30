@@ -12,6 +12,7 @@ be tested against saved fixtures without network access.
 from __future__ import annotations
 
 import contextlib
+import html
 import json
 import re
 from dataclasses import dataclass, field
@@ -95,11 +96,25 @@ def _is_recipe(node: dict) -> bool:
     return str(node_type or "").lower() == "recipe"
 
 
+def unescape_text(value: str | None) -> str | None:
+    """Turn ``3&quot;`` into a real quote. Repeat so ``&amp;quot;`` finishes too."""
+    if value is None or "&" not in value:
+        return value
+    current = value
+    for _ in range(2):
+        decoded = html.unescape(current)
+        if decoded == current:
+            break
+        current = decoded
+    return current
+
+
 def _as_text(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
-        return value.strip() or None
+        text = unescape_text(value.strip())
+        return text or None
     if isinstance(value, dict):
         return _as_text(value.get("name") or value.get("text") or value.get("@value"))
     if isinstance(value, list):
@@ -129,14 +144,15 @@ def _parse_instructions(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, str):
-        return value.strip() or None
+        return _as_text(value)
 
     steps: list[str] = []
     items = value if isinstance(value, list) else [value]
     for item in items:
         if isinstance(item, str):
-            if item.strip():
-                steps.append(item.strip())
+            text = _as_text(item)
+            if text:
+                steps.append(text)
         elif isinstance(item, dict):
             item_type = str(item.get("@type", "")).lower()
             if item_type == "howtosection":

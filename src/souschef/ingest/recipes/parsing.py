@@ -5,12 +5,13 @@ Two stages, deliberately separate:
 1. ``ingredient-parser-nlp`` splits "2 tablespoons olive oil, divided" into
    quantity, unit, name and comment. It is a CRF model, runs on CPU, and reports
    per-field confidence.
-2. Our matcher maps the extracted *name* to a canonical ingredient.
+2. Our matcher maps the line to a canonical ingredient.
 
 Keeping them apart matters: the parser is good at grammar and knows nothing
 about our catalog, while the matcher knows the catalog and shouldn't be asked to
-do grammar. Feeding the matcher the parser's isolated name field, rather than
-the whole line, is what makes matching accurate.
+do grammar. The matcher sees the whole line, because "white or yellow onion"
+is one slot and the parser's first name is only half of it. The isolated name
+is the fallback when the whole line matches worse.
 
 Vague quantities ("salt to taste", "a drizzle of oil") are flagged rather than
 coerced to a number. Inventing 5 g of salt would put noise into the ledger and
@@ -30,6 +31,15 @@ _VAGUE_MARKERS = (
     "a dash", "a drizzle", "a splash", "a handful", "some ", "few ",
     "optional", "if desired", "plus more",
 )
+
+# A parenthetical "(360g)" or "(200 g)" is the amount the author measured.
+# Cups and ounces beside it are the translation, and they disagree with the
+# catalog's density often enough to show the wrong number.
+_METRIC_UNITS = frozenset({
+    "g", "gram", "grams", "kg", "kilogram", "kilograms",
+    "ml", "milliliter", "milliliters", "millilitre", "millilitres",
+    "l", "liter", "liters", "litre", "litres",
+})
 
 
 @dataclass
@@ -68,6 +78,67 @@ def _to_float(value: object) -> float | None:
         return None
 
 
+def _unit_text(raw_unit: object) -> str:
+    if raw_unit is None:
+        return ""
+    if hasattr(raw_unit, "dimensionality"):
+        return format(raw_unit, "~")
+    return str(raw_unit)
+
+
+def _is_metric(unit: str) -> bool:
+    return unit.strip().lower().rstrip(".") in _METRIC_UNITS
+
+
+def _is_range(amount: object) -> bool:
+    if getattr(amount, "RANGE", False):
+        return True
+    quantity = _to_float(getattr(amount, "quantity", None))
+    quantity_max = _to_float(getattr(amount, "quantity_max", None))
+    return quantity is not None and quantity_max is not None and quantity != quantity_max
+
+
+def _flatten_amounts(amounts: object) -> list[object]:
+    flat: list[object] = []
+    for amount in amounts or []:
+        nested = getattr(amount, "amounts", None)
+        if nested:
+            flat.extend(_flatten_amounts(nested))
+        else:
+            flat.append(amount)
+    return flat
+
+
+def _choose_amount(amounts: object) -> tuple[float | None, str | None]:
+    """The amount a cook would shop for.
+
+    A stated metric weight wins over the cups it was converted from. A count
+    wins over a parenthetical size range ("4 (6- to 8-oz.) breasts" is 4).
+    When the only figure is itself a range ("2-3 tsp"), the low end is kept
+    rather than dropping the amount.
+    """
+    parsed: list[tuple[float, str, bool]] = []
+    for amount in _flatten_amounts(amounts):
+        quantity = _to_float(getattr(amount, "quantity", None))
+        if quantity is None:
+            continue
+        parsed.append((quantity, _unit_text(getattr(amount, "unit", None)), _is_range(amount)))
+
+    metric = [(qty, unit) for qty, unit, is_range in parsed if not is_range and _is_metric(unit)]
+    if metric:
+        return metric[-1]
+
+    plain = [(qty, unit) for qty, unit, is_range in parsed if not is_range]
+    if plain:
+        quantity, unit = plain[0]
+        return quantity, unit or "count"
+
+    if parsed:
+        quantity, unit, _is_range_amount = parsed[0]
+        return quantity, unit or "count"
+    return None, None
+
+
 def parse_line(text: str) -> ParsedIngredient:
     """Parse one ingredient line into structured fields.
 
@@ -94,17 +165,7 @@ def parse_line(text: str) -> ParsedIngredient:
         name = first.text
         name_conf = float(getattr(first, "confidence", 0.0) or 0.0)
 
-    quantity: float | None = None
-    unit: str | None = None
-    if parsed.amount:
-        amount = parsed.amount[0]
-        quantity = _to_float(getattr(amount, "quantity", None))
-        raw_unit = getattr(amount, "unit", None)
-        if raw_unit is not None:
-            # ingredient-parser returns pint Unit objects where it can, and
-            # plain strings otherwise.
-            unit = str(getattr(raw_unit, "_units", None) or raw_unit)
-            unit = format(raw_unit, "~") if hasattr(raw_unit, "dimensionality") else str(raw_unit)
+    quantity, unit = _choose_amount(parsed.amount)
 
     preparation = None
     if getattr(parsed, "preparation", None):
@@ -130,13 +191,13 @@ def parse_and_match(text: str, matcher: IngredientMatcher) -> ParsedIngredient:
     """Parse a line and resolve it to a canonical ingredient."""
     parsed = parse_line(text)
 
-    # Match on the isolated name first; it carries the least noise. Fall back to
-    # the full line, since a failed name extraction shouldn't lose the match.
-    result = matcher.match(parsed.name)
-    if not result.is_auto:
-        from_full = matcher.match(text)
-        if from_full.confidence > result.confidence:
-            result = from_full
+    # The whole line carries "or" alternatives the isolated name drops. Use the
+    # name only when it matches more confidently than the line does.
+    result = matcher.match(text)
+    if parsed.name and parsed.name.strip() != text.strip():
+        from_name = matcher.match(parsed.name)
+        if from_name.confidence > result.confidence:
+            result = from_name
 
     parsed.match = result
     return parsed

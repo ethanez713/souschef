@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from souschef.config import get_settings
 from souschef.core.crypto import CredentialError, decrypt
-from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe, page_key
+from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe, page_key, unescape_text
 from souschef.logconfig import get_logger
 from souschef.models import RecipeSource, StoredCredential
 from souschef.models.settings import CredentialKind
@@ -238,15 +238,16 @@ def _scrape_fallback(html: str, url: str) -> RawRecipe | None:
     if not ingredients:
         return None
 
+    title = unescape_text(safe(scraper.title, "Untitled recipe")) or "Untitled recipe"
     return RawRecipe(
-        title=safe(scraper.title, "Untitled recipe") or "Untitled recipe",
-        ingredients=list(ingredients),
-        instructions=safe(scraper.instructions),
+        title=title,
+        ingredients=[unescape_text(item) or item for item in ingredients],
+        instructions=unescape_text(safe(scraper.instructions)),
         servings=_first_int(safe(scraper.yields)),
         total_minutes=safe(scraper.total_time),
         image_url=safe(scraper.image),
-        author=safe(scraper.author),
-        description=safe(scraper.description),
+        author=unescape_text(safe(scraper.author)),
+        description=unescape_text(safe(scraper.description)),
         source_url=url,
     )
 

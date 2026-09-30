@@ -10,9 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from souschef.core.inventory import get_or_create_item, record_event
+from souschef.core.matching import IngredientMatcher
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
-from souschef.ingest.recipes.jsonld import extract_recipe
-from souschef.ingest.recipes.parsing import parse_line
+from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe
+from souschef.ingest.recipes.parsing import parse_and_match, parse_line
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
@@ -66,6 +67,59 @@ def test_extracts_recipe_from_graph(recipe_html: str) -> None:
     assert "Season the chicken." in raw.instructions
 
 
+def test_imported_instructions_unescape_html_entities() -> None:
+    """Recipetineats stores the inch mark as ``&quot;`` and the page showed it."""
+    html = """
+    <script type="application/ld+json">
+    {"@context": "https://schema.org", "@type": "Recipe",
+     "name": "Noodles &amp; Co",
+     "recipeIngredient": ["1 onion"],
+     "recipeInstructions": "Cut into 7cm (3&quot;) pieces"}
+    </script>
+    """
+    raw = extract_recipe(html, source_url="https://example.com/noodles")
+    assert raw is not None
+    assert raw.title == "Noodles & Co"
+    assert raw.instructions == 'Cut into 7cm (3") pieces'
+
+
+def test_scraper_fallback_unescapes_html_entities(monkeypatch: pytest.MonkeyPatch) -> None:
+    from souschef.ingest.recipes.importers import _scrape_fallback
+
+    class _Scraper:
+        def title(self) -> str:
+            return "A &amp; B"
+
+        def ingredients(self) -> list[str]:
+            return ["1 &amp; 2 onions"]
+
+        def instructions(self) -> str:
+            return "Cut into 7cm (3&amp;quot;) pieces"
+
+        def yields(self) -> str:
+            return "4"
+
+        def total_time(self) -> None:
+            return None
+
+        def image(self) -> None:
+            return None
+
+        def author(self) -> None:
+            return None
+
+        def description(self) -> str:
+            return "3&amp;quot; deep"
+
+    monkeypatch.setattr("recipe_scrapers.scrape_html", lambda *_args, **_kwargs: _Scraper())
+    raw = _scrape_fallback("<html></html>", "https://example.com/noodles")
+    assert raw is not None
+    assert raw.title == "A & B"
+    assert raw.ingredients == ["1 & 2 onions"]
+    assert raw.instructions == 'Cut into 7cm (3") pieces'
+    assert raw.description == '3" deep'
+
+
 def test_ignores_non_recipe_nodes(recipe_html: str) -> None:
     """The @graph also contains a WebPage node that must not be mistaken for a recipe."""
     raw = extract_recipe(recipe_html)
@@ -115,6 +169,218 @@ def test_flags_vague_amounts_rather_than_inventing_numbers() -> None:
         parsed = parse_line(text)
         assert parsed.quantity_is_vague, text
         assert parsed.is_optional, text
+
+
+def test_a_count_with_a_size_range_stays_a_count() -> None:
+    parsed = parse_line("4 (6- to 8-oz.) boneless, skinless chicken breasts")
+    assert parsed.quantity == 4
+    assert parsed.unit == "count"
+    assert not parsed.quantity_is_vague
+
+
+def test_a_parenthetical_metric_weight_is_the_amount() -> None:
+    cups = parse_line("3 cups (360g) all-purpose flour")
+    assert cups.quantity == pytest.approx(360)
+    assert cups.unit == "g"
+    mixed = parse_line("1½ cups plus 1 Tbsp. (200 g) all-purpose flour")
+    assert mixed.quantity == pytest.approx(200)
+    assert mixed.unit == "g"
+    # The ounces are the size of the can, not a second amount to shop for.
+    canned = parse_line("1 (28-ounce) can crushed tomatoes")
+    assert canned.quantity == 1
+    assert canned.unit == "can"
+
+
+def test_lemon_wedges_for_serving_are_lemon_and_still_vague(seeded_session: Session) -> None:
+    parsed = parse_and_match("Lemon wedges, for serving", IngredientMatcher(seeded_session))
+    assert parsed.match is not None
+    assert parsed.match.name == "lemon"
+    assert parsed.quantity_is_vague
+    assert parsed.is_optional
+
+
+def test_counted_chicken_converts_at_a_typical_breast(
+    seeded_session: Session, owner: int
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        owner,
+        RawRecipe(
+            title="Tuscan chicken",
+            ingredients=["4 (6- to 8-oz.) boneless, skinless chicken breasts"],
+            servings=4,
+        ),
+        source=RecipeSource.MANUAL,
+    )
+    requirements = recipe_requirements(seeded_session, recipe)
+    assert requirements.requirements[0].ingredient.name == "chicken breast"
+    assert requirements.requirements[0].quantity == pytest.approx(792)
+    assert not requirements.requirements[0].is_vague
+    assert recipe.ingredients[0].quantity == 4
+    assert recipe.ingredients[0].unit == "count"
+
+
+def test_imported_flour_uses_the_stated_grams(seeded_session: Session, owner: int) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        owner,
+        RawRecipe(
+            title="Bread",
+            ingredients=[
+                "3 cups (360g) all-purpose flour",
+                "1½ cups plus 1 Tbsp. (200 g) all-purpose flour",
+            ],
+            servings=4,
+        ),
+        source=RecipeSource.MANUAL,
+    )
+    by_text = {line.raw_text: line for line in recipe.ingredients}
+    assert by_text["3 cups (360g) all-purpose flour"].quantity == pytest.approx(360)
+    assert by_text["1½ cups plus 1 Tbsp. (200 g) all-purpose flour"].quantity == pytest.approx(200)
+    totals = recipe_requirements(seeded_session, recipe).as_map()
+    flour = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "all-purpose flour")
+    )
+    assert flour is not None
+    assert totals[flour.id] == pytest.approx(560)
+
+
+def test_stored_html_entities_are_repaired_on_read(
+    seeded_session: Session, owner: int
+) -> None:
+    recipe = Recipe(
+        user_id=owner,
+        title="Cut &amp; fold",
+        source=RecipeSource.MANUAL,
+        servings=4,
+        instructions="Cut into 7cm (3&quot;) pieces",
+        description="A 3&amp;quot; piece",
+    )
+    recipe.ingredients.append(
+        RecipeIngredient(position=0, raw_text="1 &quot;knob&quot; of ginger", quantity=1)
+    )
+    seeded_session.add(recipe)
+    seeded_session.flush()
+
+    recipe_requirements(seeded_session, recipe)
+    assert recipe.title == "Cut & fold"
+    assert recipe.instructions == 'Cut into 7cm (3") pieces'
+    assert recipe.description == 'A 3" piece'
+    assert recipe.ingredients[0].raw_text == '1 "knob" of ginger'
+
+    recipe_requirements(seeded_session, recipe)
+    assert recipe.instructions == 'Cut into 7cm (3") pieces'
+    assert recipe.ingredients[0].raw_text == '1 "knob" of ginger'
+
+
+def test_save_unescapes_recipe_text_that_arrived_encoded(
+    seeded_session: Session, owner: int
+) -> None:
+    saved = save_imported_recipe(
+        seeded_session,
+        owner,
+        RawRecipe(
+            title="Noodles &amp; Co",
+            ingredients=["1 onion"],
+            instructions="Cut into 7cm (3&quot;) pieces",
+        ),
+        source=RecipeSource.MANUAL,
+    )
+    assert saved.title == "Noodles & Co"
+    assert saved.instructions == 'Cut into 7cm (3") pieces'
+
+
+def test_stored_unmatched_lines_resolve_when_the_recipe_is_read(
+    seeded_session: Session, owner: int
+) -> None:
+    recipe = Recipe(
+        user_id=owner, title="Leftover rice", source=RecipeSource.MANUAL, servings=4
+    )
+    recipe.ingredients.append(
+        RecipeIngredient(
+            position=0,
+            raw_text="1 cup long-grain white rice (uncooked)",
+            quantity=1,
+            unit="cup",
+        )
+    )
+    seeded_session.add(recipe)
+    seeded_session.flush()
+
+    requirements = recipe_requirements(seeded_session, recipe)
+    assert not requirements.unmatched
+    assert requirements.requirements[0].ingredient.name == "white rice"
+    assert recipe.ingredients[0].quantity == 1
+    assert recipe.ingredients[0].unit == "cup"
+
+
+def test_rematch_does_not_override_a_chosen_ingredient(
+    seeded_session: Session, owner: int
+) -> None:
+    oil = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "olive oil")
+    )
+    assert oil is not None
+    recipe = Recipe(user_id=owner, title="Linked", source=RecipeSource.MANUAL, servings=4)
+    recipe.ingredients.append(
+        RecipeIngredient(
+            position=0,
+            raw_text="1 cup long-grain white rice (uncooked)",
+            ingredient_id=oil.id,
+            quantity=1,
+            unit="cup",
+        )
+    )
+    seeded_session.add(recipe)
+    seeded_session.flush()
+
+    recipe_requirements(seeded_session, recipe)
+    assert recipe.ingredients[0].ingredient_id == oil.id
+
+
+def test_a_vague_stored_amount_picks_up_parenthetical_grams(
+    seeded_session: Session, owner: int
+) -> None:
+    flour = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "all-purpose flour")
+    )
+    salt = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "kosher salt")
+    )
+    assert flour is not None and salt is not None
+    recipe = Recipe(user_id=owner, title="Refill", source=RecipeSource.MANUAL, servings=4)
+    recipe.ingredients.append(
+        RecipeIngredient(
+            position=0,
+            raw_text="3 cups (360g) all-purpose flour",
+            ingredient_id=flour.id,
+            quantity=None,
+            quantity_is_vague=True,
+        )
+    )
+    recipe.ingredients.append(
+        RecipeIngredient(
+            position=1,
+            raw_text="Kosher salt, to taste",
+            ingredient_id=salt.id,
+            quantity=None,
+            quantity_is_vague=True,
+        )
+    )
+    seeded_session.add(recipe)
+    seeded_session.flush()
+
+    requirements = recipe_requirements(seeded_session, recipe)
+    flour_line, salt_line = recipe.ingredients
+    assert flour_line.ingredient_id == flour.id
+    assert flour_line.quantity == pytest.approx(360)
+    assert flour_line.unit == "g"
+    assert not flour_line.quantity_is_vague
+    assert salt_line.quantity is None
+    assert salt_line.quantity_is_vague
+    by_name = {req.ingredient.name: req for req in requirements.requirements}
+    assert by_name["all-purpose flour"].quantity == pytest.approx(360)
+    assert by_name["kosher salt"].is_vague
 
 
 def test_requirements_convert_to_base_units(seeded_session: Session, imported: Recipe) -> None:

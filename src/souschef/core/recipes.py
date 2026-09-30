@@ -24,8 +24,8 @@ from sqlalchemy.orm import Session
 from souschef.core.inventory import physical_of
 from souschef.core.matching import IngredientMatcher
 from souschef.core.units import UnitConversionError, to_base
-from souschef.ingest.recipes.jsonld import RawRecipe
-from souschef.ingest.recipes.parsing import parse_all
+from souschef.ingest.recipes.jsonld import RawRecipe, unescape_text
+from souschef.ingest.recipes.parsing import parse_all, parse_and_match
 from souschef.logconfig import get_logger
 from souschef.models import CanonicalIngredient, Recipe, RecipeIngredient, RecipeSource
 from souschef.models.ingredient import AliasSource
@@ -72,6 +72,69 @@ class RequirementSet:
         return bool(self.unmatched or self.unconvertible)
 
 
+def repair_stored_text(session: Session, recipe: Recipe) -> None:
+    """Decode HTML entities already saved on a recipe.
+
+    Import used to keep the source encoding, so an instruction read back as
+    ``3&quot;``. Unescape is stable once the text is plain, so a later read
+    does not write again.
+    """
+    changed = False
+    for attr in ("title", "description", "instructions"):
+        value = getattr(recipe, attr)
+        if not isinstance(value, str):
+            continue
+        decoded = unescape_text(value)
+        if decoded != value:
+            setattr(recipe, attr, decoded)
+            changed = True
+    for line in recipe.ingredients:
+        decoded = unescape_text(line.raw_text)
+        if decoded is not None and decoded != line.raw_text:
+            line.raw_text = decoded
+            changed = True
+    if changed:
+        session.flush()
+
+
+def rematch_unmatched(session: Session, recipe: Recipe) -> None:
+    """Give stored lines the match the catalog can make now.
+
+    Import matched each line once and saved the result. A later improvement to
+    matching would otherwise never reach those rows. Only a line with no
+    ingredient is linked, so a correction the user already made stays put, and
+    nothing here is written back into the alias table. A missing amount is
+    filled when a re-parse finds one; an amount already stored is left alone.
+    """
+    pending = [
+        line
+        for line in recipe.ingredients
+        if line.ingredient_id is None or (line.quantity is None and line.quantity_is_vague)
+    ]
+    if not pending:
+        return
+
+    matcher = IngredientMatcher(session)
+    changed = False
+    for line in pending:
+        parsed = parse_and_match(line.raw_text, matcher)
+        was_unmatched = line.ingredient_id is None
+        if was_unmatched and parsed.match and parsed.match.is_match:
+            line.ingredient_id = parsed.match.ingredient_id
+            line.match_confidence = parsed.match.confidence
+            changed = True
+        if line.quantity is None and parsed.quantity is not None and (
+            was_unmatched or line.quantity_is_vague
+        ):
+            line.quantity = parsed.quantity
+            line.unit = parsed.unit
+            line.quantity_is_vague = parsed.quantity_is_vague
+            changed = True
+
+    if changed:
+        session.flush()
+
+
 def recipe_requirements(
     session: Session,
     recipe: Recipe,
@@ -79,6 +142,8 @@ def recipe_requirements(
     servings: int | None = None,
 ) -> RequirementSet:
     """What a recipe needs, scaled to the servings actually being cooked."""
+    repair_stored_text(session, recipe)
+    rematch_unmatched(session, recipe)
     scale = 1.0
     if servings and recipe.servings:
         scale = servings / recipe.servings
@@ -159,13 +224,13 @@ def save_imported_recipe(
         )
 
     recipe = existing or Recipe(user_id=user_id)
-    recipe.title = raw.title
+    recipe.title = unescape_text(raw.title) or raw.title
     recipe.source = source
     recipe.source_url = raw.source_url
     recipe.external_id = external_id
-    recipe.author = raw.author
-    recipe.description = raw.description
-    recipe.instructions = raw.instructions
+    recipe.author = unescape_text(raw.author)
+    recipe.description = unescape_text(raw.description)
+    recipe.instructions = unescape_text(raw.instructions)
     recipe.image_url = raw.image_url
     recipe.servings = raw.servings or 4
     recipe.total_minutes = raw.total_minutes
@@ -180,7 +245,9 @@ def save_imported_recipe(
     session.flush()
 
     matcher = IngredientMatcher(session)
-    parsed_lines = parse_all(raw.ingredients, matcher)
+    parsed_lines = parse_all(
+        [unescape_text(item) or item for item in raw.ingredients], matcher
+    )
 
     unmatched = [p.raw_text for p in parsed_lines if not (p.match and p.match.is_match)]
     if unmatched:

@@ -25,6 +25,7 @@ from souschef.ingest.receipt import (
     detect_total,
     parse_receipt,
     redact_receipt_text,
+    should_preconfirm,
 )
 from souschef.logconfig import get_logger
 from souschef.models import (
@@ -182,9 +183,9 @@ def scan_receipt(session: Session, receipt: Receipt) -> ScanSummary:
                 ingredient_id=match.ingredient_id if match and match.is_match else None,
                 match_confidence=match.confidence if match else 0.0,
                 is_ignored=parsed.is_noise,
-                # Nothing is pre-confirmed: a confident match is still a
-                # proposal until a human agrees with it.
-                is_confirmed=False,
+                # The same bar the recipe importer trusts. Weaker matches stay
+                # unticked so a guess is not written into the pantry.
+                is_confirmed=should_preconfirm(parsed),
             )
         )
 

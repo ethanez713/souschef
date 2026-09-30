@@ -84,6 +84,18 @@
       ]
     },
     {
+      "name": "coconut sugar",
+      "category": "sweetener",
+      "aisle": "Baking",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.7,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 730,
+      "aliases": []
+    },
+    {
       "name": "brown sugar",
       "category": "sweetener",
       "aisle": "Baking",
@@ -171,7 +183,8 @@
       "aliases": [
         "bicarbonate of soda",
         "sodium bicarbonate",
-        "bicarb"
+        "bicarb",
+        "bi carb"
       ]
     },
     {
@@ -517,9 +530,20 @@
       "shelf_life_days": 1095,
       "is_staple": true,
       "aliases": [
-        "sweet paprika",
-        "smoked paprika"
+        "sweet paprika"
       ]
+    },
+    {
+      "name": "smoked paprika",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.46,
+      "package_qty": 64,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "aliases": []
     },
     {
       "name": "chili powder",
@@ -1006,6 +1030,22 @@
       "aliases": []
     },
     {
+      "name": "brussels sprouts",
+      "category": "produce",
+      "aisle": "Produce",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.35,
+      "package_qty": 454,
+      "package_unit": "g",
+      "shelf_life_days": 7,
+      "aliases": [
+        "brussels sprout",
+        "brussel sprouts",
+        "brussel sprout"
+      ]
+    },
+    {
       "name": "cauliflower",
       "category": "produce",
       "aisle": "Produce",
@@ -1329,6 +1369,7 @@
       "package_qty": 907,
       "package_unit": "g",
       "shelf_life_days": 3,
+      "grams_per_count": 198.0,
       "aliases": [
         "boneless skinless chicken breast",
         "chicken breasts",
@@ -1579,7 +1620,9 @@
         "egg",
         "large eggs",
         "large egg",
-        "grade a eggs"
+        "grade a eggs",
+        "egg yolk",
+        "egg yolks"
       ]
     },
     {
@@ -1918,7 +1961,9 @@
       "aliases": [
         "crushed tomatoes",
         "san marzano tomatoes",
-        "whole peeled tomatoes"
+        "whole peeled tomatoes",
+        "pureed tomatoes",
+        "canned pureed tomatoes"
       ]
     },
     {

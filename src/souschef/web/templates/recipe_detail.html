@@ -4,7 +4,7 @@
 {% set active = 'recipes' %}
 {% block title %}{{ recipe.title }} · SousChef{% endblock %}
 {% block content %}
-<main>
+<main id="main">
   <h1>{{ recipe.title }}</h1>
   <p class="meta">
     {% if recipe.author %}{{ recipe.author }} · {% endif %}
@@ -19,6 +19,12 @@
       <div>Pantry updated. <a href="/plan">Back to plan</a> · <a href="/">Home</a></div>
     </div>
   {% endif %}
+  {% if saved %}
+    <div class="notice good spaced">
+      {{ icon('circle-check', 16) }}
+      <div>Saved. That line is now {{ saved }}.</div>
+    </div>
+  {% endif %}
   {% if notice %}
     <div class="notice spaced">{{ icon('triangle-alert', 16) }}<div>{{ notice }}</div></div>
   {% endif %}
@@ -31,69 +37,92 @@
   </div>
   {{ plan_form(recipe, days, today) }}
 
-  {% if requirements.unmatched %}
+  {% if unmatched %}
     <div class="notice spaced">
       {{ icon('triangle-alert', 16) }}
-      <div>Couldn't identify: {{ requirements.unmatched|join('; ') }}. These are ignored when checking your pantry until you name them.</div>
+      <div>
+        {{ unmatched }} ingredient {{ 'line' if unmatched == 1 else 'lines' }} couldn't be identified.
+        Name {{ 'it' if unmatched == 1 else 'them' }} in the list —
+        {{ 'it is' if unmatched == 1 else 'they are' }} ignored when checking your pantry until you do.
+      </div>
     </div>
-    {% for raw in requirements.unmatched %}
-      <form method="post" action="/recipes/{{ recipe.id }}/match" class="card tight">
-        <p>{{ raw }}</p>
-        <div class="controls">
-          <div class="field">
-            <label for="fix{{ loop.index }}">This is</label>
-            <input id="fix{{ loop.index }}" name="name" required placeholder="the ingredient">
-          </div>
-          <input type="hidden" name="raw_text" value="{{ raw }}">
-          <button type="submit">Save</button>
-        </div>
-      </form>
-    {% endfor %}
   {% endif %}
 
+  <div class="recipe-body">
+  <section>
   <h2>Ingredients</h2>
-  {% for r in requirements.requirements %}
-    {% set v = pantry.get(r.ingredient.id) %}
-    {% set have = v.quantity if v else 0 %}
-    {% set ok = r.is_staple or (r.quantity > 0 and have >= r.quantity) or (r.quantity == 0 and have > 0) %}
-    <div class="card tight row">
-      <div class="stack">
-        <span>{{ r.raw_text }}</span>
-        <span class="meta">
-          {{ r.ingredient.name }}
-          {%- if r.is_staple %} · assumed on hand
-          {%- elif r.is_vague %} · amount unspecified
-          {%- else %} · need <span class="num">{{ r.quantity|humanize(r.ingredient.base_unit) }}</span>,
-            have <span class="num">{{ have|humanize(r.ingredient.base_unit) }}</span>{% endif %}
-        </span>
-      </div>
-      {% if r.is_staple %}
-        <span class="badge">staple</span>
-      {% else %}
-        <span class="badge {{ 'good' if ok else 'warn' }}">{{ 'have' if ok else 'buy' }}</span>
-      {% endif %}
-    </div>
-    <details class="card tight">
-      <summary>Wrong match</summary>
-      <form method="post" action="/recipes/{{ recipe.id }}/match" class="controls">
-        <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
-        <div class="field">
-          <label for="wrong{{ loop.index }}">This is actually</label>
-          <input id="wrong{{ loop.index }}" name="name" required placeholder="{{ r.ingredient.name }}">
+  {% for row in rows %}
+    {% set r = row.req %}
+    {% if r %}
+      {% set v = pantry.get(r.ingredient.id) %}
+      {% set have = v.quantity if v else 0 %}
+      {% set ok = r.is_staple or (r.quantity > 0 and have >= r.quantity) or (r.quantity == 0 and have > 0) %}
+      <div class="card tight">
+        <div class="row">
+          <div class="stack">
+            <span>{{ r.raw_text }}</span>
+            <span class="meta">
+              {{ r.ingredient.name }}
+              {%- if r.is_staple %} · assumed on hand
+              {%- elif r.is_vague %} · amount unspecified
+              {%- else %} · need <span class="num">{{ r.quantity|measure(r.ingredient) }}</span>,
+                have <span class="num">{{ have|stock(r.ingredient) }}</span>{% endif %}
+            </span>
+          </div>
+          {% if r.is_staple %}
+            <span class="badge">staple</span>
+          {% else %}
+            <span class="badge {{ 'good' if ok else 'warn' }}">{{ 'have' if ok else 'buy' }}</span>
+          {% endif %}
         </div>
-        <button type="submit">Save</button>
-      </form>
-    </details>
+        <details class="inline-fix">
+          <summary>Wrong match</summary>
+          <form method="post" action="/recipes/{{ recipe.id }}/match" class="controls">
+            <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
+            <div class="field">
+              <label for="fix{{ loop.index }}">This is actually</label>
+              <input id="fix{{ loop.index }}" name="name" list="catalog" required placeholder="{{ r.ingredient.name }}">
+            </div>
+            <button class="small" type="submit">Save</button>
+          </form>
+        </details>
+      </div>
+    {% else %}
+      <div class="card tight">
+        <div class="row">
+          <div class="stack">
+            <span>{{ row.raw }}</span>
+            <span class="meta">Couldn't identify this line</span>
+          </div>
+          <span class="badge warn">unidentified</span>
+        </div>
+        <form method="post" action="/recipes/{{ recipe.id }}/match" class="controls" style="margin-top:var(--sp-3)">
+          <input type="hidden" name="raw_text" value="{{ row.raw }}">
+          <div class="field">
+            <label for="name{{ loop.index }}">This is</label>
+            <input id="name{{ loop.index }}" name="name" list="catalog" required placeholder="the ingredient">
+          </div>
+          <button class="small" type="submit">Save</button>
+        </form>
+      </div>
+    {% endif %}
   {% endfor %}
+  <datalist id="catalog">
+    {% for name in catalog %}<option value="{{ name }}">{% endfor %}
+  </datalist>
+  </section>
 
   {% if recipe.instructions %}
+  <section>
     <h2>Method</h2>
     <div class="card method">
       {% for step in recipe.instructions.split('\n\n') %}
         {% if step.strip() %}<p>{{ step }}</p>{% endif %}
       {% endfor %}
     </div>
+  </section>
   {% endif %}
+  </div>
 
   {% if recipe.source_url %}
     <p class="note"><a href="{{ recipe.source_url }}" rel="noreferrer">Original recipe</a></p>

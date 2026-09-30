@@ -754,7 +754,7 @@ def test_a_bunch_of_cilantro_stays_on_the_form_instead_of_crashing(
         "/pantry/add", data={"name": "cilantro", "quantity": "1", "unit": "bunch"}
     )
     assert response.status_code == 400
-    assert "per-item weight" in response.text
+    assert "one bunch weighs" in response.text
     assert "<details" in response.text and "open" in response.text
     assert _pantry_row(seeded_session, web_user, "fresh cilantro") is None
 
@@ -831,10 +831,18 @@ def test_a_wrong_current_password_is_shown_on_the_settings_page(
     assert signed_in.get("/settings").status_code == 200
 
 
-def test_an_unknown_staple_is_shown_on_the_settings_page(signed_in: TestClient) -> None:
+def test_an_unknown_staple_is_shown_on_the_settings_page(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
     response = signed_in.post("/settings/staples", data={"name": "garam masala"})
-    assert response.status_code == 400
-    assert "Unknown ingredient: garam masala" in response.text
+    assert response.status_code == 303
+    assert "garam masala" in signed_in.get("/settings").text
+    seeded_session.expire_all()
+    created = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "garam masala")
+    )
+    assert created is not None
+    assert created.is_staple
 
 
 def test_sign_in_returns_to_the_page_that_was_requested(signed_in: TestClient) -> None:
@@ -1079,7 +1087,12 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
     seeded_session.commit()
     line = recipe.ingredients[0]
     assert line.ingredient_id is None
-    assert "steak" not in signed_in.get(f"/recipes/{recipe.id}").text
+    # The naming box lists the whole catalog, so "steak" is an option. It must
+    # not be the match the line was given.
+    before_catalog = signed_in.get(f"/recipes/{recipe.id}").text.partition(
+        '<datalist id="catalog">'
+    )[0]
+    assert "steak" not in before_catalog
 
     corrected = signed_in.post(
         f"/recipes/{recipe.id}/match",
@@ -1103,3 +1116,157 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
 def test_setup_username_pattern_escapes_the_hyphen(client: TestClient) -> None:
     page = client.get("/login").text
     assert 'pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{2,31}"' in page
+
+
+def test_unknown_paths_and_the_wrong_method_render_html(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    missing = signed_in.get("/nope")
+    assert missing.status_code == 404
+    assert missing.headers["content-type"].startswith("text/html")
+    assert "Not found" in missing.text
+    assert '"detail"' not in missing.text
+
+    asked = signed_in.get("/nope", headers={"Accept": "application/json"})
+    assert asked.headers["content-type"].startswith("application/json")
+
+    refresh = signed_in.get("/pantry/add")
+    assert refresh.status_code == 303
+    assert refresh.headers["location"] == "/pantry"
+    assert signed_in.get("/setup").headers["location"] == "/login"
+    assert signed_in.get("/settings/password").headers["location"] == "/settings"
+
+    receipt = Receipt(
+        user_id=web_user.id,
+        image_path="eggs.png",
+        image_sha256="apply-get",
+        status=ReceiptStatus.NEEDS_REVIEW,
+    )
+    seeded_session.add(receipt)
+    seeded_session.commit()
+    applied = signed_in.get(f"/receipts/{receipt.id}/apply")
+    assert applied.status_code == 303
+    assert applied.headers["location"] == f"/receipts/{receipt.id}"
+
+    logout = signed_in.get("/logout")
+    assert logout.status_code == 405
+    assert logout.headers["content-type"].startswith("text/html")
+    assert '"detail"' not in logout.text
+
+
+def test_skip_link_and_nav_come_before_the_page(signed_in: TestClient) -> None:
+    text = signed_in.get("/pantry").text
+    assert 'href="#main"' in text
+    assert 'id="main"' in text
+    assert text.index("Skip to content") < text.index('aria-label="Main"') < text.index("<main")
+
+
+def test_recipe_naming_inputs_share_a_catalog(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Naming",
+            ingredients=["1 pound spaghetti", "2 Tbsp zzqx mystery"],
+            servings=2,
+            source_url="https://example.com/naming",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    page = signed_in.get(f"/recipes/{recipe.id}").text
+    assert 'id="catalog"' in page
+    assert page.count('list="catalog"') >= 2
+
+    saved = signed_in.post(
+        f"/recipes/{recipe.id}/match",
+        data={"raw_text": "2 Tbsp zzqx mystery", "name": "paprika"},
+    )
+    assert saved.status_code == 303
+    assert "Saved. That line is now paprika." in signed_in.get(saved.headers["location"]).text
+
+
+def test_shopping_list_offers_a_copy(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Shop Copy",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/shop-copy",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    signed_in.post(
+        "/plan/add",
+        data={"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()},
+    )
+
+    page = signed_in.get("/shopping").text
+    assert "Copy list" in page
+    assert 'id="shop-plain"' in page
+    assert "@media print" in signed_in.get("/static/app.css").text
+
+
+def test_pantry_search_does_not_offer_an_unrelated_hit(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    record_event(
+        seeded_session, web_user.id, ing(seeded_session, "lemon"),
+        reason=EventReason.PURCHASE, delta=1,
+    )
+    record_event(
+        seeded_session, web_user.id, ing(seeded_session, "dried lentils"),
+        reason=EventReason.PURCHASE, delta=200,
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/pantry", params={"q": "lentil"}).text
+    assert "dried lentils" in page
+    assert "lemon" not in page.casefold()
+
+
+def test_recipe_search_matches_an_ingredient(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Weeknight Pasta",
+            ingredients=["3 cloves garlic"],
+            servings=2,
+            source_url="https://example.com/weeknight-pasta",
+        ),
+        source=RecipeSource.URL,
+    )
+    save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Plain Toast",
+            ingredients=["1 slice bread"],
+            servings=1,
+            source_url="https://example.com/plain-toast",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    found = signed_in.get("/recipes", params={"q": "garlic"}).text
+    assert "Weeknight Pasta" in found
+    assert "Plain Toast" not in found
+
+
+def test_a_signed_in_user_opening_join_is_told_so(signed_in: TestClient) -> None:
+    page = signed_in.get("/join")
+    assert page.status_code == 200
+    assert "already signed in" in page.text.casefold()
+    assert "needs a valid invite" not in page.text

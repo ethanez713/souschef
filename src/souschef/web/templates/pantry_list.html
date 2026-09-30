@@ -18,7 +18,7 @@
         <div class="stack">
           <strong>{{ v.ingredient.name }}</strong>
           <span class="meta">
-            <span class="num">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
+            <span class="num">{{ v.quantity|stock(v.ingredient) }}</span>
             {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
           </span>
         </div>
@@ -37,8 +37,8 @@
         <input type="hidden" name="q" value="{{ query }}">
         <div class="field">
           <input name="quantity" type="number" step="any" inputmode="decimal" required
-                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient.base_unit }})"
-                 placeholder="Set to… ({{ v.ingredient.base_unit }})">
+                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient|unit_label }})"
+                 placeholder="Set to… ({{ v.ingredient|unit_label }})">
         </div>
         <button type="submit">Set</button>
       </form>
@@ -65,8 +65,8 @@
         <input type="hidden" name="q" value="{{ query }}">
         <div class="field">
           <input name="quantity" type="number" step="any" inputmode="decimal" required
-                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient.base_unit }})"
-                 placeholder="Set to… ({{ v.ingredient.base_unit }})">
+                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient|unit_label }})"
+                 placeholder="Set to… ({{ v.ingredient|unit_label }})">
         </div>
         <button type="submit">Set</button>
       </form>

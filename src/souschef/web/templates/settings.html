@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
 {% block content %}
-<main>
+<main id="main">
   <h1>Settings</h1>
   {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
   {% if saved == 'password' %}<div class="notice good">{{ icon('circle-check', 16) }}<div>Password changed.</div></div>{% endif %}
@@ -82,13 +82,21 @@
   <h2>Invites</h2>
   <div class="card">
     {% if new_invite %}
+      {% set invite_url = request.url.scheme ~ '://' ~ request.url.netloc ~ '/join?code=' ~ new_invite %}
       <div class="notice">
         {{ icon('triangle-alert', 16) }}
         <div>
           <strong>Send this link. It is shown once and cannot be recovered.</strong>
           <p style="word-break:break-all;margin-top:var(--sp-2)">
-            <code>{{ request.url.scheme }}://{{ request.url.netloc }}/join?code={{ new_invite }}</code>
+            <code>{{ invite_url }}</code>
           </p>
+          <button type="button" data-copy="{{ invite_url }}">Copy link</button>
+          {% if request.url.hostname in ['localhost', '127.0.0.1', '::1'] %}
+            <p class="note">
+              This link uses {{ request.url.hostname }}. On another device, replace that
+              with this computer's LAN address.
+            </p>
+          {% endif %}
         </div>
       </div>
     {% endif %}

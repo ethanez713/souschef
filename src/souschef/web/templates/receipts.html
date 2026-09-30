@@ -2,7 +2,7 @@
 {% from "icons.html" import icon %}
 {% set active = 'pantry' %}
 {% block content %}
-<main>
+<main id="main">
   <h1>Receipts</h1>
   {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
 
@@ -30,7 +30,7 @@
           {%- if r.total_amount %} · {{ '%.2f'|format(r.total_amount) }}{% endif %}
         </span>
       </div>
-      <span class="badge {{ 'good' if r.status|string == 'applied' else 'warn' }}">{{ r.status }}</span>
+      <span class="badge {{ 'good' if r.status|string == 'applied' else 'warn' }}">{{ r.status|receipt_label }}</span>
     </a>
   {% else %}
     <div class="empty">No receipts scanned yet.</div>

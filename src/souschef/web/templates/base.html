@@ -15,17 +15,9 @@
 <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
-{# Chrome only for signed-in users: the login, setup and join pages have no
-   account to manage and nowhere to navigate to. #}
-<header class="topbar">
-  <a class="brand" href="/">SousChef</a>
-  {% if user %}
-  <a class="btn ghost iconbtn" href="/settings" aria-label="Settings" title="Settings">{{ icon('settings', 18) }}</a>
-  {% endif %}
-</header>
-
-{% block content %}{% endblock %}
-
+<a class="skip" href="#main">Skip to content</a>
+{# Nav before the page so a keyboard user reaches it without tabbing the whole
+   pantry. It is fixed, so this order does not move it on screen. #}
 {% if user %}
 <nav class="tabbar" aria-label="Main">
   <a href="/" class="{{ 'on' if active == 'home' }}">{{ icon('house', 18) }}<span>Home</span></a>
@@ -33,13 +25,61 @@
   <a href="/plan" class="{{ 'on' if active == 'plan' }}">{{ icon('calendar-days', 18) }}<span>Plan</span></a>
   <a href="/shopping" class="{{ 'on' if active == 'shopping' }}">{{ icon('shopping-basket', 18) }}<span>Shop</span></a>
   <a href="/pantry" class="{{ 'on' if active == 'pantry' }}">{{ icon('refrigerator', 18) }}<span>Pantry</span></a>
+  <a class="nav-extra {{ 'on' if request.url.path.startswith('/receipts') }}" href="/receipts">{{ icon('camera', 18) }}<span>Receipts</span></a>
+  <a class="nav-extra {{ 'on' if request.url.path.startswith('/settings') }}" href="/settings">{{ icon('settings', 18) }}<span>Settings</span></a>
 </nav>
 {% endif %}
+{# Chrome only for signed-in users: the login, setup and join pages have no
+   account to manage and nowhere to navigate to. #}
+<header class="topbar">
+  <a class="brand" href="/">SousChef</a>
+  {% if user %}
+  <a class="btn ghost iconbtn settings-gear" href="/settings" aria-label="Settings" title="Settings">{{ icon('settings', 18) }}</a>
+  {% endif %}
+</header>
+
+{% block content %}{% endblock %}
 
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/static/sw.js').catch(() => {});
 }
+document.addEventListener("click", function (event) {
+  var button = event.target.closest("[data-copy], [data-copy-target]");
+  if (!button) return;
+  var text = button.getAttribute("data-copy");
+  if (!text) {
+    var node = document.getElementById(button.getAttribute("data-copy-target") || "");
+    text = node ? node.textContent : "";
+  }
+  text = (text || "").replace(/^\s+|\s+$/g, "");
+  if (!text) return;
+  var label = button.textContent;
+  function finish(ok) {
+    button.textContent = ok ? "Copied" : "Copy failed";
+    setTimeout(function () { button.textContent = label; }, 1500);
+  }
+  function fallback() {
+    var area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (err) { ok = false; }
+    area.remove();
+    if (!ok) window.prompt("Copy this text", text);
+    return ok;
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(function () { finish(true); }, function () { finish(fallback()); });
+  } else {
+    finish(fallback());
+  }
+});
 </script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
 {% block content %}
-<main class="auth">
+<main id="main" class="auth">
   <h1>Sign in</h1>
   {% if error %}<div class="notice bad">{{ icon("triangle-alert", 16) }}<div>{{ error }}</div></div>{% endif %}
   <form method="post" action="/login">

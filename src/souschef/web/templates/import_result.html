@@ -2,7 +2,7 @@
 {% from "icons.html" import icon %}
 {% set active = 'recipes' %}
 {% block content %}
-<main>
+<main id="main">
   <h1>Import failed</h1>
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
   <form method="post" action="/recipes/import" class="card">

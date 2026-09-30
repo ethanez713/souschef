@@ -4,7 +4,7 @@
 {% block title %}Before you shop · SousChef{% endblock %}
 
 {% block content %}
-<main>
+<main id="main">
   <h1>Before you shop</h1>
 
   {% if checked_everything %}
@@ -41,14 +41,14 @@
             <h3>{{ c.ingredient.name }}</h3>
             <span class="meta">
               {% if c.reason == 'needed_this_week' %}
-                Recipes need about <span class="num">{{ c.required|humanize(c.ingredient.base_unit) }}</span>.
-                Best guess: <span class="num">{{ c.believed|humanize(c.ingredient.base_unit) }}</span>.
+                Recipes need about <span class="num">{{ c.required|measure(c.ingredient, True) }}</span>.
+                Best guess: <span class="num">{{ c.believed|measure(c.ingredient, True) }}</span>.
               {% else %}
                 Might be below your restock level.
-                Best guess: <span class="num">{{ c.believed|humanize(c.ingredient.base_unit) }}</span>.
+                Best guess: <span class="num">{{ c.believed|measure(c.ingredient, True) }}</span>.
               {% endif %}
-              Could be anywhere from <span class="num">{{ c.low|humanize(c.ingredient.base_unit) }}</span>
-              to <span class="num">{{ c.high|humanize(c.ingredient.base_unit) }}</span>.
+              Could be anywhere from <span class="num">{{ c.low|measure(c.ingredient, True) }}</span>
+              to <span class="num">{{ c.high|measure(c.ingredient, True) }}</span>.
             </span>
           </div>
           <span class="badge warn">
@@ -58,9 +58,10 @@
 
         <div class="controls" style="margin-top:var(--sp-4)">
           <div class="field">
-            <label for="q{{ c.ingredient.id }}">Actual amount ({{ c.ingredient.base_unit }})</label>
+            <label for="q{{ c.ingredient.id }}">Actual amount ({{ c.ingredient|unit_label }})</label>
             <input id="q{{ c.ingredient.id }}" name="quantity_{{ c.ingredient.id }}" type="number" step="any"
-                   inputmode="decimal" placeholder="{{ c.believed|round(1) }}">
+                   inputmode="decimal"
+                   placeholder="{{ (c.believed|round|int) if c.ingredient.base_unit == 'count' else (c.believed|round(1)) }}">
           </div>
         </div>
         <p class="note">Leave blank if the best guess looks right.</p>

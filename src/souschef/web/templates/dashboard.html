@@ -3,7 +3,7 @@
 {% from "macros.html" import confidence_pips, suggestion_card, day_label %}
 {% set active = 'home' %}
 {% block content %}
-<main>
+<main id="main">
   <h1>Tonight</h1>
 
   {% if expiring %}
@@ -65,7 +65,7 @@
       <a class="card tight row" href="/pantry?q={{ v.ingredient.name|urlencode }}">
         <div class="stack">
           <span>{{ v.ingredient.name }}</span>
-          <span class="meta num">{{ v.quantity|humanize(v.ingredient.base_unit) }}</span>
+          <span class="meta num">{{ v.quantity|stock(v.ingredient) }}</span>
         </div>
         {{ confidence_pips(v.confidence) }}
       </a>

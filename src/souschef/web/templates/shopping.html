@@ -2,7 +2,7 @@
 {% from "icons.html" import icon %}
 {% set active = 'shopping' %}
 {% block content %}
-<main>
+<main id="main">
   <h1>Shopping list</h1>
 
   <div id="shop-list">
@@ -33,7 +33,9 @@
             <span class="tick">{{ icon('check', 14) }}</span>
             <span class="stack">
               <strong>
-                {% if it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
+                {% if it.purchase_qty and it.purchase_unit == 'count' and it.label|lower == 'garlic' %}
+                  <span class="num">{{ it.purchase_qty|round|int }} {{ 'clove' if (it.purchase_qty|round|int) == 1 else 'cloves' }}</span>
+                {% elif it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
                 {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}</span>
                 {% endif %}
                 {{ it.label }}
@@ -48,7 +50,9 @@
       {% endfor %}
     {% endfor %}
 
-    <div class="actions">
+    <pre id="shop-plain" class="shop-plain" hidden>{{ copy_text }}</pre>
+    <div class="actions no-print">
+      <button type="button" data-copy-target="shop-plain">Copy list</button>
       <a class="btn {{ 'primary' if left == 0 }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
     </div>
   {% elif has_plan %}

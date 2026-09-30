@@ -20,6 +20,7 @@ from fastapi.templating import Jinja2Templates
 from rapidfuzz import fuzz
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from souschef import logconfig
 from souschef.config import ensure_local_secrets, get_settings
@@ -40,6 +41,7 @@ from souschef.ingest.receipt_service import (
     ReceiptError,
     apply_receipt,
     create_receipt,
+    image_key,
     scan_receipt,
 )
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
@@ -62,13 +64,56 @@ from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.models.settings import CredentialKind
 from souschef.planning.shopping import build_shopping_list, requirements_for_audit
 from souschef.planning.suggest import Surface, by_surface, suggest
+from souschef.storage import StorageError, get_storage
 from souschef.web import auth
 
 PLAN_DAYS = 10
 
 WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
+
+
+def _measure(quantity: float, ingredient: CanonicalIngredient, round_count: bool = False) -> str:
+    """A quantity the way it should read, without touching the stored number."""
+    shown = float(quantity)
+    if round_count and ingredient.base_unit == "count":
+        shown = float(round(shown))
+    text = humanize(shown, ingredient.base_unit)
+    if ingredient.name.casefold() == "garlic" and ingredient.base_unit == "count":
+        word = "clove" if abs(shown - 1) < 0.05 else "cloves"
+        return f"{text} {word}"
+    return text
+
+
+def _stock(quantity: float, ingredient: CanonicalIngredient) -> str:
+    """Pantry levels. A remainder below one base unit reads as out, not "0.4 g"."""
+    if 0 < quantity < 1:
+        return "out"
+    return _measure(quantity, ingredient)
+
+
+def _unit_label(ingredient: CanonicalIngredient) -> str:
+    if ingredient.name.casefold() == "garlic" and ingredient.base_unit == "count":
+        return "cloves"
+    return ingredient.base_unit
+
+
+def _receipt_label(status: object) -> str:
+    key = getattr(status, "value", status)
+    return {
+        "uploaded": "Uploaded",
+        "ocr_running": "Scanning",
+        "needs_review": "Needs review",
+        "applied": "Added to the pantry",
+        "failed": "Couldn't scan",
+    }.get(str(key), str(key).replace("_", " "))
+
+
 templates.env.filters["humanize"] = humanize
+templates.env.filters["measure"] = _measure
+templates.env.filters["stock"] = _stock
+templates.env.filters["unit_label"] = _unit_label
+templates.env.filters["receipt_label"] = _receipt_label
 
 logconfig.configure()
 log = logconfig.get_logger("souschef.web")
@@ -171,10 +216,12 @@ def _wants_json(request: Request) -> bool:
     return "application/json" in accept and "text/html" not in accept
 
 
-@app.exception_handler(HTTPException)
-async def http_exception_page(request: Request, exc: HTTPException) -> Response:
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_page(request: Request, exc: StarletteHTTPException) -> Response:
     """A browser gets a page. A client that asked only for JSON still gets JSON.
 
+    Routing 404s and 405s raise Starlette's HTTPException, not FastAPI's subclass,
+    so the handler has to be registered on the base class or they stay raw JSON.
     Redirects (the signed-out 303) must keep their Location header.
     """
     if exc.status_code in {301, 302, 303, 307, 308}:
@@ -184,7 +231,12 @@ async def http_exception_page(request: Request, exc: HTTPException) -> Response:
     if _wants_json(request):
         return await http_exception_handler(request, exc)
     detail = exc.detail if isinstance(exc.detail, str) else "Something went wrong."
-    titles = {404: "Not found", 403: "Not allowed", 400: "That didn't work"}
+    titles = {
+        404: "Not found",
+        403: "Not allowed",
+        400: "That didn't work",
+        405: "That didn't work",
+    }
     return _render(
         request,
         "error.html",
@@ -236,6 +288,37 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
 
 
+def _optional_user(request: Request, db: Session) -> User | None:
+    """The signed-in account, or None. Never redirects."""
+    parsed = auth.read_session(request.cookies.get(auth.SESSION_COOKIE))
+    if parsed is None:
+        return None
+    user_id, epoch = parsed
+    user = db.get(User, user_id)
+    if user is None or not user.is_active or user.session_epoch != epoch:
+        return None
+    request.state.user = user
+    return user
+
+
+def _kitchen_unit_message(exc: UnitConversionError, unit: str) -> str:
+    """The bag message, for a count-word we also can't weigh (a bunch, a head)."""
+    text = str(exc)
+    if "Don't know how much" in text:
+        return text
+    if "per-item weight" in text:
+        word = unit.strip().lower().rstrip(".") or "of that"
+        return (
+            f"Don't know how much one {word} weighs. "
+            "Enter grams, ounces, pounds, or a count."
+        )
+    return text
+
+
+def _on_hand(view) -> bool:  # noqa: ANN001
+    return not view.is_staple and view.quantity >= 1
+
+
 def _horizon() -> tuple[date, date]:
     today = date.today()
     return today, today + timedelta(days=PLAN_DAYS - 1)
@@ -274,6 +357,12 @@ def login_form(
     return _render(request, "login.html", next=shown)
 
 
+@app.get("/setup")
+def setup_get() -> RedirectResponse:
+    """A refresh after a failed claim is a GET. The form lives on /login."""
+    return RedirectResponse("/login", status_code=303)
+
+
 @app.post("/setup")
 def setup(
     request: Request,
@@ -302,12 +391,17 @@ def join_form(request: Request, code: str = "", db: Session = Depends(get_db)) -
     """Redeem an invite. The code is the only thing gating this page."""
     if auth.user_count(db) == 0:
         return RedirectResponse("/login", status_code=303)
+    if _optional_user(request, db) is not None:
+        return _render(
+            request, "join.html", code=code, invite_ok=False, already=True, error=None,
+        )
     invite = auth.find_usable_invite(db, code) if code else None
     return _render(
         request,
         "join.html",
         code=code,
         invite_ok=invite is not None,
+        already=False,
         error=None if invite or not code else "That invite is invalid, already used, or expired.",
     )
 
@@ -433,11 +527,14 @@ def dashboard(
 
     pantry = pantry_view(db, user.id)
     expiring = sorted(
-        (v for v in pantry if v.item.expires_on and (v.item.expires_on - today).days <= 5),
+        (
+            v for v in pantry
+            if _on_hand(v) and v.item.expires_on and (v.item.expires_on - today).days <= 5
+        ),
         key=lambda v: v.item.expires_on,
     )
     stale = sorted(
-        (v for v in pantry if v.confidence < 0.5 and not v.is_staple),
+        (v for v in pantry if v.confidence < 0.5 and _on_hand(v)),
         key=lambda v: v.confidence,
     )[:5]
 
@@ -481,7 +578,15 @@ def _search_pantry(views: list, q: str) -> list:
     scored = []
     for view in views:
         name = view.ingredient.name.lower()
-        score = 100.0 if needle in name else fuzz.partial_ratio(needle, name)
+        if needle in name:
+            score = 100.0
+        else:
+            # partial_ratio treats a shared prefix as a match ("lentil" → lemon).
+            # Compare the whole name and each word so a typo still hits.
+            score = max(
+                fuzz.ratio(needle, name),
+                *(fuzz.ratio(needle, token) for token in name.split()),
+            )
         if score >= PANTRY_SEARCH_CUTOFF:
             scored.append((score, view))
     scored.sort(key=lambda item: item[0], reverse=True)
@@ -511,11 +616,12 @@ def _pantry_page(
     for view in views:
         # A zero row is the ledger remembering that you finished it. The green
         # confidence pips describe trust in the number, so on a zero they read
-        # as "in stock".
-        if view.is_out and not view.is_staple:
-            out.append(view)
-        else:
+        # as "in stock". A remainder below one base unit (0.4 g of cilantro)
+        # is the same display: out, with the ledger left as it is.
+        if view.is_staple or _on_hand(view):
             by_location.setdefault(str(view.item.location), []).append(view)
+        else:
+            out.append(view)
 
     # A live-search keystroke swaps in only the list; a full navigation renders
     # the page around it.
@@ -650,8 +756,14 @@ def add_to_pantry(
             delta=quantity, unit=store_unit,
         )
     except UnitConversionError as exc:
-        return reject(str(exc))
+        return reject(_kitchen_unit_message(exc, unit))
     return RedirectResponse(_pantry_url(q), status_code=303)
+
+
+@app.get("/pantry/add")
+def add_to_pantry_get(_user: User = Depends(auth.current_user)) -> RedirectResponse:
+    """A refresh after a failed add is a GET. Send it back to the form."""
+    return RedirectResponse("/pantry", status_code=303)
 
 
 @app.get("/recipes", response_class=HTMLResponse)
@@ -665,11 +777,7 @@ def recipes_page(
     suggestions = suggest(db, user.id, limit=200)
     needle = q.strip().casefold()
     if needle:
-        suggestions = [
-            s
-            for s in suggestions
-            if needle in s.recipe.title.casefold() or needle in (s.recipe.author or "").casefold()
-        ]
+        suggestions = [s for s in suggestions if _recipe_matches(s.recipe, needle)]
     template = "recipes_list.html" if _is_htmx(request) else "recipes.html"
     return _render(
         request,
@@ -684,6 +792,36 @@ def recipes_page(
     )
 
 
+def _recipe_matches(recipe: Recipe, needle: str) -> bool:
+    if needle in recipe.title.casefold() or needle in (recipe.author or "").casefold():
+        return True
+    for line in recipe.ingredients:
+        if needle in line.raw_text.casefold():
+            return True
+        if line.ingredient is not None and needle in line.ingredient.name.casefold():
+            return True
+    return False
+
+
+def _recipe_rows(recipe: Recipe, requirements) -> tuple[list[dict], int]:  # noqa: ANN001
+    """Matched and unidentified lines in the recipe's own order."""
+    pools: dict[str, list] = {}
+    for req in requirements.requirements:
+        pools.setdefault(req.raw_text, []).append(req)
+    rows: list[dict] = []
+    unmatched = 0
+    for line in recipe.ingredients:
+        bucket = pools.get(line.raw_text)
+        if bucket:
+            rows.append({"req": bucket.pop(0), "raw": line.raw_text})
+        else:
+            rows.append({"req": None, "raw": line.raw_text})
+            unmatched += 1
+    for bucket in pools.values():
+        rows.extend({"req": req, "raw": req.raw_text} for req in bucket)
+    return rows, unmatched
+
+
 def _recipe_page(
     request: Request,
     db: Session,
@@ -693,21 +831,29 @@ def _recipe_page(
     cooked: bool = False,
     notice: str = "",
     match_error: str = "",
+    saved: str = "",
     status_code: int = 200,
 ) -> HTMLResponse:
     requirements = recipe_requirements(db, recipe)
+    rows, unmatched = _recipe_rows(recipe, requirements)
     pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
     today, _ = _horizon()
+    catalog = db.scalars(
+        select(CanonicalIngredient.name).order_by(CanonicalIngredient.name)
+    ).all()
     return _render(
         request,
         "recipe_detail.html",
         status_code=status_code,
         recipe=recipe,
-        requirements=requirements,
+        rows=rows,
+        unmatched=unmatched,
+        catalog=catalog,
         pantry=pantry,
         cooked=cooked,
         notice=notice,
         match_error=match_error,
+        saved=saved,
         today=today,
         days=[today + timedelta(days=offset) for offset in range(PLAN_DAYS)],
     )
@@ -719,11 +865,15 @@ def recipe_detail(
     recipe_id: int,
     cooked: int = 0,
     notice: str = "",
+    saved: str = "",
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
-    return _recipe_page(request, db, user, recipe, cooked=bool(cooked), notice=notice)
+    return _recipe_page(
+        request, db, user, recipe,
+        cooked=bool(cooked), notice=notice, saved=saved.strip()[:80],
+    )
 
 
 @app.post("/recipes/import")
@@ -791,7 +941,9 @@ def correct_recipe_match(
             db.flush()
     except UnitConversionError as exc:
         return _recipe_page(
-            request, db, user, recipe, match_error=str(exc), status_code=400
+            request, db, user, recipe,
+            match_error=_kitchen_unit_message(exc, lines[0].unit or ""),
+            status_code=400,
         )
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
@@ -803,7 +955,9 @@ def correct_recipe_match(
         line.ingredient_id = ingredient.id
         line.match_confidence = 1.0
     db.flush()
-    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
+    return RedirectResponse(
+        f"/recipes/{recipe.id}?saved={quote(clean)}", status_code=303
+    )
 
 
 @app.get("/recipes/{recipe_id}/cook", response_class=HTMLResponse)
@@ -1066,6 +1220,31 @@ def resolve_audit_item(
     return RedirectResponse("/audit", status_code=303)
 
 
+def _shop_line(item: ShoppingListItem) -> str:
+    label = item.label
+    qty = item.purchase_qty
+    unit = (item.purchase_unit or "").strip()
+    if not qty:
+        return label
+    n = int(round(qty))
+    if unit == "count" and label.casefold() == "garlic":
+        word = "clove" if n == 1 else "cloves"
+        return f"{n} {word} {label}"
+    if unit == "count":
+        return f"{n}× {label}"
+    if unit:
+        return f"{n} {unit} {label}"
+    return label
+
+
+def _shopping_copy(by_aisle: dict[str, list]) -> str:
+    blocks = []
+    for aisle, items in by_aisle.items():
+        lines = [aisle, *(f"- {_shop_line(item)}" for item in items)]
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
 @app.get("/shopping", response_class=HTMLResponse)
 def shopping_page(
     request: Request,
@@ -1097,6 +1276,7 @@ def shopping_page(
         "shopping.html",
         shopping_list=active,
         by_aisle=by_aisle,
+        copy_text=_shopping_copy(by_aisle),
         has_plan=has_plan,
         audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
     )
@@ -1151,13 +1331,15 @@ def _review_receipt(
     ingredients = db.scalars(
         select(CanonicalIngredient).order_by(CanonicalIngredient.name)
     ).all()
-    items = [line for line in receipt.lines if not line.is_ignored]
+    visible = [line for line in receipt.lines if not line.is_ignored]
+    ignored = [line for line in receipt.lines if line.is_ignored]
     return _render(
         request,
         "receipt_review.html",
         status_code=status_code,
         receipt=receipt,
-        lines=items,
+        lines=visible,
+        ignored=ignored,
         ingredients=ingredients,
         error=error,
         already=request.query_params.get("already") == "1",
@@ -1248,6 +1430,25 @@ async def upload_receipt(
     return RedirectResponse(f"/receipts/{receipt.id}", status_code=303)
 
 
+@app.get("/receipts/{receipt_id}/image")
+def receipt_image(
+    receipt_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The photo, and only to the account that uploaded it."""
+    receipt = _owned(db, Receipt, receipt_id, user, "receipt")
+    try:
+        data = get_storage().read(image_key(receipt.image_path))
+    except StorageError as exc:
+        raise HTTPException(status_code=404, detail="No such receipt") from exc
+    return Response(
+        content=data,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
 @app.get("/receipts/{receipt_id}", response_class=HTMLResponse)
 def receipt_review(
     request: Request,
@@ -1314,6 +1515,53 @@ def update_receipt_line(
     return RedirectResponse(f"/receipts/{receipt_id}", status_code=303)
 
 
+def _added_label(line: ReceiptLine, ingredient: CanonicalIngredient) -> str:
+    if not line.parsed_quantity:
+        return ingredient.name
+    amount = line.parsed_quantity
+    text = str(int(round(amount))) if abs(amount - round(amount)) < 0.05 else f"{amount:g}"
+    unit = (line.parsed_unit or "").strip()
+    garlic = ingredient.name.casefold() == "garlic"
+    if garlic and unit.casefold() in {"", "count", "clove", "cloves"}:
+        word = "clove" if text == "1" else "cloves"
+        return f"{ingredient.name} ({text} {word})"
+    if unit and unit.casefold() != "count":
+        return f"{ingredient.name} ({text} {unit})"
+    if unit.casefold() == "count":
+        return f"{ingredient.name} ({text} count)"
+    return f"{ingredient.name} ({text})"
+
+
+def _added_labels(db: Session, receipt: Receipt, warnings: list[str]) -> list[str]:
+    failed = set()
+    for warning in warnings:
+        raw, sep, _rest = warning.partition(":")
+        if sep:
+            failed.add(raw)
+    labels = []
+    for line in receipt.lines:
+        if line.is_ignored or not line.is_confirmed or line.ingredient_id is None:
+            continue
+        if line.raw_text in failed:
+            continue
+        ingredient = db.get(CanonicalIngredient, line.ingredient_id)
+        if ingredient is None:
+            continue
+        labels.append(_added_label(line, ingredient))
+    return labels
+
+
+@app.get("/receipts/{receipt_id}/apply")
+def apply_receipt_get(
+    receipt_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """A refresh after applying is a GET. The form lives on the review page."""
+    _owned(db, Receipt, receipt_id, user, "receipt")
+    return RedirectResponse(f"/receipts/{receipt_id}", status_code=303)
+
+
 @app.post("/receipts/{receipt_id}/apply")
 async def apply_receipt_route(
     request: Request,
@@ -1336,7 +1584,12 @@ async def apply_receipt_route(
             status_code=400,
         )
     return _render(
-        request, "receipt_applied.html", receipt=receipt, warnings=warnings, added=added
+        request,
+        "receipt_applied.html",
+        receipt=receipt,
+        warnings=warnings,
+        added=added,
+        added_labels=_added_labels(db, receipt, warnings),
     )
 
 
@@ -1413,16 +1666,28 @@ def add_staple(
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    match = IngredientMatcher(db).match(name)
-    if not match.is_match or match.ingredient_id is None:
+    """Assume a staple. An exact catalog hit is reused; anything else is created,
+    the same way naming a recipe line creates a food the catalog doesn't have.
+    """
+    clean = name.strip()
+    if not clean:
         return _settings_page(
-            request, db, user,
-            error=f"Unknown ingredient: {name}",
-            status_code=400,
+            request, db, user, error="Enter the ingredient to assume.", status_code=400,
         )
-    ingredient = db.get(CanonicalIngredient, match.ingredient_id)
-    if ingredient is None:
-        raise HTTPException(status_code=404, detail="No such ingredient")
+    match = IngredientMatcher(db).match(clean)
+    if (
+        match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT)
+        and match.ingredient_id is not None
+    ):
+        ingredient = db.get(CanonicalIngredient, match.ingredient_id)
+        if ingredient is None:
+            raise HTTPException(status_code=404, detail="No such ingredient")
+    else:
+        ingredient = CanonicalIngredient(
+            name=clean, category=IngredientCategory.OTHER, base_unit="count",
+        )
+        db.add(ingredient)
+        db.flush()
     ingredient.is_staple = True
     db.flush()
     return RedirectResponse("/settings", status_code=303)
@@ -1503,6 +1768,15 @@ def revoke_invite(
         db.delete(invite)
         db.flush()
         log.info("Invite %d revoked by %r", invite_id, user.username)
+    return RedirectResponse("/settings", status_code=303)
+
+
+@app.get("/settings/{rest:path}")
+def settings_form_get(
+    rest: str,  # noqa: ARG001
+    _user: User = Depends(auth.current_user),
+) -> RedirectResponse:
+    """A refresh of a settings form (password, staple, invite) lands back here."""
     return RedirectResponse("/settings", status_code=303)
 
 

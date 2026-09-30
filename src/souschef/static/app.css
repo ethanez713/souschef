@@ -273,3 +273,133 @@ td { padding: var(--sp-2) 0; border-top: 1px solid var(--border-subtle); vertica
 .auth { max-width: 400px; margin: var(--sp-9) auto 0; }
 .auth h1 { font-size: var(--fs-display-2); line-height: var(--lh-display-2); letter-spacing: var(--tr-display-2); margin-bottom: var(--sp-5); }
 .htmx-request { opacity: 0.7; transition: opacity var(--dur-2) var(--ease-out); }
+
+/* ---------- focus, skip, wide layout, print ---------- */
+
+/* .iconbtn.bare and .btn.ghost zero the shadow, which beats the token ring. */
+.iconbtn.bare:focus-visible,
+.btn.ghost:focus-visible,
+.tabbar a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+}
+
+.skip {
+  position: absolute; left: var(--sp-4); top: 0; z-index: 30;
+  transform: translateY(-120%);
+  padding: var(--sp-2) var(--sp-4);
+  background: var(--bg-app); color: var(--text-heading); text-decoration: none;
+  border-radius: var(--r-control); box-shadow: var(--shadow-2);
+}
+.skip:focus, .skip:focus-visible { transform: none; top: var(--sp-2); }
+
+/* Phone tab bar stays five items. Receipts and Settings join the sidebar only. */
+.tabbar a.nav-extra { display: none; }
+
+details.inline-fix { margin-top: var(--sp-2); }
+details.inline-fix > summary {
+  display: inline-flex; min-height: 0; width: auto;
+  font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--text-link);
+}
+details.inline-fix > summary::after { content: none; }
+details.inline-fix .controls,
+.recipe-body form.controls { margin-top: var(--sp-3); }
+
+.review-photo, .review-head { display: none; }
+.line-amt { display: flex; gap: var(--sp-2); }
+.line-amt .field { flex: 1; min-width: 0; }
+
+@media (min-width: 1200px) {
+  .tabbar a.nav-extra { display: flex; }
+  .settings-gear { display: none; }
+  main { max-width: var(--content-max); }
+
+  .recipe-body {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--sp-6); align-items: start;
+  }
+  .recipe-body > :only-child { grid-column: 1 / -1; }
+  .recipe-body h2 { margin-top: 0; }
+
+  #pantry-list.pantry-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    column-gap: var(--sp-5); row-gap: var(--sp-2); align-items: start;
+  }
+  #pantry-list.pantry-grid > h2,
+  #pantry-list.pantry-grid > .notice,
+  #pantry-list.pantry-grid > .empty { grid-column: 1 / -1; }
+  #pantry-list.pantry-grid .card { margin-bottom: 0; }
+
+  /* 2 : 3.25 is about 38% of the content well for the photo. */
+  .review-layout {
+    display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3.25fr);
+    gap: var(--sp-5); align-items: start;
+  }
+  .review-photo {
+    display: block; position: sticky; top: 62px;
+    max-height: calc(100vh - 78px); overflow: auto;
+  }
+  .review-photo a { display: block; }
+  .review-photo img {
+    width: 100%; height: auto; display: block;
+    border-radius: var(--r-card); border: 1px solid var(--border-subtle);
+  }
+  /* Same tracks on the header and every row, or the labels drift off the inputs.
+     Raw text is the wide track; amount and unit split the third. */
+  .review-head,
+  .review-lines .line {
+    display: grid;
+    grid-template-columns: minmax(0, 9fr) minmax(0, 5fr) minmax(0, 5fr) 3.25rem;
+    column-gap: var(--sp-3); align-items: center;
+  }
+  .review-head {
+    padding: 0 calc(var(--sp-3) + 1px); margin-bottom: var(--sp-2);
+    font-size: var(--fs-micro); letter-spacing: var(--label-caps); text-transform: uppercase;
+    color: var(--text-muted); font-weight: var(--fw-semibold);
+  }
+  .review-head > :last-child { text-align: center; }
+  .review-head .line-amt,
+  .review-lines .line-amt {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--sp-2); min-width: 0;
+  }
+  .review-lines { margin-top: 0; }
+  .review-lines .line {
+    padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-2);
+  }
+  .review-lines .line > * { min-width: 0; }
+  .review-lines .line .field { margin-bottom: 0; }
+  .review-lines .line-raw {
+    display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+    gap: 2px; min-width: 0;
+  }
+  .review-lines .line-raw code {
+    display: block; width: 100%; min-width: 0;
+    white-space: normal; overflow: visible; text-overflow: unset;
+    overflow-wrap: anywhere; line-height: 1.3;
+  }
+  .review-lines .line .line-ing > label,
+  .review-lines .line .line-amt label,
+  .review-lines .check-line span {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .review-lines .line input,
+  .review-lines .line select { width: 100%; min-width: 0; max-width: 100%; min-height: 36px; }
+  .review-lines .check-line { margin: 0; justify-content: center; }
+}
+
+@media print {
+  .skip, .topbar, .tabbar, .no-print, .actions, .shop-plain { display: none !important; }
+  body { padding: 0 !important; background: white; color: black; }
+  main { max-width: none; padding: 0; }
+  .aisle { margin: 8px 0 2px; }
+  .shop-item { margin: 0; break-inside: avoid; }
+  .shop-item button {
+    min-height: 0; padding: 2px 0; border: 0; box-shadow: none; background: transparent;
+  }
+  .shop-item .tick { width: 12px; height: 12px; }
+}

@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
 {% block content %}
-<main class="auth">
+<main id="main" class="auth">
   <h1>Create your account</h1>
 
   {% if error %}<div class="notice bad">{{ icon("triangle-alert", 16) }}<div>{{ error }}</div></div>{% endif %}
 
-  {% if invite_ok %}
+  {% if already|default(false) %}
+    <p>You're already signed in.</p>
+    <p><a href="/">Go to your kitchen</a></p>
+  {% elif invite_ok %}
     <p class="muted">
       Your kitchen is your own: your pantry, recipes, meal plan and shopping list are
       private to this account. Nothing is shared with whoever invited you.
@@ -16,7 +19,9 @@
       <div class="field">
         <label for="u">Username</label>
         <input id="u" name="username" autocomplete="username" value="{{ username or '' }}"
-               pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" autofocus required>
+               pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" aria-describedby="user-hint"
+               autofocus required>
+        <p id="user-hint" class="note">Use 3–32 letters, digits, `.`, `_` or `-`.</p>
       </div>
       <div class="field">
         <label for="pw">Password</label>

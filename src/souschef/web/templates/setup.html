@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
 {% block content %}
-<main class="auth">
+<main id="main" class="auth">
   <h1>Claim this SousChef</h1>
   <p class="muted">
     Nobody has set this instance up yet, so this form creates the first account and makes
@@ -16,7 +16,9 @@
     <div class="field">
       <label for="u">Username</label>
       <input id="u" name="username" autocomplete="username" value="{{ username or '' }}"
-             pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" autofocus required>
+             pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,31}" aria-describedby="user-hint"
+             autofocus required>
+      <p id="user-hint" class="note">Use 3–32 letters, digits, `.`, `_` or `-`.</p>
     </div>
     <div class="field">
       <label for="pw">Password</label>

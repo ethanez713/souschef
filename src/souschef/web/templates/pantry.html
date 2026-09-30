@@ -2,7 +2,7 @@
 {% from "icons.html" import icon %}
 {% set active = 'pantry' %}
 {% block content %}
-<main>
+<main id="main">
   <div class="page-head">
     <h1>Pantry</h1>
     <a class="btn" href="/receipts">{{ icon('camera', 16) }}Scan receipt</a>
@@ -38,7 +38,7 @@
     </form>
   </details>
 
-  <div id="pantry-list">
+  <div id="pantry-list" class="pantry-grid">
     {% include "pantry_list.html" %}
   </div>
 </main>

@@ -2,9 +2,9 @@
 {% from "icons.html" import icon %}
 {% set active = 'pantry' %}
 {% block content %}
-<main>
+<main id="main">
   <h1>{% if warnings %}Applied with warnings{% else %}Added to the pantry{% endif %}</h1>
-  <p>{{ added }} line{{ '' if added == 1 else 's' }} added.</p>
+  <p>{{ added }} line{{ '' if added == 1 else 's' }} added{% if added_labels %}: {{ added_labels|join('; ') }}{% endif %}.</p>
   {% for w in warnings %}<div class="notice">{{ icon('triangle-alert', 16) }}<div>{{ w }}</div></div>{% endfor %}
   <div class="actions"><a class="btn primary" href="/pantry">Go to pantry</a></div>
 </main>

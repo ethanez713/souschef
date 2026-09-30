@@ -31,7 +31,7 @@
 {% endmacro %}
 
 {% macro day_label(d, today) -%}
-{{ 'Today' if d == today else ('Tomorrow' if (d - today).days == 1 else d.strftime('%a %-d %b')) }}
+{{ 'Today' if d == today else ('Tomorrow' if (d - today).days == 1 else ('Yesterday' if (today - d).days == 1 else d.strftime('%a %-d %b'))) }}
 {%- endmacro %}
 
 {# One recipe suggestion as a carousel/list card, tinted and badged by its surface. #}

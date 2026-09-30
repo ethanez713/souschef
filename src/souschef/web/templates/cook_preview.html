@@ -9,15 +9,31 @@
     Edit anything that doesn’t match what you actually used — those edits are logged.
   </p>
 
+  {% if error %}
+    <div class="notice bad spaced">{{ error }}</div>
+  {% endif %}
+
   <form method="post" action="/recipes/{{ recipe.id }}/cooked" class="spaced">
     <input type="hidden" name="servings" value="{{ servings }}">
     {% if entry %}<input type="hidden" name="entry_id" value="{{ entry.id }}">{% endif %}
+
+    <div class="field">
+      <label for="cooked_on">Cooked on</label>
+      <select id="cooked_on" name="cooked_on">
+        {% for d in cook_dates %}
+          <option value="{{ d.isoformat() }}" {{ 'selected' if d == cooked_on }}>
+            {{ 'Today' if d == today else d.strftime('%a %-d %b') }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
 
     {% for d in debits %}
       <div class="card tight">
         <div class="stack">
           <strong>{{ d.ingredient.name }}</strong>
           <span class="meta">have <span class="num">{{ d.have|stock(d.ingredient) }}</span></span>
+          {% if d.over %}<span class="badge warn">Using more than you have</span>{% endif %}
         </div>
         <input type="hidden" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">
         <div class="field" style="margin:var(--sp-3) 0 0">
@@ -29,6 +45,16 @@
     {% else %}
       <div class="empty">Nothing to subtract — this recipe has no matched amounts.</div>
     {% endfor %}
+
+    {% if not_tracked %}
+      <h2>Not tracked</h2>
+      <ul class="plain">
+        {% for line in not_tracked %}
+          <li>{{ line }}</li>
+        {% endfor %}
+      </ul>
+      <p class="meta">These lines aren’t in the pantry, so cooking doesn’t change them.</p>
+    {% endif %}
 
     <div class="actions">
       <button class="primary" type="submit">Subtract from pantry</button>

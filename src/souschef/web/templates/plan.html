@@ -27,10 +27,17 @@
             {% else %}
               <strong>{{ e.freeform_title }}</strong>
             {% endif %}
-            {% if e.cooked_at %}<span class="meta">Cooked</span>{% endif %}
+            {% if e.cooked_at %}<span class="meta">Cooked</span>
+            {% elif e.skipped_at %}<span class="meta">Skipped</span>{% endif %}
           </div>
           <div class="btns">
-            {% if e.recipe and not e.cooked_at %}
+            {% if e.recipe and not e.cooked_at and not e.skipped_at and e.plan_date < today %}
+              <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
+              <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
+                <input type="hidden" name="next" value="/plan">
+                <button class="btn small" type="submit">Skipped</button>
+              </form>
+            {% elif e.recipe and not e.cooked_at and not e.skipped_at %}
               <a class="btn small quiet" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>
             {% endif %}
             <form method="post" action="/plan/{{ e.id }}/remove" class="inline">

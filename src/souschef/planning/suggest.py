@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from souschef.core.inventory import PantryView, pantry_view
-from souschef.core.recipes import recipe_requirements
+from souschef.core.recipes import RequirementSet, recipe_requirements
 from souschef.models import CanonicalIngredient, Recipe
 
 # How close to expiry an ingredient must be to count as "use me first".
@@ -79,6 +79,8 @@ class Suggestion:
     missing: list[MissingIngredient] = field(default_factory=list)
     uses_expiring: list[CanonicalIngredient] = field(default_factory=list)
     availability: float = 0.0
+    # Non-optional recipe lines that never resolved to a catalog ingredient.
+    unidentified: int = 0
 
     @property
     def missing_count(self) -> int:
@@ -89,12 +91,36 @@ class Suggestion:
         """A short human explanation of why this was suggested."""
         if self.uses_expiring:
             names = ", ".join(i.name for i in self.uses_expiring[:2])
-            return f"Uses {names} before it goes off"
-        if self.surface == Surface.COOK_NOW:
-            return "You have everything"
-        if self.missing_count == 1:
-            return f"Just needs {self.missing[0].ingredient.name}"
-        return f"Needs {self.missing_count} things"
+            base = f"Uses {names} before it goes off"
+        elif self.surface == Surface.COOK_NOW:
+            base = "You have everything"
+        elif self.missing_count == 1:
+            base = f"Just needs {self.missing[0].ingredient.name}"
+        else:
+            base = f"Needs {self.missing_count} things"
+        if self.unidentified:
+            noun = "line" if self.unidentified == 1 else "lines"
+            return f"{base} · {self.unidentified} {noun} not identified"
+        return base
+
+
+def nonoptional_unmatched(recipe: Recipe, requirements: RequirementSet) -> list[str]:
+    """Unmatched lines the recipe actually needs.
+
+    ``RequirementSet.unmatched`` is every unresolved line, garnish included.
+    Optional extras stay out of readiness and the shopping list.
+    """
+    pool = list(requirements.unmatched)
+    kept: list[str] = []
+    for line in recipe.ingredients:
+        if line.raw_text not in pool:
+            continue
+        pool.remove(line.raw_text)
+        if line.ingredient_id is not None or line.is_optional:
+            continue
+        kept.append(line.raw_text)
+    kept.extend(pool)
+    return kept
 
 
 def _expiring_soon(view: PantryView, today: date) -> bool:
@@ -193,6 +219,7 @@ def score_recipe(
         missing=missing,
         uses_expiring=uses_expiring,
         availability=round(availability, 4),
+        unidentified=len(nonoptional_unmatched(recipe, requirements)),
     )
 
 

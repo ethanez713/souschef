@@ -246,7 +246,14 @@ details.plan .daychips { margin-top: var(--sp-2); }
 /* ---------- shopping ---------- */
 
 .aisle { margin: var(--sp-6) 0 var(--sp-15); }
+.shop-row { display: flex; align-items: stretch; gap: var(--sp-2); margin: 0 0 var(--sp-15); }
+.shop-row .shop-item { flex: 1; margin: 0; min-width: 0; }
+.shop-skip { flex: none; display: flex; }
+.shop-skip button { height: 100%; min-height: 44px; }
 .shop-item { margin: 0 0 var(--sp-15); }
+ul.plain { margin: var(--sp-2) 0 0; padding-left: 1.2em; }
+ul.plain li { margin: var(--sp-1) 0; }
+.btns { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
 .shop-item button {
   display: flex; width: 100%; justify-content: flex-start; align-items: center; gap: var(--sp-4);
   padding: var(--sp-3) var(--sp-4); text-align: left; white-space: normal; min-height: 56px;

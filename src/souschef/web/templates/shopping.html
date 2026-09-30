@@ -6,9 +6,19 @@
   <h1>Shopping list</h1>
 
   <div id="shop-list">
-  {% if shopping_list and shopping_list.items %}
-    {% set total = shopping_list.items|length %}
-    {% set left = shopping_list.items|rejectattr('is_checked')|list|length %}
+  {% if added %}
+    <div class="notice good spaced">
+      {{ icon('circle-check', 16) }}
+      <div>Added {{ added|join(', ') }} to the pantry.</div>
+    </div>
+  {% endif %}
+  {% if add_error %}
+    <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>
+  {% endif %}
+
+  {% if items %}
+    {% set total = items|length %}
+    {% set left = items|rejectattr('is_checked')|list|length %}
     <p class="meta">
       Covers {{ shopping_list.covers_from.strftime('%-d %b') }}–{{ shopping_list.covers_to.strftime('%-d %b') }}
       · <span class="num">{{ left }}</span> of <span class="num">{{ total }}</span> to get
@@ -24,36 +34,50 @@
       </a>
     {% endif %}
 
-    {% for aisle, items in by_aisle.items() %}
+    {% for aisle, aisle_items in by_aisle.items() %}
       <h2 class="aisle">{{ aisle }}</h2>
-      {% for it in items %}
-        <form method="post" action="/shopping/item/{{ it.id }}/toggle" class="shop-item {{ 'checked' if it.is_checked }}"
-              hx-post="/shopping/item/{{ it.id }}/toggle" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
-          <button type="submit" aria-pressed="{{ 'true' if it.is_checked else 'false' }}">
-            <span class="tick">{{ icon('check', 14) }}</span>
-            <span class="stack">
-              <strong>
-                {% if it.purchase_qty and it.purchase_unit == 'count' and it.label|lower == 'garlic' %}
-                  <span class="num">{{ it.purchase_qty|round|int }} {{ 'clove' if (it.purchase_qty|round|int) == 1 else 'cloves' }}</span>
-                {% elif it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
-                {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}</span>
-                {% endif %}
-                {{ it.label }}
-              </strong>
-              <span class="meta">
-                {%- if it.purchase_note %}{{ it.purchase_note }} · {% endif -%}
-                for {{ it.driven_by or 'restock' }}
+      {% for it in aisle_items %}
+        <div class="shop-row">
+          <form method="post" action="/shopping/item/{{ it.id }}/toggle" class="shop-item {{ 'checked' if it.is_checked }}"
+                hx-post="/shopping/item/{{ it.id }}/toggle" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+            <button type="submit" aria-pressed="{{ 'true' if it.is_checked else 'false' }}">
+              <span class="tick">{{ icon('check', 14) }}</span>
+              <span class="stack">
+                <strong>
+                  {% if it.purchase_qty and it.purchase_unit == 'count' and it.label|lower == 'garlic' %}
+                    <span class="num">{{ it.purchase_qty|round|int }} {{ 'clove' if (it.purchase_qty|round|int) == 1 else 'cloves' }}</span>
+                  {% elif it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
+                  {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}</span>
+                  {% endif %}
+                  {{ it.label }}
+                </strong>
+                <span class="meta">
+                  {%- if it.is_stocked %}Added to pantry · {% endif -%}
+                  {%- if it.purchase_note %}{{ it.purchase_note }} · {% endif -%}
+                  for {{ it.driven_by or 'restock' }}
+                </span>
               </span>
-            </span>
-          </button>
-        </form>
+            </button>
+          </form>
+          <form method="post" action="/shopping/item/{{ it.id }}/skip" class="shop-skip no-print">
+            <button class="iconbtn" type="submit" aria-label="Remove {{ it.label }}">{{ icon('x', 16) }}</button>
+          </form>
+        </div>
       {% endfor %}
     {% endfor %}
+
+    {% if pending_stock %}
+      <form method="post" action="/shopping/stock" class="actions no-print">
+        <button class="primary" type="submit">
+          Add {{ pending_stock }} ticked {{ 'item' if pending_stock == 1 else 'items' }} to pantry
+        </button>
+      </form>
+    {% endif %}
 
     <pre id="shop-plain" class="shop-plain" hidden>{{ copy_text }}</pre>
     <div class="actions no-print">
       <button type="button" data-copy-target="shop-plain">Copy list</button>
-      <a class="btn {{ 'primary' if left == 0 }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
+      <a class="btn {{ 'primary' if left == 0 and not pending_stock }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
     </div>
   {% elif has_plan %}
     <div class="empty"><p>Nothing to buy — the pantry covers this week’s plan.</p></div>
@@ -63,6 +87,39 @@
       <a class="btn primary" href="/plan">Plan some meals</a>
     </div>
   {% endif %}
+
+  {% if unnamed %}
+    <h2 class="aisle">Not identified — name these on the recipe</h2>
+    {% for group in unnamed %}
+      <div class="card tight">
+        <a href="/recipes/{{ group.id }}"><strong>{{ group.title }}</strong></a>
+        <ul class="plain">
+          {% for line in group.lines %}<li>{{ line }}</li>{% endfor %}
+        </ul>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <details class="card no-print" {{ 'open' if add_error }}>
+    <summary>Add an item</summary>
+    <form method="post" action="/shopping/add" style="margin-top:var(--sp-4)">
+      <div class="field">
+        <label for="shop-name">Name</label>
+        <input id="shop-name" name="name" value="{{ add_name or '' }}" required {% if add_error %}autofocus{% endif %}>
+      </div>
+      <div class="controls">
+        <div class="field">
+          <label for="shop-amount">Amount</label>
+          <input id="shop-amount" name="amount" type="number" step="any" inputmode="decimal" value="{{ add_amount or '' }}">
+        </div>
+        <div class="field">
+          <label for="shop-unit">Unit</label>
+          <input id="shop-unit" name="unit" placeholder="g / count" value="{{ add_unit or '' }}">
+        </div>
+        <button class="primary" type="submit">Add to list</button>
+      </div>
+    </form>
+  </details>
   </div>
 </main>
 {% endblock %}

@@ -13,6 +13,27 @@
     </div>
   {% endif %}
 
+  {% if past_meals %}
+    <div class="sechead"><h2>Did you cook these?</h2></div>
+    {% for e in past_meals %}
+      <div class="card tight">
+        <div class="row">
+          <div class="stack">
+            <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
+            <span class="meta">{{ day_label(e.plan_date, today) }}</span>
+          </div>
+          <div class="btns">
+            <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
+            <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
+              <input type="hidden" name="next" value="/">
+              <button class="btn small" type="submit">Skipped</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
   {% if upcoming %}
     <div class="sechead"><h2>Planned</h2><a href="/plan">Plan</a></div>
     {% for e in upcoming %}

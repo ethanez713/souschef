@@ -6,7 +6,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from urllib.parse import quote, quote_plus
+from urllib.parse import quote, quote_plus, urlencode
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import (
@@ -29,6 +29,7 @@ from souschef.core.crypto import encrypt
 from souschef.core.inventory import (
     confirm_level,
     consume_for_recipe,
+    cover_cook_shortfall,
     pantry_view,
     record_event,
     set_level,
@@ -62,12 +63,25 @@ from souschef.models import (
 from souschef.models.base import Base
 from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.models.settings import CredentialKind
-from souschef.planning.shopping import build_shopping_list, requirements_for_audit
+from souschef.planning.shopping import (
+    ShoppingError,
+    add_manual_item,
+    build_shopping_list,
+    ingredients_stocked_since,
+    live_list,
+    requirements_for_audit,
+    stock_ticked_items,
+    unnamed_recipe_lines,
+)
 from souschef.planning.suggest import Surface, by_surface, suggest
 from souschef.storage import StorageError, get_storage
 from souschef.web import auth
 
 PLAN_DAYS = 10
+# Uncooked meals stay visible this long, and a cook can be logged back this far.
+PAST_DAYS = 7
+
+LIST_STOCK_NOTE = "Already added from the shopping list, so this line stays unticked."
 
 WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
@@ -324,6 +338,47 @@ def _horizon() -> tuple[date, date]:
     return today, today + timedelta(days=PLAN_DAYS - 1)
 
 
+def _cook_dates(today: date | None = None) -> list[date]:
+    """Today, then back through the days a missed cook can still be logged."""
+    today = today or date.today()
+    return [today - timedelta(days=offset) for offset in range(PAST_DAYS + 1)]
+
+
+def _parse_cook_date(raw: str, today: date | None = None) -> date | None:
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        day = date.fromisoformat(text)
+    except ValueError:
+        return None
+    if day not in set(_cook_dates(today)):
+        return None
+    return day
+
+
+def _cook_when(cooked_on: date) -> datetime:
+    if cooked_on >= date.today():
+        return datetime.now(UTC)
+    noon = datetime.min.time().replace(hour=12)
+    return datetime.combine(cooked_on, noon, tzinfo=UTC)
+
+
+def _open_plan_entry(db: Session, user_id: int, recipe_id: int, day: date) -> MealPlanEntry | None:
+    """That day's still-open plan entry for this recipe, if the cook should close it."""
+    return db.scalar(
+        select(MealPlanEntry)
+        .where(
+            MealPlanEntry.user_id == user_id,
+            MealPlanEntry.recipe_id == recipe_id,
+            MealPlanEntry.plan_date == day,
+            MealPlanEntry.cooked_at.is_(None),
+            MealPlanEntry.skipped_at.is_(None),
+        )
+        .order_by(MealPlanEntry.id)
+    )
+
+
 def _sync_shopping(db: Session, user_id: int):  # noqa: ANN202
     start, end = _horizon()
     return build_shopping_list(db, user_id, covers_from=start, covers_to=end)
@@ -513,6 +568,20 @@ def dashboard(
     grouped = by_surface(suggestions)
 
     today = date.today()
+    past_start = today - timedelta(days=PAST_DAYS)
+    past_meals = db.scalars(
+        select(MealPlanEntry)
+        .options(selectinload(MealPlanEntry.recipe))
+        .where(
+            MealPlanEntry.user_id == user.id,
+            MealPlanEntry.plan_date >= past_start,
+            MealPlanEntry.plan_date < today,
+            MealPlanEntry.cooked_at.is_(None),
+            MealPlanEntry.skipped_at.is_(None),
+            MealPlanEntry.recipe_id.is_not(None),
+        )
+        .order_by(MealPlanEntry.plan_date)
+    ).all()
     upcoming = db.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe))
@@ -544,6 +613,7 @@ def dashboard(
         cook_now=grouped[Surface.COOK_NOW][:10],
         nearly=grouped[Surface.NEARLY_THERE][:10],
         bigger_shop=grouped[Surface.REACH][:10],
+        past_meals=past_meals,
         upcoming=upcoming,
         today=today,
         expiring=expiring[:5],
@@ -960,6 +1030,56 @@ def correct_recipe_match(
     )
 
 
+def _cook_page(
+    request: Request,
+    db: Session,
+    user: User,
+    recipe: Recipe,
+    *,
+    plan_entry: MealPlanEntry | None = None,
+    servings: int = 0,
+    error: str = "",
+    status_code: int = 200,
+) -> HTMLResponse:
+    servings = servings or (plan_entry.servings if plan_entry else 0) or recipe.servings or 1
+    requirements = recipe_requirements(db, recipe, servings=servings)
+    pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
+
+    debits: list[dict] = []
+    by_id: dict[int, dict] = {}
+    for req in requirements.requirements:
+        if req.quantity <= 0 or req.is_staple:
+            continue
+        row = by_id.get(req.ingredient.id)
+        if row is None:
+            have = pantry[req.ingredient.id].quantity if req.ingredient.id in pantry else 0.0
+            row = {"ingredient": req.ingredient, "quantity": 0.0, "have": have}
+            by_id[req.ingredient.id] = row
+            debits.append(row)
+        row["quantity"] += req.quantity
+    for row in debits:
+        row["over"] = row["quantity"] > row["have"] + 1e-6
+
+    today = date.today()
+    cooked_on = today
+    if plan_entry is not None and plan_entry.plan_date in set(_cook_dates(today)):
+        cooked_on = plan_entry.plan_date
+    return _render(
+        request,
+        "cook_preview.html",
+        status_code=status_code,
+        recipe=recipe,
+        debits=debits,
+        not_tracked=list(requirements.unmatched),
+        servings=servings,
+        entry=plan_entry,
+        cook_dates=_cook_dates(today),
+        cooked_on=cooked_on,
+        today=today,
+        error=error,
+    )
+
+
 @app.get("/recipes/{recipe_id}/cook", response_class=HTMLResponse)
 def cook_preview(
     request: Request,
@@ -975,36 +1095,7 @@ def cook_preview(
         plan_entry = _owned(db, MealPlanEntry, entry, user, "plan entry")
         if plan_entry.recipe_id != recipe.id:
             raise HTTPException(status_code=404, detail="No such plan entry")
-        servings = servings or plan_entry.servings
-    servings = servings or recipe.servings or 1
-    requirements = recipe_requirements(db, recipe, servings=servings)
-    pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
-
-    debits: list[dict] = []
-    by_id: dict[int, dict] = {}
-    for req in requirements.requirements:
-        if req.quantity <= 0 or req.is_staple:
-            continue
-        row = by_id.get(req.ingredient.id)
-        if row is None:
-            have = pantry[req.ingredient.id].quantity if req.ingredient.id in pantry else 0.0
-            row = {
-                "ingredient": req.ingredient,
-                "quantity": 0.0,
-                "have": have,
-            }
-            by_id[req.ingredient.id] = row
-            debits.append(row)
-        row["quantity"] += req.quantity
-
-    return _render(
-        request,
-        "cook_preview.html",
-        recipe=recipe,
-        debits=debits,
-        servings=servings,
-        entry=plan_entry,
-    )
+    return _cook_page(request, db, user, recipe, plan_entry=plan_entry, servings=servings)
 
 
 @app.post("/recipes/{recipe_id}/cooked")
@@ -1018,6 +1109,22 @@ async def mark_cooked(
     form = await request.form()
     servings = int(form.get("servings") or 0)
     entry_id = int(form.get("entry_id") or 0)
+    raw_date = str(form.get("cooked_on") or "")
+    cooked_on = _parse_cook_date(raw_date)
+    plan_entry = None
+    if entry_id:
+        plan_entry = _owned(db, MealPlanEntry, entry_id, user, "plan entry")
+        if plan_entry.recipe_id != recipe.id:
+            raise HTTPException(status_code=404, detail="No such plan entry")
+    if raw_date.strip() and cooked_on is None:
+        return _cook_page(
+            request, db, user, recipe,
+            plan_entry=plan_entry, servings=servings,
+            error="Pick a day from today back to a week ago.",
+            status_code=400,
+        )
+    if cooked_on is None:
+        cooked_on = date.today()
 
     proposed: dict[int, float] = {}
     used: dict[int, float] = {}
@@ -1038,14 +1145,26 @@ async def mark_cooked(
         for iid, amount in used.items()
         if iid in proposed and abs(amount - proposed[iid]) > 1e-6
     }
-    consume_for_recipe(db, user.id, used, recipe_id=recipe.id, notes=notes or None)
+    when = _cook_when(cooked_on)
+    # The purchase has to land before the debit so the ledger's running total
+    # never pretends the ingredient was used from an empty jar.
+    cover_cook_shortfall(db, user.id, used, recipe_id=recipe.id, occurred_at=when)
+    consume_for_recipe(
+        db, user.id, used, recipe_id=recipe.id, notes=notes or None, occurred_at=when
+    )
 
     recipe.times_cooked += 1
-    recipe.last_cooked_at = datetime.now(UTC)
-    if entry_id:
-        plan_entry = _owned(db, MealPlanEntry, entry_id, user, "plan entry")
-        if plan_entry.recipe_id == recipe.id:
-            plan_entry.cooked_at = datetime.now(UTC)
+    previous = recipe.last_cooked_at
+    if previous is not None and previous.tzinfo is None:
+        previous = previous.replace(tzinfo=UTC)
+    if previous is None or previous < when:
+        recipe.last_cooked_at = when
+
+    # The day on the form decides which plan entry closes, so logging Thursday
+    # from the recipe page still attaches to Thursday.
+    attached = _open_plan_entry(db, user.id, recipe.id, cooked_on)
+    if attached is not None:
+        attached.cooked_at = when
     db.flush()
     _sync_shopping(db, user.id)
     return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
@@ -1059,19 +1178,22 @@ def plan_page(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     today, week_end = _horizon()
+    past_start = today - timedelta(days=PAST_DAYS)
     entries = db.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe))
         .where(
             MealPlanEntry.user_id == user.id,
-            MealPlanEntry.plan_date >= today,
+            MealPlanEntry.plan_date >= past_start,
             MealPlanEntry.plan_date <= week_end,
         )
         .order_by(MealPlanEntry.plan_date)
     ).all()
 
     days = [today + timedelta(days=offset) for offset in range(PLAN_DAYS)]
-    by_day = {day: [e for e in entries if e.plan_date == day] for day in days}
+    span = (week_end - past_start).days + 1
+    shown = [past_start + timedelta(days=offset) for offset in range(span)]
+    by_day = {day: [e for e in entries if e.plan_date == day] for day in shown}
 
     return _render(
         request,
@@ -1148,6 +1270,22 @@ def remove_from_plan(
         db.flush()
         _sync_shopping(db, user.id)
     return RedirectResponse("/plan", status_code=303)
+
+
+@app.post("/plan/{entry_id}/skip")
+def skip_meal(
+    entry_id: int,
+    next_path: str = Form("/", alias="next"),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Keep the plan entry and debit nothing. The meal didn't happen."""
+    entry = _owned(db, MealPlanEntry, entry_id, user, "plan entry")
+    if entry.cooked_at is None and entry.skipped_at is None:
+        entry.skipped_at = datetime.now(UTC)
+        db.flush()
+        _sync_shopping(db, user.id)
+    return RedirectResponse(_safe_next(next_path), status_code=303)
 
 
 @app.get("/audit", response_class=HTMLResponse)
@@ -1245,14 +1383,36 @@ def _shopping_copy(by_aisle: dict[str, list]) -> str:
     return "\n\n".join(blocks)
 
 
-@app.get("/shopping", response_class=HTMLResponse)
-def shopping_page(
+def _group_unnamed(lines: list[tuple[int, str, str]]) -> list[dict]:
+    groups: list[dict] = []
+    by_id: dict[int, dict] = {}
+    for recipe_id, title, text in lines:
+        group = by_id.get(recipe_id)
+        if group is None:
+            group = {"id": recipe_id, "title": title, "lines": []}
+            by_id[recipe_id] = group
+            groups.append(group)
+        group["lines"].append(text)
+    return groups
+
+
+def _render_shopping(
     request: Request,
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
+    db: Session,
+    user: User,
+    *,
+    add_error: str = "",
+    add_name: str = "",
+    add_amount: str = "",
+    add_unit: str = "",
+    status_code: int = 200,
+    rebuild: bool = True,
 ) -> HTMLResponse:
     start, end = _horizon()
-    active = _sync_shopping(db, user.id)
+    if rebuild:
+        active = _sync_shopping(db, user.id)
+    else:
+        active = live_list(db, user.id) or _sync_shopping(db, user.id)
     has_plan = (
         db.scalar(
             select(func.count())
@@ -1262,24 +1422,45 @@ def shopping_page(
                 MealPlanEntry.plan_date >= start,
                 MealPlanEntry.plan_date <= end,
                 MealPlanEntry.cooked_at.is_(None),
+                MealPlanEntry.skipped_at.is_(None),
             )
         )
         or 0
     ) > 0
 
+    visible = [item for item in active.items if not item.is_skipped]
     by_aisle: dict[str, list] = {}
-    for item in sorted(active.items, key=lambda i: (i.aisle or "", i.is_checked, i.sort_order)):
+    for item in sorted(visible, key=lambda i: (i.aisle or "", i.is_checked, i.sort_order)):
         by_aisle.setdefault(item.aisle or "Other", []).append(item)
+    pending_stock = sum(1 for item in visible if item.is_checked and not item.is_stocked)
 
     return _render(
         request,
         "shopping.html",
+        status_code=status_code,
         shopping_list=active,
+        items=visible,
         by_aisle=by_aisle,
         copy_text=_shopping_copy(by_aisle),
         has_plan=has_plan,
+        pending_stock=pending_stock,
+        unnamed=_group_unnamed(unnamed_recipe_lines(db, user.id, start, end)),
+        added=request.query_params.getlist("added"),
+        add_error=add_error,
+        add_name=add_name,
+        add_amount=add_amount,
+        add_unit=add_unit,
         audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
     )
+
+
+@app.get("/shopping", response_class=HTMLResponse)
+def shopping_page(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    return _render_shopping(request, db, user)
 
 
 @app.post("/shopping/generate")
@@ -1305,6 +1486,70 @@ def toggle_shopping_item(
     return RedirectResponse("/shopping", status_code=303)
 
 
+@app.post("/shopping/stock")
+def stock_shopping(
+    request: Request,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    listing = live_list(db, user.id) or _sync_shopping(db, user.id)
+    try:
+        names = stock_ticked_items(db, user.id, listing)
+    except (ShoppingError, UnitConversionError) as exc:
+        db.rollback()
+        return _render_shopping(request, db, user, add_error=str(exc), status_code=400)
+    query = urlencode([("added", name) for name in names])
+    return RedirectResponse("/shopping" + (f"?{query}" if query else ""), status_code=303)
+
+
+@app.post("/shopping/add")
+def add_shopping_item(
+    request: Request,
+    name: str = Form(""),
+    amount: str = Form(""),
+    unit: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    parsed: float | None = None
+    text = amount.strip()
+    if text:
+        try:
+            parsed = float(text)
+        except ValueError:
+            return _render_shopping(
+                request, db, user,
+                add_error="Amount isn't a number.",
+                add_name=name, add_amount=amount, add_unit=unit,
+                status_code=400,
+            )
+    listing = live_list(db, user.id) or _sync_shopping(db, user.id)
+    try:
+        add_manual_item(db, listing, name, amount=parsed, unit=unit.strip() or None)
+    except ShoppingError as exc:
+        return _render_shopping(
+            request, db, user,
+            add_error=str(exc),
+            add_name=name, add_amount=amount, add_unit=unit,
+            status_code=400, rebuild=False,
+        )
+    return RedirectResponse("/shopping", status_code=303)
+
+
+@app.post("/shopping/item/{item_id}/skip")
+def skip_shopping_item(
+    item_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    item = db.get(ShoppingListItem, item_id)
+    if item is not None and item.shopping_list.user_id == user.id:
+        item.is_skipped = True
+        item.is_checked = False
+        db.flush()
+    return RedirectResponse("/shopping", status_code=303)
+
+
 @app.get("/receipts", response_class=HTMLResponse)
 def receipts_page(
     request: Request,
@@ -1320,6 +1565,31 @@ def receipts_page(
     return _render(request, "receipts.html", receipts=receipts)
 
 
+def _untick_stocked_lines(db: Session, user: User, receipt: Receipt) -> dict[int, str]:
+    """Drop ticks on lines whose ingredient was bought from the list since it was built.
+
+    The list's created_at is preserved across rebuilds, so a shop added on
+    Monday still unticks Tuesday's receipt for those ingredients.
+    """
+    if receipt.status == ReceiptStatus.APPLIED:
+        return {}
+    listing = live_list(db, user.id)
+    if listing is None or listing.created_at is None:
+        return {}
+    stocked = ingredients_stocked_since(db, user.id, listing.created_at)
+    notes: dict[int, str] = {}
+    for line in receipt.lines:
+        if line.is_ignored or line.ingredient_id is None:
+            continue
+        if line.ingredient_id not in stocked:
+            continue
+        line.is_confirmed = False
+        notes[line.id] = LIST_STOCK_NOTE
+    if notes:
+        db.flush()
+    return notes
+
+
 def _review_receipt(
     request: Request,
     db: Session,
@@ -1327,7 +1597,12 @@ def _review_receipt(
     *,
     error: str = "",
     status_code: int = 200,
+    user: User | None = None,
 ) -> HTMLResponse:
+    owner = user or getattr(request.state, "user", None)
+    list_notes: dict[int, str] = {}
+    if owner is not None and receipt.status != ReceiptStatus.APPLIED:
+        list_notes = _untick_stocked_lines(db, owner, receipt)
     ingredients = db.scalars(
         select(CanonicalIngredient).order_by(CanonicalIngredient.name)
     ).all()
@@ -1342,6 +1617,7 @@ def _review_receipt(
         ignored=ignored,
         ingredients=ingredients,
         error=error,
+        list_notes=list_notes,
         already=request.query_params.get("already") == "1",
     )
 

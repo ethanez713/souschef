@@ -35,6 +35,11 @@ from souschef.models import (
     StorageLocation,
 )
 
+# A receipt line with no matcher score is stored at 0.5 (ingest/receipt_service).
+# A purchase we inferred — a ticked shopping line, or cooking more than the
+# ledger held — is a weaker claim than a scan, so it stays under that floor.
+INFERRED_PURCHASE_CONFIDENCE = 0.35
+
 
 def physical_of(ingredient: CanonicalIngredient) -> IngredientPhysical:
     return IngredientPhysical(
@@ -251,6 +256,53 @@ def confirm_level(
         delta=0.0,
         note="confirmed unchanged",
     )
+
+
+def cover_cook_shortfall(
+    session: Session,
+    user_id: int,
+    requirements: dict[int, float],
+    *,
+    recipe_id: int,
+    occurred_at: datetime | None = None,
+) -> list[InventoryEvent]:
+    """Record a low-confidence purchase where a cook uses more than the ledger holds.
+
+    The debit that follows then lands on a true level. Without this, the cook
+    event's delta exceeds what was there and the clamp to zero hides the purchase
+    that must have happened. Staples are skipped: they are never debited.
+    """
+    events: list[InventoryEvent] = []
+    for ingredient_id, amount in requirements.items():
+        if amount <= 0:
+            continue
+        ingredient = session.get(CanonicalIngredient, ingredient_id)
+        if ingredient is None or ingredient.is_staple:
+            continue
+        item = session.scalar(
+            select(PantryItem).where(
+                PantryItem.user_id == user_id,
+                PantryItem.ingredient_id == ingredient.id,
+            )
+        )
+        have = item.quantity if item is not None else 0.0
+        shortfall = amount - have
+        if shortfall <= 1e-6:
+            continue
+        events.append(
+            record_event(
+                session,
+                user_id,
+                ingredient,
+                reason=EventReason.PURCHASE,
+                delta=shortfall,
+                event_confidence=INFERRED_PURCHASE_CONFIDENCE,
+                source_ref=f"recipe:{recipe_id}",
+                note="implied purchase: cooked more than was on hand",
+                occurred_at=occurred_at,
+            )
+        )
+    return events
 
 
 def consume_for_recipe(

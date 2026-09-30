@@ -44,6 +44,9 @@ class MealPlanEntry(Base, OwnedMixin, TimestampMixin):
     # A locked entry survives re-planning; the suggester works around it.
     is_locked: Mapped[bool] = mapped_column(default=False)
     cooked_at: Mapped[datetime | None] = mapped_column()
+    # Set when the cook says the meal didn't happen. The row stays so the week
+    # still has a history; nothing is debited.
+    skipped_at: Mapped[datetime | None] = mapped_column()
 
     recipe: Mapped[Recipe | None] = relationship()
 
@@ -119,6 +122,11 @@ class ShoppingListItem(Base):
 
     aisle: Mapped[str | None] = mapped_column(String(60))
     is_checked: Mapped[bool] = mapped_column(default=False)
+    # Ticked and written to the ledger from this list. A rebuild keeps the mark
+    # so the same line cannot be purchased twice, and a later receipt can see it.
+    is_stocked: Mapped[bool] = mapped_column(default=False)
+    # Taken off the list. Survives the rebuild that would otherwise put it back.
+    is_skipped: Mapped[bool] = mapped_column(default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     shopping_list: Mapped[ShoppingList] = relationship(back_populates="items")

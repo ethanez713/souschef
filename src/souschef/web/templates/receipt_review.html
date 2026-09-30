@@ -108,6 +108,9 @@
                 <input type="checkbox" name="confirmed_{{ line.id }}" {{ 'checked' if line.is_confirmed }}>
                 <span>Add this to the pantry</span>
               </label>
+              {% if list_notes.get(line.id) %}
+                <p class="meta">{{ list_notes[line.id] }}</p>
+              {% endif %}
             </div>
           {% else %}
             <p class="muted">No food lines on this scan.</p>

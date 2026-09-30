@@ -349,10 +349,10 @@ def test_cook_preview_shows_what_will_be_subtracted(
         seeded_session,
         web_user.id,
         RawRecipe(
-            title="Oil Test",
-            ingredients=["2 tablespoons olive oil"],
+            title="Pasta Test",
+            ingredients=["1 pound spaghetti"],
             servings=1,
-            source_url="https://example.com/oil-preview",
+            source_url="https://example.com/pasta-preview",
         ),
         source=RecipeSource.URL,
     )
@@ -361,7 +361,7 @@ def test_cook_preview_shows_what_will_be_subtracted(
     page = signed_in.get(f"/recipes/{recipe.id}/cook")
     assert page.status_code == 200
     assert "About to cook" in page.text
-    assert "olive oil" in page.text
+    assert "spaghetti" in page.text
     assert "Subtract from pantry" in page.text
 
 
@@ -372,20 +372,20 @@ def test_cook_preview_logs_an_edit(
         seeded_session,
         web_user.id,
         RawRecipe(
-            title="Oil Test",
-            ingredients=["2 tablespoons olive oil"],
+            title="Pasta Test",
+            ingredients=["1 pound spaghetti"],
             servings=1,
-            source_url="https://example.com/oil-edit",
+            source_url="https://example.com/pasta-edit",
         ),
         source=RecipeSource.URL,
     )
-    oil = ing(seeded_session, "olive oil")
-    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=1000)
     seeded_session.commit()
 
     signed_in.post(
         f"/recipes/{recipe.id}/cooked",
-        data={"servings": 1, f"proposed_{oil.id}": "30", f"qty_{oil.id}": "10"},
+        data={"servings": 1, f"proposed_{pasta.id}": "300", f"qty_{pasta.id}": "100"},
     )
     seeded_session.expire_all()
     event = seeded_session.scalars(
@@ -395,11 +395,59 @@ def test_cook_preview_logs_an_edit(
     ).first()
     assert event is not None
     assert event.note is not None
-    assert "proposed 30" in event.note
-    assert "used 10" in event.note
+    assert "proposed 300" in event.note
+    assert "used 100" in event.note
 
 
 def test_marking_cooked_debits_the_pantry(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Pasta Test",
+            ingredients=["1 pound spaghetti"],
+            servings=1,
+            source_url="https://example.com/pasta",
+        ),
+        source=RecipeSource.URL,
+    )
+    pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=1000)
+    seeded_session.commit()
+
+    response = signed_in.post(f"/recipes/{recipe.id}/cooked", data={"servings": 1})
+    assert response.status_code == 303
+
+    seeded_session.expire_all()
+    item = get_or_create_item(seeded_session, web_user.id, pasta)
+    assert item.quantity < 1000
+    assert seeded_session.get(Recipe, recipe.id).times_cooked == 1
+
+
+def test_cook_preview_omits_staples(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Oiled Pasta",
+            ingredients=["1 pound spaghetti", "2 tablespoons olive oil"],
+            servings=2,
+            source_url="https://example.com/oiled-preview",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+
+    page = signed_in.get(f"/recipes/{recipe.id}/cook")
+    assert "spaghetti" in page.text
+    assert "olive oil" not in page.text
+
+
+def test_cooking_never_debits_a_staple(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     recipe = save_imported_recipe(
@@ -417,13 +465,25 @@ def test_marking_cooked_debits_the_pantry(
     record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
     seeded_session.commit()
 
-    response = signed_in.post(f"/recipes/{recipe.id}/cooked", data={"servings": 1})
-    assert response.status_code == 303
+    signed_in.post(f"/recipes/{recipe.id}/cooked", data={"servings": 1})
 
     seeded_session.expire_all()
-    item = get_or_create_item(seeded_session, web_user.id, oil)
-    assert item.quantity < 500
-    assert seeded_session.get(Recipe, recipe.id).times_cooked == 1
+    assert get_or_create_item(seeded_session, web_user.id, oil).quantity == 500
+    assert not seeded_session.scalars(
+        select(InventoryEvent).where(InventoryEvent.reason == EventReason.COOK)
+    ).all()
+
+
+def test_pantry_shows_a_staple_as_assumed_stocked(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    oil = ing(seeded_session, "olive oil")
+    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    seeded_session.commit()
+
+    page = signed_in.get("/pantry")
+    assert "assumed stocked" in page.text
+    assert f"/pantry/{oil.id}/confirm" not in page.text
 
 
 def test_shopping_list_generates_from_the_plan(

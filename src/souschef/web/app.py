@@ -352,7 +352,10 @@ def dashboard(
         (v for v in pantry if v.item.expires_on and (v.item.expires_on - today).days <= 5),
         key=lambda v: v.item.expires_on,
     )
-    stale = sorted((v for v in pantry if v.confidence < 0.5), key=lambda v: v.confidence)[:5]
+    stale = sorted(
+        (v for v in pantry if v.confidence < 0.5 and not v.is_staple),
+        key=lambda v: v.confidence,
+    )[:5]
 
     return _render(
         request,
@@ -573,7 +576,7 @@ def cook_preview(
     debits: list[dict] = []
     by_id: dict[int, dict] = {}
     for req in requirements.requirements:
-        if req.quantity <= 0:
+        if req.quantity <= 0 or req.is_staple:
             continue
         row = by_id.get(req.ingredient.id)
         if row is None:
@@ -581,13 +584,11 @@ def cook_preview(
             row = {
                 "ingredient": req.ingredient,
                 "quantity": 0.0,
-                "is_staple": req.is_staple,
                 "have": have,
             }
             by_id[req.ingredient.id] = row
             debits.append(row)
         row["quantity"] += req.quantity
-        row["is_staple"] = row["is_staple"] or req.is_staple
 
     return _render(
         request,

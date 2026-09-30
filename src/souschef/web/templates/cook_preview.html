@@ -22,9 +22,6 @@
               have {{ d.have|humanize(d.ingredient.base_unit) }}
             </span>
           </div>
-          {% if d.is_staple %}
-            <span class="pill good">untracked</span>
-          {% endif %}
         </div>
         <input type="hidden" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">
         <div class="field" style="margin:10px 0 0">

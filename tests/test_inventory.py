@@ -264,18 +264,35 @@ def test_audit_respects_the_item_cap(seeded_session: Session, owner: int) -> Non
     assert result == sorted(result, key=lambda c: c.score, reverse=True)
 
 
-def test_audit_deprioritizes_staples(seeded_session: Session, owner: int) -> None:
-    """Over-buying olive oil is cheap; being short of chicken is not."""
+def test_audit_never_lists_a_staple(seeded_session: Session, owner: int) -> None:
     oil = ingredient(seeded_session, "olive oil")
     chicken = ingredient(seeded_session, "chicken breast")
     assert oil.is_staple and not chicken.is_staple
 
     for ing in (oil, chicken):
         record_event(seeded_session, owner, ing, reason=EventReason.PURCHASE, delta=500)
-        _age_item(seeded_session, ing, days=90, cooks=3)
+        item = _age_item(seeded_session, ing, days=90, cooks=3)
+        item.restock_threshold = 480
+    seeded_session.flush()
 
     result = build_audit(seeded_session, owner, {oil.id: 480, chicken.id: 480})
-    assert [c.ingredient.name for c in result][0] == "chicken breast"
+    assert [c.ingredient.name for c in result] == ["chicken breast"]
+
+    restock_only = build_audit(seeded_session, owner, {})
+    assert oil.name not in [c.ingredient.name for c in restock_only]
+
+
+def test_cooking_skips_staples(seeded_session: Session, owner: int) -> None:
+    oil = ingredient(seeded_session, "olive oil")
+    rice = ingredient(seeded_session, "white rice")
+    for ing in (oil, rice):
+        record_event(seeded_session, owner, ing, reason=EventReason.PURCHASE, delta=500)
+
+    events = consume_for_recipe(seeded_session, owner, {oil.id: 100, rice.id: 100}, recipe_id=1)
+
+    assert [e.ingredient_id for e in events] == [rice.id]
+    item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == oil.id))
+    assert item.quantity == 500
 
 
 def test_restock_candidates_can_reach_the_audit(seeded_session: Session, owner: int) -> None:

@@ -113,11 +113,6 @@ def score_candidate(
 
     p_wrong = _probability_wrong(low, high, threshold)
 
-    # Staples are cheap to over-buy and rarely ruin a meal, so they should not
-    # crowd out the questions that matter.
-    if view.is_staple:
-        cost *= 0.4
-
     return AuditCandidate(
         ingredient=view.ingredient,
         required=required,
@@ -148,8 +143,11 @@ def build_audit(
     settings = settings or get_settings()
     limit = limit if limit is not None else settings.audit_max_items
 
+    # Staples are assumed always stocked, so there is never anything to verify.
     views = {
-        v.ingredient.id: v for v in pantry_view(session, user_id, include_empty=True)
+        v.ingredient.id: v
+        for v in pantry_view(session, user_id, include_empty=True)
+        if not v.is_staple
     }
     candidates: list[AuditCandidate] = []
 

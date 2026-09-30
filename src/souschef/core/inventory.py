@@ -255,16 +255,15 @@ def consume_for_recipe(
     """Debit the pantry for a cooked recipe.
 
     ``requirements`` maps ingredient id to a quantity already in base units.
-    Staples are debited too -- you really do use the oil -- but their confidence
-    matters less because they are excluded from shopping decisions by default.
-    ``notes`` is per-ingredient, for when the cook preview was edited.
+    Staples are skipped: they are assumed always stocked, so cooking never
+    debits them. ``notes`` is per-ingredient, for when the cook preview was edited.
     """
     events: list[InventoryEvent] = []
     for ingredient_id, amount in requirements.items():
         if amount <= 0:
             continue
         ingredient = session.get(CanonicalIngredient, ingredient_id)
-        if ingredient is None:
+        if ingredient is None or ingredient.is_staple:
             continue
         events.append(
             record_event(

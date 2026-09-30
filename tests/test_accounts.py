@@ -116,16 +116,16 @@ def test_both_users_can_import_the_same_recipe(
 def test_a_cooked_meal_only_debits_the_cooks_pantry(
     seeded_session: Session, user: User, other_user: User
 ) -> None:
-    oil = ing(seeded_session, "olive oil")
-    record_event(seeded_session, user.id, oil, reason=EventReason.PURCHASE, delta=500)
-    record_event(seeded_session, other_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    rice = ing(seeded_session, "white rice")
+    record_event(seeded_session, user.id, rice, reason=EventReason.PURCHASE, delta=500)
+    record_event(seeded_session, other_user.id, rice, reason=EventReason.PURCHASE, delta=500)
 
     from souschef.core.inventory import consume_for_recipe
 
-    consume_for_recipe(seeded_session, user.id, {oil.id: 100}, recipe_id=1)
+    consume_for_recipe(seeded_session, user.id, {rice.id: 100}, recipe_id=1)
 
-    assert get_or_create_item(seeded_session, user.id, oil).quantity == 400
-    assert get_or_create_item(seeded_session, other_user.id, oil).quantity == 500
+    assert get_or_create_item(seeded_session, user.id, rice).quantity == 400
+    assert get_or_create_item(seeded_session, other_user.id, rice).quantity == 500
 
 
 def test_another_users_recipe_is_404_not_visible(

@@ -125,3 +125,29 @@ def test_home_and_pantry_name_what_is_probably_gone(
 
     assert "Probably gone:</strong> chicken breast" in signed_in.get("/").text
     assert "<strong>probably gone</strong>" in signed_in.get("/pantry").text
+
+
+def test_home_levels_use_the_pantry_card_and_return_home(
+    signed_in: TestClient, seeded_session: Session, web_user
+) -> None:
+    ingredient = _ing(seeded_session, "chicken breast")
+    long_ago = datetime.now(UTC) - timedelta(days=400)
+    record_event(
+        seeded_session, web_user.id, ingredient, reason=EventReason.MANUAL, delta=500.0,
+        occurred_at=long_ago,
+    )
+    _item(seeded_session, web_user.id, ingredient).last_confirmed_at = long_ago
+    seeded_session.commit()
+
+    home = signed_in.get("/").text
+    assert f'id="edit{ingredient.id}"' in home
+    assert 'name="next" value="/"' in home
+
+    confirmed = signed_in.post(
+        f"/pantry/{ingredient.id}/confirm", data={"next": "/"}
+    )
+    assert confirmed.headers["location"] == "/"
+    elsewhere = signed_in.post(
+        f"/pantry/{ingredient.id}/confirm", data={"next": "https://example.com/x"}
+    )
+    assert elsewhere.headers["location"] == "/"

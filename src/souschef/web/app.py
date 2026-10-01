@@ -633,6 +633,7 @@ def dashboard(
         past_meals=past_meals,
         upcoming=upcoming,
         today=today,
+        freshness=freshness,
         use_soon=use_soon[:8],
         probably_gone=probably_gone[:8],
         stale=stale,
@@ -648,6 +649,10 @@ def _pantry_url(q: str) -> str:
     """Back to the pantry, keeping the active search so an edit doesn't drop you
     back to the full list."""
     return f"/pantry?q={quote_plus(q)}" if q.strip() else "/pantry"
+
+
+def _after_pantry_edit(q: str, next_path: str) -> str:
+    return _safe_next(next_path) if next_path else _pantry_url(q)
 
 
 # Below this rapidfuzz score a name is not offered as a match. Substring hits
@@ -749,6 +754,7 @@ def update_level(
     quantity: float = Form(...),
     unit: str = Form(""),
     q: str = Form(""),
+    next_path: str = Form("", alias="next"),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -761,13 +767,14 @@ def update_level(
         set_level(db, user.id, ingredient, quantity, unit=unit or None)
     except (UnitConversionError, ValueError) as exc:
         return _pantry_page(request, db, user, q, level_error=str(exc), status_code=400)
-    return RedirectResponse(_pantry_url(q), status_code=303)
+    return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
 
 @app.post("/pantry/{ingredient_id}/confirm")
 def confirm_item(
     ingredient_id: int,
     q: str = Form(""),
+    next_path: str = Form("", alias="next"),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -775,7 +782,7 @@ def confirm_item(
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
     confirm_level(db, user.id, ingredient)
-    return RedirectResponse(_pantry_url(q), status_code=303)
+    return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
 
 def _adhoc_units(unit: str) -> tuple[str, str | None]:

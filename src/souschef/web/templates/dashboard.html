@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import confidence_pips, suggestion_card, day_label %}
+{% from "macros.html" import pantry_card, suggestion_card, day_label %}
 {% set active = 'home' %}
 {% block content %}
 <main id="main">
@@ -88,12 +88,7 @@
 
   {% if stale %}
     <div class="sechead"><h2>Least certain levels</h2><a href="/pantry">Pantry</a></div>
-    {% for v in stale %}
-      <a class="card tight row" href="/pantry?q={{ v.ingredient.name|urlencode }}">
-        <span>{{ v.ingredient.name }}</span>
-        <span class="trail"><span class="meta num">{{ v.quantity|stock(v.ingredient) }}</span>{{ confidence_pips(v.confidence) }}</span>
-      </a>
-    {% endfor %}
+    {% for v in stale %}{{ pantry_card(v, freshness, '', '/') }}{% endfor %}
   {% endif %}
 </main>
 {% endblock %}

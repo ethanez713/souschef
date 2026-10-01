@@ -1,5 +1,5 @@
 {% from "icons.html" import icon %}
-{% from "macros.html" import confidence_pips %}
+{% from "macros.html" import pantry_card %}
 {% if level_error %}
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>
 {% endif %}
@@ -12,38 +12,7 @@
       <span class="meta"> · staple, assumed stocked</span>
     </div>
     {% else %}
-    <div class="card tight item">
-      <input class="edit-toggle" type="checkbox" id="edit{{ v.ingredient.id }}" aria-label="Set {{ v.ingredient.name }} level">
-      <div class="row">
-        <div class="stack">
-          <strong>{{ v.ingredient.name }}</strong>
-          <span class="meta">
-            <span class="num">{{ v.quantity|stock(v.ingredient) }}</span>
-            {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
-            {%- if v.ingredient.id in freshness %} · <strong>{{ freshness[v.ingredient.id] }}</strong>{% endif %}
-          </span>
-        </div>
-        <div class="trail">
-          {{ confidence_pips(v.confidence) }}
-          <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline"
-                hx-post="/pantry/{{ v.ingredient.id }}/confirm" hx-target="#pantry-list" hx-swap="innerHTML">
-            <input type="hidden" name="q" value="{{ query }}">
-            <button class="iconbtn bare" type="submit" aria-label="Confirm {{ v.ingredient.name }} level is right" title="Confirm this level is right">{{ icon('check', 18) }}</button>
-          </form>
-          <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
-        </div>
-      </div>
-      <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
-            hx-post="/pantry/{{ v.ingredient.id }}/level" hx-target="#pantry-list" hx-swap="innerHTML">
-        <input type="hidden" name="q" value="{{ query }}">
-        <div class="field">
-          <input name="quantity" type="number" step="any" inputmode="decimal" required
-                 aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient|unit_label }})"
-                 placeholder="Set to… ({{ v.ingredient|unit_label }})">
-        </div>
-        <button type="submit">Set</button>
-      </form>
-    </div>
+    {{ pantry_card(v, freshness, query) }}
     {% endif %}
   {% endfor %}
 {% endfor %}

@@ -42,6 +42,9 @@ _FURNITURE = frozenset({
     # so "low" does not drop "low fat milk".
     "introducing", "plus", "podcast", "podcasts", "shopper", "low", "price",
     "prices", "trust", "every", "day", "can", "our", "join", "today",
+    "expect", "more", "pay", "less", "grocery", "expires", "expire", "password",
+    "cuentenos", "espanol", "spanish", "tell", "how", "did", "rate", "experience",
+    "take", "answer", "online", "complete", "chance", "win", "enter", "user",
 })
 # A header whose words are all a store's name. It is not a product, but it is
 # still the name detect_store should record. "JOE COFFEE ..." has extra words,

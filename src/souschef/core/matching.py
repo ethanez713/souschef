@@ -577,8 +577,8 @@ def _repair_ocr_tokens(tokens: list[str], vocabulary: frozenset[str] | None) -> 
 
 def _expand_receipt_tokens(text: str, vocabulary: frozenset[str] | None) -> list[str]:
     """Prices and codes gone; abbreviations and OCR slips undone. No phrase rewrite."""
-    out = _TRAILING_FLAGS.sub("", text.strip())
-    out = _PRICE.sub(" ", out)
+    out = _PRICE.sub(" ", text.strip())
+    out = _TRAILING_FLAGS.sub("", out.rstrip())
     out = _SIZE_TOKEN.sub(" ", out)
     out = _PLU_CODE.sub(" ", out)
     out = normalize(out)

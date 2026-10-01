@@ -70,6 +70,12 @@
         <button class="iconbtn bare" type="submit" aria-label="Confirm {{ v.ingredient.name }} level is right" title="Confirm this level is right">{{ icon('check', 18) }}</button>
       </form>
       <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
+      <form method="post" action="/pantry/{{ v.ingredient.id }}/discard" class="inline"
+            {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/discard" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
+        <input type="hidden" name="q" value="{{ query }}">
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <button class="iconbtn bare discard" type="submit" aria-label="Threw out {{ v.ingredient.name }}" title="Threw this out">{{ icon('x', 18) }}</button>
+      </form>
     </div>
   </div>
   <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
@@ -84,4 +90,21 @@
     <button type="submit">Set</button>
   </form>
 </div>
+{% endmacro %}
+
+{# Shown after an X: the item is gone from the list, and this is the way back. #}
+{% macro discard_notice(discarded, query='', next='') %}
+{% if discarded %}
+<div class="notice">
+  {{ icon('check', 16) }}
+  <div>Threw out {{ discarded.name }}.
+    <form method="post" action="/pantry/undo/{{ discarded.event_id }}" class="inline"
+          {% if not next %}hx-post="/pantry/undo/{{ discarded.event_id }}" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
+      <input type="hidden" name="q" value="{{ query }}">
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button class="link" type="submit">Undo</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endmacro %}

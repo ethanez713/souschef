@@ -138,6 +138,7 @@ button.link { min-height: 0; padding: 0; background: none; border: 0; box-shadow
 .iconbtn.bare { background: transparent; border-color: transparent; box-shadow: none; }
 .iconbtn.bare:hover { background: var(--surface-hover); color: var(--text-heading); }
 .iconbtn.small { width: 36px; }
+.iconbtn.discard:hover { background: var(--danger-soft); color: var(--text-danger); }
 
 input, select, textarea {
   width: 100%; min-height: 44px; padding: 0 var(--sp-4);

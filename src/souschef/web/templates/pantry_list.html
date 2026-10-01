@@ -1,5 +1,6 @@
 {% from "icons.html" import icon %}
-{% from "macros.html" import pantry_card %}
+{% from "macros.html" import pantry_card, discard_notice %}
+{{ discard_notice(discarded, query) }}
 {% if level_error %}
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>
 {% endif %}

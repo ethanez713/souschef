@@ -7,14 +7,14 @@ mocked version of that proves nothing.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from tests.conftest import WEB_PASSWORD, WEB_USERNAME
 
-from souschef.core.inventory import get_or_create_item, record_event
+from souschef.core.inventory import discard_item, get_or_create_item, record_event
 from souschef.core.recipes import save_imported_recipe
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
@@ -1381,3 +1381,81 @@ def test_an_unknown_theme_is_ignored(signed_in: TestClient) -> None:
     signed_in.post("/settings/theme", data={"theme": "neon"})
     signed_in.cookies.set("theme", "neon")
     assert 'data-theme="light"' in signed_in.get("/settings").text
+
+
+def test_the_x_throws_an_item_out_and_offers_undo(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    spinach = ing(seeded_session, "spinach")
+    record_event(seeded_session, web_user.id, spinach, reason=EventReason.PURCHASE, delta=200)
+    seeded_session.commit()
+
+    assert f"/pantry/{spinach.id}/discard" in signed_in.get("/pantry").text
+
+    thrown = signed_in.post(f"/pantry/{spinach.id}/discard", data={"q": ""})
+    assert thrown.status_code == 303
+    assert "wasted=" in thrown.headers["location"]
+
+    page = signed_in.get(thrown.headers["location"])
+    assert "Threw out spinach" in page.text
+    assert "Undo" in page.text
+    seeded_session.expire_all()
+    item = seeded_session.scalar(
+        select(PantryItem).where(
+            PantryItem.user_id == web_user.id, PantryItem.ingredient_id == spinach.id
+        )
+    )
+    assert item.quantity == 0
+
+    event_id = int(thrown.headers["location"].rsplit("wasted=", 1)[1])
+    undone = signed_in.post(f"/pantry/undo/{event_id}", data={"q": ""})
+    assert undone.status_code == 303
+    seeded_session.expire_all()
+    assert item.quantity == 200
+
+
+def test_throwing_out_from_home_returns_home(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    chicken = ing(seeded_session, "chicken breast")
+    long_ago = datetime.now(UTC) - timedelta(days=400)
+    record_event(
+        seeded_session, web_user.id, chicken, reason=EventReason.MANUAL, delta=500.0,
+        occurred_at=long_ago,
+    )
+    get_or_create_item(seeded_session, web_user.id, chicken).last_confirmed_at = long_ago
+    seeded_session.commit()
+
+    thrown = signed_in.post(f"/pantry/{chicken.id}/discard", data={"next": "/"})
+    assert thrown.headers["location"].startswith("/?wasted=")
+    assert "Threw out chicken breast" in signed_in.get(thrown.headers["location"]).text
+
+
+def test_the_x_is_not_offered_on_staples(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    oil = ing(seeded_session, "olive oil")
+    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    seeded_session.commit()
+
+    assert f"/pantry/{oil.id}/discard" not in signed_in.get("/pantry").text
+
+
+def test_an_undo_link_for_someone_elses_discard_changes_nothing(
+    signed_in: TestClient, seeded_session: Session, web_user: User, user
+) -> None:
+    eggs = ing(seeded_session, "eggs")
+    record_event(seeded_session, user.id, eggs, reason=EventReason.PURCHASE, delta=12)
+    waste = discard_item(seeded_session, user.id, eggs)
+    seeded_session.commit()
+
+    signed_in.post(f"/pantry/undo/{waste.id}", data={})
+    seeded_session.expire_all()
+    theirs = seeded_session.scalar(
+        select(PantryItem).where(
+            PantryItem.user_id == user.id, PantryItem.ingredient_id == eggs.id
+        )
+    )
+    assert theirs.quantity == 0
+    notice = signed_in.get("/pantry", params={"wasted": waste.id})
+    assert "Threw out" not in notice.text

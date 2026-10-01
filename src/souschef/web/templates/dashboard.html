@@ -1,10 +1,12 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import pantry_card, suggestion_card, day_label %}
+{% from "macros.html" import pantry_card, suggestion_card, day_label, discard_notice %}
 {% set active = 'home' %}
 {% block content %}
 <main id="main">
   <h1>Tonight</h1>
+
+  {{ discard_notice(discarded, '', '/') }}
 
   {% if use_soon %}
     <div class="notice">

@@ -30,9 +30,11 @@ from souschef.core.inventory import (
     confirm_level,
     consume_for_recipe,
     cover_cook_shortfall,
+    discard_item,
     pantry_view,
     record_event,
     set_level,
+    undo_discard,
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
@@ -50,6 +52,7 @@ from souschef.ingest.recipes.importers import ImportError_, import_from_url
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
+    InventoryEvent,
     Invite,
     MealPlanEntry,
     MealSlot,
@@ -578,6 +581,7 @@ def logout() -> Response:
 @app.get("/", response_class=HTMLResponse)
 def dashboard(
     request: Request,
+    wasted: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -637,6 +641,7 @@ def dashboard(
         use_soon=use_soon[:8],
         probably_gone=probably_gone[:8],
         stale=stale,
+        discarded=_discard_notice(db, user, wasted),
         pantry_count=len(pantry),
         recipe_count=db.scalar(
             select(func.count()).select_from(Recipe).where(Recipe.user_id == user.id)
@@ -653,6 +658,23 @@ def _pantry_url(q: str) -> str:
 
 def _after_pantry_edit(q: str, next_path: str) -> str:
     return _safe_next(next_path) if next_path else _pantry_url(q)
+
+
+def _with_param(url: str, key: str, value: object) -> str:
+    base, _, fragment = url.partition("#")
+    joined = f"{base}{'&' if '?' in base else '?'}{key}={value}"
+    return f"{joined}#{fragment}" if fragment else joined
+
+
+def _discard_notice(db: Session, user: User, event_id: int) -> dict | None:
+    """What the undo notice needs: the discarded item's name and the event Undo reverses."""
+    if not event_id:
+        return None
+    event = db.get(InventoryEvent, event_id)
+    if event is None or event.user_id != user.id or event.reason != EventReason.WASTE:
+        return None
+    ingredient = db.get(CanonicalIngredient, event.ingredient_id)
+    return {"event_id": event.id, "name": ingredient.name if ingredient else "item"}
 
 
 # Below this rapidfuzz score a name is not offered as a match. Substring hits
@@ -698,6 +720,7 @@ def _pantry_page(
     add_quantity: str = "",
     add_unit: str = "",
     level_error: str = "",
+    wasted: int = 0,
     status_code: int = 200,
 ) -> HTMLResponse:
     views = pantry_view(db, user.id, include_empty=True)
@@ -734,6 +757,7 @@ def _pantry_page(
         add_quantity=add_quantity,
         add_unit=add_unit,
         level_error=level_error,
+        discarded=_discard_notice(db, user, wasted),
     )
 
 
@@ -741,10 +765,11 @@ def _pantry_page(
 def pantry_page(
     request: Request,
     q: str = "",
+    wasted: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    return _pantry_page(request, db, user, q)
+    return _pantry_page(request, db, user, q, wasted=wasted)
 
 
 @app.post("/pantry/{ingredient_id}/level")
@@ -782,6 +807,37 @@ def confirm_item(
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
     confirm_level(db, user.id, ingredient)
+    return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
+
+
+@app.post("/pantry/{ingredient_id}/discard")
+def discard_pantry_item(
+    ingredient_id: int,
+    q: str = Form(""),
+    next_path: str = Form("", alias="next"),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    ingredient = db.get(CanonicalIngredient, ingredient_id)
+    if ingredient is None:
+        raise HTTPException(status_code=404, detail="No such ingredient")
+    event = discard_item(db, user.id, ingredient)
+    target = _after_pantry_edit(q, next_path)
+    if event is not None:
+        db.flush()
+        target = _with_param(target, "wasted", event.id)
+    return RedirectResponse(target, status_code=303)
+
+
+@app.post("/pantry/undo/{event_id}")
+def undo_pantry_discard(
+    event_id: int,
+    q: str = Form(""),
+    next_path: str = Form("", alias="next"),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    undo_discard(db, user.id, event_id)
     return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
 

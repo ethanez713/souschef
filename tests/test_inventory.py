@@ -24,10 +24,12 @@ from souschef.core.estimation import (
 from souschef.core.inventory import (
     confirm_level,
     consume_for_recipe,
+    discard_item,
     pantry_view,
     rebuild_from_ledger,
     record_event,
     set_level,
+    undo_discard,
 )
 from souschef.models import (
     CanonicalIngredient,
@@ -186,6 +188,70 @@ def test_rebuild_from_ledger_reproduces_incremental_state(
 
     assert before == after
     assert after["eggs"] == 10
+
+
+def test_discarding_empties_the_item_and_counts_as_a_certain_zero(
+    seeded_session: Session, owner: int
+) -> None:
+    rice = ingredient(seeded_session, "white rice")
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    consume_for_recipe(seeded_session, owner, {rice.id: 200}, recipe_id=1)
+
+    event = discard_item(seeded_session, owner, rice)
+
+    item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == rice.id))
+    assert event is not None and event.reason == EventReason.WASTE
+    assert event.delta == pytest.approx(-800)
+    assert item.quantity == 0
+    assert item.confidence == 1.0
+    assert item.cooks_since_confirmed == 0
+
+    rebuild_from_ledger(seeded_session, owner)
+    seeded_session.refresh(item)
+    assert item.quantity == 0
+    assert item.cooks_since_confirmed == 0
+
+
+def test_discarding_nothing_writes_nothing(seeded_session: Session, owner: int) -> None:
+    rice = ingredient(seeded_session, "white rice")
+    assert discard_item(seeded_session, owner, rice) is None
+    assert seeded_session.scalars(select(InventoryEvent)).all() == []
+
+
+def test_undo_restores_the_level_through_a_correcting_event(
+    seeded_session: Session, owner: int
+) -> None:
+    eggs = ingredient(seeded_session, "eggs")
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    waste = discard_item(seeded_session, owner, eggs)
+
+    undone = undo_discard(seeded_session, owner, waste.id)
+
+    item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == eggs.id))
+    assert undone is not None and undone.reason == EventReason.MANUAL
+    assert item.quantity == 12
+    assert len(seeded_session.scalars(select(InventoryEvent)).all()) == 3
+
+
+def test_undo_does_nothing_once_newer_stock_is_logged(
+    seeded_session: Session, owner: int
+) -> None:
+    eggs = ingredient(seeded_session, "eggs")
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    waste = discard_item(seeded_session, owner, eggs)
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=6)
+
+    assert undo_discard(seeded_session, owner, waste.id) is None
+    item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == eggs.id))
+    assert item.quantity == 6
+
+
+def test_undo_ignores_another_users_event(seeded_session: Session, owner: int) -> None:
+    eggs = ingredient(seeded_session, "eggs")
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    waste = discard_item(seeded_session, owner, eggs)
+
+    assert undo_discard(seeded_session, owner + 1000, waste.id) is None
 
 
 def _age_item(session: Session, ing: CanonicalIngredient, days: int, cooks: int = 0) -> PantryItem:

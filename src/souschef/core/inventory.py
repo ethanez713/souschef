@@ -197,7 +197,13 @@ def _apply_confidence(item: PantryItem, reason: EventReason, event_confidence: f
         return
 
     if reason == EventReason.WASTE:
-        item.confidence = min(1.0, item.confidence + 0.2)
+        if item.quantity <= 0:
+            # Binning the last of it is a certain zero, same as looking and finding none.
+            item.confidence = 1.0
+            item.last_confirmed_at = now
+            item.cooks_since_confirmed = 0
+        else:
+            item.confidence = min(1.0, item.confidence + 0.2)
 
 
 def set_level(
@@ -255,6 +261,56 @@ def confirm_level(
         reason=EventReason.CONFIRM,
         delta=0.0,
         note="confirmed unchanged",
+    )
+
+
+def discard_item(
+    session: Session, user_id: int, ingredient: CanonicalIngredient
+) -> InventoryEvent | None:
+    """Throw out everything held of an ingredient. None when there was nothing."""
+    item = get_or_create_item(session, user_id, ingredient)
+    if item.quantity <= 0:
+        return None
+    return record_event(
+        session,
+        user_id,
+        ingredient,
+        reason=EventReason.WASTE,
+        delta=-item.quantity,
+        note="thrown out",
+    )
+
+
+def undo_discard(session: Session, user_id: int, event_id: int) -> InventoryEvent | None:
+    """Put back what a discard removed.
+
+    Only the user's own latest event for that ingredient qualifies, so an old
+    Undo link cannot overwrite stock logged since.
+    """
+    waste = session.get(InventoryEvent, event_id)
+    if waste is None or waste.user_id != user_id or waste.reason != EventReason.WASTE:
+        return None
+    latest = session.scalar(
+        select(InventoryEvent.id)
+        .where(
+            InventoryEvent.user_id == user_id,
+            InventoryEvent.ingredient_id == waste.ingredient_id,
+        )
+        .order_by(InventoryEvent.occurred_at.desc(), InventoryEvent.id.desc())
+        .limit(1)
+    )
+    if latest != waste.id:
+        return None
+    ingredient = session.get(CanonicalIngredient, waste.ingredient_id)
+    if ingredient is None:
+        return None
+    return record_event(
+        session,
+        user_id,
+        ingredient,
+        reason=EventReason.MANUAL,
+        delta=-waste.delta,
+        note=f"undo waste:{waste.id}",
     )
 
 
@@ -387,7 +443,12 @@ def rebuild_from_ledger(session: Session, user_id: int) -> int:
     for event in events:
         current = totals.get(event.ingredient_id, 0.0)
         totals[event.ingredient_id] = max(0.0, current + event.delta)
-        if event.reason in (EventReason.CONFIRM, EventReason.MANUAL, EventReason.INITIAL):
+        emptied = event.reason == EventReason.WASTE and totals[event.ingredient_id] <= 0
+        if emptied or event.reason in (
+            EventReason.CONFIRM,
+            EventReason.MANUAL,
+            EventReason.INITIAL,
+        ):
             last_confirmed[event.ingredient_id] = event.occurred_at
             cooks[event.ingredient_id] = 0
         elif event.reason == EventReason.COOK:

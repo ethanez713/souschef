@@ -6,10 +6,16 @@
 <main id="main">
   <h1>Tonight</h1>
 
-  {% if expiring %}
+  {% if use_soon %}
     <div class="notice">
       {{ icon('triangle-alert', 16) }}
-      <div><strong>Use soon:</strong> {{ expiring|map(attribute='ingredient.name')|join(', ') }}</div>
+      <div><strong>Use soon:</strong> {{ use_soon|map(attribute='ingredient.name')|join(', ') }}</div>
+    </div>
+  {% endif %}
+  {% if probably_gone %}
+    <div class="notice">
+      {{ icon('triangle-alert', 16) }}
+      <div><strong>Probably gone:</strong> {{ probably_gone|map(attribute='ingredient.name')|join(', ') }}. <a href="/pantry">Check the pantry</a></div>
     </div>
   {% endif %}
 

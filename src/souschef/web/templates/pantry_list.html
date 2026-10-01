@@ -20,6 +20,7 @@
           <span class="meta">
             <span class="num">{{ v.quantity|stock(v.ingredient) }}</span>
             {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
+            {%- if v.ingredient.id in freshness %} · <strong>{{ freshness[v.ingredient.id] }}</strong>{% endif %}
           </span>
         </div>
         <div class="trail">

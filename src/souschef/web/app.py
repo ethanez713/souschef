@@ -36,6 +36,7 @@ from souschef.core.inventory import (
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
+from souschef.core.spoilage import Freshness, freshness_by_ingredient
 from souschef.core.units import UnitConversionError, dimension_of, humanize
 from souschef.db import get_db
 from souschef.ingest.receipt_service import (
@@ -595,13 +596,13 @@ def dashboard(
     ).all()
 
     pantry = pantry_view(db, user.id)
-    expiring = sorted(
-        (
-            v for v in pantry
-            if _on_hand(v) and v.item.expires_on and (v.item.expires_on - today).days <= 5
-        ),
-        key=lambda v: v.item.expires_on,
-    )
+    freshness = freshness_by_ingredient(db, user.id, pantry, today)
+    use_soon = [
+        v for v in pantry if freshness.get(v.ingredient.id) == Freshness.USE_SOON
+    ]
+    probably_gone = [
+        v for v in pantry if freshness.get(v.ingredient.id) == Freshness.PROBABLY_GONE
+    ]
     stale = sorted(
         (v for v in pantry if v.confidence < 0.5 and _on_hand(v)),
         key=lambda v: v.confidence,
@@ -616,7 +617,8 @@ def dashboard(
         past_meals=past_meals,
         upcoming=upcoming,
         today=today,
-        expiring=expiring[:5],
+        use_soon=use_soon[:8],
+        probably_gone=probably_gone[:8],
         stale=stale,
         pantry_count=len(pantry),
         recipe_count=db.scalar(
@@ -678,6 +680,7 @@ def _pantry_page(
     status_code: int = 200,
 ) -> HTMLResponse:
     views = pantry_view(db, user.id, include_empty=True)
+    freshness = freshness_by_ingredient(db, user.id, views, date.today())
     if q.strip():
         views = _search_pantry(views, q)
 
@@ -702,6 +705,7 @@ def _pantry_page(
         status_code=status_code,
         by_location=by_location,
         out=out,
+        freshness=freshness,
         query=q,
         add_open=add_open,
         add_error=add_error,

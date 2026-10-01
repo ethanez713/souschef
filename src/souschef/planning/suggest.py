@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from souschef.core.inventory import PantryView, pantry_view
 from souschef.core.recipes import RequirementSet, recipe_requirements
+from souschef.core.spoilage import Freshness, freshness_by_ingredient
 from souschef.models import CanonicalIngredient, Recipe
 
 # How close to expiry an ingredient must be to count as "use me first".
@@ -232,7 +233,15 @@ def suggest(
     include_archived: bool = False,
 ) -> list[Suggestion]:
     """Rank one user's library against their pantry."""
-    pantry = {v.ingredient.id: v for v in pantry_view(session, user_id)}
+    views = pantry_view(session, user_id)
+    gone = {
+        ingredient_id
+        for ingredient_id, status in freshness_by_ingredient(
+            session, user_id, views, today or date.today()
+        ).items()
+        if status == Freshness.PROBABLY_GONE
+    }
+    pantry = {v.ingredient.id: v for v in views if v.ingredient.id not in gone}
 
     query = (
         select(Recipe)

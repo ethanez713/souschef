@@ -47,7 +47,7 @@
                   {% if it.purchase_qty and it.purchase_unit == 'count' and it.label|lower == 'garlic' %}
                     <span class="num">{{ it.purchase_qty|round|int }} {{ 'clove' if (it.purchase_qty|round|int) == 1 else 'cloves' }}</span>
                   {% elif it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
-                  {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}</span>
+                  {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}{% set us = it.purchase_qty|us_equivalent(it.purchase_unit or '') %}{% if us %} ({{ us }}){% endif %}</span>
                   {% endif %}
                   {{ it.label }}
                 </strong>

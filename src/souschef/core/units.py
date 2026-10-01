@@ -268,8 +268,44 @@ def to_base(quantity: float, unit: str | None, physical: IngredientPhysical) -> 
     return convert(quantity, normalize_unit(unit), physical.base_unit, physical)
 
 
-def humanize(quantity: float, unit: str) -> str:
-    """Render a quantity the way a person would write it on a list."""
+_GRAMS_PER_OUNCE = 28.3495
+_ML_PER_FLUID_OUNCE = 29.5735
+_OUNCES_PER_POUND = 16
+
+
+def _us_number(value: float) -> str:
+    return f"{value:.0f}" if value >= 100 else f"{value:.1f}".removesuffix(".0")
+
+
+def us_equivalent(quantity: float, unit: str) -> str | None:
+    """Ounces, pounds or fluid ounces for a metric weight or volume; None otherwise.
+
+    American packages are labelled in these, so a list line shows both.
+    """
+    normalized = normalize_unit(unit)
+    if normalized in ("kilogram", "liter"):
+        quantity, normalized = quantity * 1000, "gram" if normalized == "kilogram" else "milliliter"
+    if normalized == "gram":
+        ounces = quantity / _GRAMS_PER_OUNCE
+        if ounces >= 2 * _OUNCES_PER_POUND:
+            return f"{_us_number(ounces / _OUNCES_PER_POUND)} lb"
+        return f"{_us_number(ounces)} oz"
+    if normalized == "milliliter":
+        return f"{_us_number(quantity / _ML_PER_FLUID_OUNCE)} fl oz"
+    return None
+
+
+def humanize(quantity: float, unit: str, *, us: bool = False) -> str:
+    """Render a quantity the way a person would write it on a list.
+
+    With ``us``, a metric weight or volume also carries its ounce equivalent.
+    """
+    text = _humanize(quantity, unit)
+    equivalent = us_equivalent(quantity, unit) if us else None
+    return f"{text} ({equivalent})" if equivalent else text
+
+
+def _humanize(quantity: float, unit: str) -> str:
     normalized = normalize_unit(unit)
 
     if normalized == BASE_COUNT or dimension_of(normalized) == Dimension.COUNT:

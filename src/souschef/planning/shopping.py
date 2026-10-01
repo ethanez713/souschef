@@ -173,8 +173,8 @@ def to_purchase_quantity(
     if ingredient.base_unit == "count" and ingredient.package_qty == 1:
         return float(packages), "count", None
 
-    note = f"needs {humanize(shortfall, ingredient.base_unit)}"
-    unit_label = f"x {humanize(ingredient.package_qty, ingredient.package_unit)}"
+    note = f"needs {humanize(shortfall, ingredient.base_unit, us=True)}"
+    unit_label = f"x {humanize(ingredient.package_qty, ingredient.package_unit, us=True)}"
     return float(packages), unit_label, note
 
 
@@ -182,7 +182,7 @@ def _one_package(ingredient: CanonicalIngredient) -> tuple[float, str, str]:
     """One purchasable unit, when the recipe named the food but not the amount."""
     note = "amount wasn't on the recipe"
     if ingredient.package_qty and ingredient.package_unit:
-        return 1.0, f"x {humanize(ingredient.package_qty, ingredient.package_unit)}", note
+        return 1.0, f"x {humanize(ingredient.package_qty, ingredient.package_unit, us=True)}", note
     return 1.0, ingredient.base_unit, note
 
 

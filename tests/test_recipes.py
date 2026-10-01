@@ -557,6 +557,8 @@ def test_purchase_quantity_rounds_up_to_a_real_package(seeded_session: Session) 
     assert qty == 1
     assert "907" in unit
     assert note and "680" in note
+    assert unit == "x 907 g (32 oz)"
+    assert note == "needs 680 g (24 oz)"
 
     # Two packs once the need exceeds one.
     qty, _, _ = to_purchase_quantity(chicken, 1500)

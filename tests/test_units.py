@@ -20,6 +20,7 @@ from souschef.core.units import (
     normalize_unit,
     to_base,
     to_grams,
+    us_equivalent,
 )
 
 FLOUR = IngredientPhysical(density_g_per_ml=0.529, base_unit="g")
@@ -132,3 +133,21 @@ def test_a_head_of_garlic_is_ten_cloves() -> None:
 )
 def test_humanize(qty: float, unit: str, expected: str) -> None:
     assert humanize(qty, unit) == expected
+
+
+@pytest.mark.parametrize(
+    ("qty", "unit", "expected"),
+    [
+        (500, "g", "17.6 oz"), (1000, "g", "2.2 lb"), (1.5, "kg", "3.3 lb"),
+        (946, "ml", "32 fl oz"), (250, "ml", "8.5 fl oz"), (2, "L", "67.6 fl oz"),
+        (3, "count", None), (8, "oz", None),
+    ],
+)
+def test_us_equivalent(qty: float, unit: str, expected: str | None) -> None:
+    assert us_equivalent(qty, unit) == expected
+
+
+def test_humanize_adds_the_ounce_form_only_on_request() -> None:
+    assert humanize(500, "g") == "500 g"
+    assert humanize(500, "g", us=True) == "500 g (17.6 oz)"
+    assert humanize(3, "count", us=True) == "3"

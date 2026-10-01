@@ -37,7 +37,7 @@ from souschef.core.inventory import (
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
 from souschef.core.spoilage import Freshness, freshness_by_ingredient
-from souschef.core.units import UnitConversionError, dimension_of, humanize
+from souschef.core.units import UnitConversionError, dimension_of, humanize, us_equivalent
 from souschef.db import get_db
 from souschef.ingest.receipt_service import (
     ReceiptError,
@@ -125,6 +125,7 @@ def _receipt_label(status: object) -> str:
 
 
 templates.env.filters["humanize"] = humanize
+templates.env.filters["us_equivalent"] = us_equivalent
 templates.env.filters["measure"] = _measure
 templates.env.filters["stock"] = _stock
 templates.env.filters["unit_label"] = _unit_label

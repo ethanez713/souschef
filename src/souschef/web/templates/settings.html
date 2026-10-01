@@ -6,6 +6,19 @@
   {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
   {% if saved == 'password' %}<div class="notice good">{{ icon('circle-check', 16) }}<div>Password changed.</div></div>{% endif %}
 
+  <h2>Appearance</h2>
+  <div class="card">
+    <form method="post" action="/settings/theme" class="daychips" role="radiogroup" aria-label="Theme">
+      {% for value, label in [('light', 'Light'), ('dark', 'Dark'), ('auto', 'Match system')] %}
+        <label>
+          <input type="radio" name="theme" value="{{ value }}" {{ 'checked' if theme == value }} onchange="this.form.requestSubmit()">
+          <span>{{ label }}</span>
+        </label>
+      {% endfor %}
+      <noscript><button class="primary small" type="submit">Apply</button></noscript>
+    </form>
+  </div>
+
   <h2>Assumed on hand</h2>
   <div class="card">
     <p class="muted">

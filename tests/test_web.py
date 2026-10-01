@@ -1308,3 +1308,20 @@ def test_a_planned_recipe_is_marked_with_its_day_in_add_a_meal(
     )
 
     assert f"planned {today.strftime('%a')}" in signed_in.get("/plan").text
+
+
+def test_theme_defaults_to_light_and_follows_the_cookie(signed_in: TestClient) -> None:
+    assert 'data-theme="light"' in signed_in.get("/settings").text
+
+    chosen = signed_in.post("/settings/theme", data={"theme": "dark"})
+    assert chosen.headers["location"] == "/settings"
+    assert 'data-theme="dark"' in signed_in.get("/").text
+
+    signed_in.post("/settings/theme", data={"theme": "auto"})
+    assert 'data-theme="auto"' in signed_in.get("/settings").text
+
+
+def test_an_unknown_theme_is_ignored(signed_in: TestClient) -> None:
+    signed_in.post("/settings/theme", data={"theme": "neon"})
+    signed_in.cookies.set("theme", "neon")
+    assert 'data-theme="light"' in signed_in.get("/settings").text

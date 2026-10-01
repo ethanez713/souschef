@@ -1,14 +1,16 @@
 {% from "icons.html" import icon %}
 <!doctype html>
-<html lang="en" data-theme="auto">
+<html lang="en" data-theme="{{ theme or 'light' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{% block title %}SousChef{% endblock %}</title>
 <link rel="icon" href="/static/icon-192.png">
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#F8F6F1" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1A1712" media="(prefers-color-scheme: dark)">
+{% if theme == 'dark' %}<meta name="theme-color" content="#15130E">
+{% elif theme == 'auto' %}<meta name="theme-color" content="#F8F6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#15130E" media="(prefers-color-scheme: dark)">
+{% else %}<meta name="theme-color" content="#F8F6F1">{% endif %}
 <link rel="stylesheet" href="/static/fonts/fonts.css">
 <link rel="stylesheet" href="/static/ds.css">
 <link rel="stylesheet" href="/static/app.css">

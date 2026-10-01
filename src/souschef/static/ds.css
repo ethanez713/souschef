@@ -123,15 +123,15 @@ color-scheme:dark;
 
 /* GROUNDS — warm charcoal, same hue family as the light stock. Roles match light,
    lightness reverses: --paper-0 is always the raised card surface, --paper-2 the sunken one. */
---paper-0:#232019;--paper-1:#1A1712;--paper-2:#12100C;
+--paper-0:#2B271F;--paper-1:#15130E;--paper-2:#0E0C09;
 --paper:var(--paper-1);--paper-deep:var(--paper-2);
 
 /* INK — role-flipped: 900 is the brightest foreground, 050 the faintest lift off the ground. */
---ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#9A9385;--ink-400:#6F6A5E;--ink-300:#565046;--ink-200:#423D34;--ink-100:#322E27;--ink-050:#2A2620;
+--ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#A59E90;--ink-400:#7F7869;--ink-300:#6B6457;--ink-200:#504A3F;--ink-100:#3A352C;--ink-050:#322E25;
 
 /* ORANGE — --orange-500 is the same #DD7A32 as light and carries the same warm white
    label. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
---orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#493B31;--orange-100:#372F28;--orange-050:#2E2925;
+--orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#54453A;--orange-100:#403529;--orange-050:#3A3029;
 
 /* SEMANTIC HUES — 600 for text and icons, 500 for fills and dots, 100 for soft backgrounds.
    Status softs run more saturated than category tints: a status chip is meant to signal.
@@ -149,9 +149,9 @@ color-scheme:dark;
 --bg-app:var(--paper-1);
 --bg-sunken:var(--paper-2);
 --surface-card:var(--paper-0);
---surface-raised:#2B271F;
---surface-hover:#2C2820;
---surface-active:#363126;
+--surface-raised:#312D24;
+--surface-hover:#35312A;
+--surface-active:#3F3A2F;
 --surface-inverse:#EDE8DF;
 --surface-accent-soft:var(--orange-050);
 
@@ -196,7 +196,7 @@ color-scheme:dark;
 --ink-rule:rgba(247,244,237,.14);
 --ink-rule-strong:rgba(247,244,237,.26);
 --ink-wash:rgba(247,244,237,.06);
---marker:#504032;
+--marker:#5A4837;
 --marker-soft:var(--orange-100);
 --underline-ink:var(--orange-500);
 
@@ -226,10 +226,10 @@ color-scheme:dark;
    block at L .28, so a light tint's chroma cannot be copied into dark. These sit at
    L .310, C/L .02-.06. The solid step doubles as the label and 2px left border on its
    own soft fill, so it sits mid-ramp and clears 4.5:1 there. */
---tint-azure:#7FB8D6;--tint-azure-soft:#283238;
---tint-jade:#7FCCAA;--tint-jade-soft:#28332F;
+--tint-azure:#7FB8D6;--tint-azure-soft:#2E383F;
+--tint-jade:#7FCCAA;--tint-jade-soft:#2E3A35;
 --tint-orange:#D9A876;--tint-orange-soft:var(--orange-100);
---tint-grey:#B5AEA3;--tint-grey-soft:#32302D;
+--tint-grey:#B5AEA3;--tint-grey-soft:#353330;
 }
 
 /* A dark (or light) subtree paints its own ground, so previews can sit side by side. */
@@ -242,15 +242,15 @@ color-scheme:dark;
 
 /* GROUNDS — warm charcoal, same hue family as the light stock. Roles match light,
    lightness reverses: --paper-0 is always the raised card surface, --paper-2 the sunken one. */
---paper-0:#232019;--paper-1:#1A1712;--paper-2:#12100C;
+--paper-0:#2B271F;--paper-1:#15130E;--paper-2:#0E0C09;
 --paper:var(--paper-1);--paper-deep:var(--paper-2);
 
 /* INK — role-flipped: 900 is the brightest foreground, 050 the faintest lift off the ground. */
---ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#9A9385;--ink-400:#6F6A5E;--ink-300:#565046;--ink-200:#423D34;--ink-100:#322E27;--ink-050:#2A2620;
+--ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#A59E90;--ink-400:#7F7869;--ink-300:#6B6457;--ink-200:#504A3F;--ink-100:#3A352C;--ink-050:#322E25;
 
 /* ORANGE — --orange-500 is the same #DD7A32 as light and carries the same warm white
    label. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
---orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#493B31;--orange-100:#372F28;--orange-050:#2E2925;
+--orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#54453A;--orange-100:#403529;--orange-050:#3A3029;
 
 /* SEMANTIC HUES — 600 for text and icons, 500 for fills and dots, 100 for soft backgrounds.
    Status softs run more saturated than category tints: a status chip is meant to signal.
@@ -268,9 +268,9 @@ color-scheme:dark;
 --bg-app:var(--paper-1);
 --bg-sunken:var(--paper-2);
 --surface-card:var(--paper-0);
---surface-raised:#2B271F;
---surface-hover:#2C2820;
---surface-active:#363126;
+--surface-raised:#312D24;
+--surface-hover:#35312A;
+--surface-active:#3F3A2F;
 --surface-inverse:#EDE8DF;
 --surface-accent-soft:var(--orange-050);
 
@@ -315,7 +315,7 @@ color-scheme:dark;
 --ink-rule:rgba(247,244,237,.14);
 --ink-rule-strong:rgba(247,244,237,.26);
 --ink-wash:rgba(247,244,237,.06);
---marker:#504032;
+--marker:#5A4837;
 --marker-soft:var(--orange-100);
 --underline-ink:var(--orange-500);
 
@@ -345,10 +345,10 @@ color-scheme:dark;
    block at L .28, so a light tint's chroma cannot be copied into dark. These sit at
    L .310, C/L .02-.06. The solid step doubles as the label and 2px left border on its
    own soft fill, so it sits mid-ramp and clears 4.5:1 there. */
---tint-azure:#7FB8D6;--tint-azure-soft:#283238;
---tint-jade:#7FCCAA;--tint-jade-soft:#28332F;
+--tint-azure:#7FB8D6;--tint-azure-soft:#2E383F;
+--tint-jade:#7FCCAA;--tint-jade-soft:#2E3A35;
 --tint-orange:#D9A876;--tint-orange-soft:var(--orange-100);
---tint-grey:#B5AEA3;--tint-grey-soft:#32302D;
+--tint-grey:#B5AEA3;--tint-grey-soft:#353330;
 }}
 
 :root{
@@ -376,6 +376,15 @@ color-scheme:dark;
 
 --fw-regular:400/* @kind font */;--fw-medium:500/* @kind font */;--fw-semibold:600/* @kind font */;--fw-bold:700/* @kind font */;
 --label-caps:0.075em/* @kind font */; /* letter-spacing for uppercase micro labels */
+}
+
+/* Reading-distance ramp for desktop viewports. Display sizes are unchanged. */
+@media (min-width:900px){
+:root{
+--fs-title-1:28px;--fs-title-2:22px;--fs-title-3:18px;
+--fs-body:16px;--fs-body-sm:15px;--fs-caption:14px;--fs-micro:12px;
+--fs-annotation:10px;
+}
 }
 
 :root{
@@ -435,4 +444,3 @@ hr{border:0;border-top:1px solid var(--ink-rule);margin:var(--sp-5) 0}
 /* Ink motifs: a highlighter pass behind text, and a pen rule under a heading. */
 .marker{background:linear-gradient(to top,var(--marker) 0 38%,transparent 38%);padding:0 .08em}
 .penrule{padding-bottom:.18em;border-bottom:1.5px solid var(--underline-ink)}
-

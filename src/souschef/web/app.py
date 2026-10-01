@@ -214,6 +214,15 @@ async def security_headers(request: Request, call_next):  # noqa: ANN001, ANN201
     return response
 
 
+THEME_COOKIE = "theme"
+THEMES = ("light", "dark", "auto")
+
+
+def _theme(request: Request) -> str:
+    chosen = request.cookies.get(THEME_COOKIE, "")
+    return chosen if chosen in THEMES else "light"
+
+
 def _render(
     request: Request, template: str, *, status_code: int = 200, **context
 ) -> HTMLResponse:
@@ -221,6 +230,7 @@ def _render(
     # control need it on every authenticated page, and a route that forgot it
     # would silently render the signed-out chrome to a signed-in user.
     context.setdefault("user", getattr(request.state, "user", None))
+    context.setdefault("theme", _theme(request))
     return templates.TemplateResponse(
         request, template, context, status_code=status_code
     )
@@ -1982,6 +1992,19 @@ def settings_page(
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     return _settings_page(request, db, user, saved=saved if saved == "password" else "")
+
+
+@app.post("/settings/theme")
+def set_theme(
+    theme: str = Form(...),
+    _user: User = Depends(auth.current_user),
+) -> Response:
+    response = RedirectResponse("/settings", status_code=303)
+    if theme in THEMES:
+        response.set_cookie(
+            THEME_COOKIE, theme, max_age=365 * 24 * 3600, samesite="lax", httponly=True
+        )
+    return response
 
 
 @app.post("/settings/staples")

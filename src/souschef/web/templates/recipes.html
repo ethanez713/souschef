@@ -16,12 +16,12 @@
     <form method="post" action="/recipes/import" style="margin-top:var(--sp-4)">
       <div class="field">
         <label for="url">Recipe URL</label>
-        <input id="url" name="url" type="url" value="{{ import_url }}" placeholder="https://cooking.nytimes.com/recipes/..." required>
+        <input id="url" name="url" type="url" value="{{ import_url }}" placeholder="https://…" required>
       </div>
       <button class="primary" type="submit">Import</button>
     </form>
     <p class="note">
-      NYT Cooking needs your session cookie saved in <a href="/settings">Settings</a>.
+      Most recipe pages work; a few sites block automated imports. NYT Cooking also needs your session cookie saved in <a href="/settings">Settings</a>.
       From your phone browser, share a recipe page to SousChef to land here.
     </p>
   </details>

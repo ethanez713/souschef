@@ -87,6 +87,7 @@ h3 { font-size: var(--fs-title-3); line-height: var(--lh-title-3); letter-spacin
   border-radius: var(--r-card); box-shadow: var(--shadow-1);
   padding: var(--sp-4); margin-bottom: var(--sp-3); color: inherit; text-decoration: none;
 }
+.card.row { display: flex; }
 .card.tight { padding: var(--sp-3) var(--sp-4); margin-bottom: var(--sp-2); }
 a.card:hover { background: var(--surface-hover); color: inherit; }
 .card.tint-jade { border-left: 2px solid var(--tint-jade); }
@@ -183,12 +184,15 @@ details.plan .daychips { margin-top: var(--sp-2); }
 .badge.accent { background: var(--orange-100); color: var(--orange-700); }
 .badge.bad { background: var(--danger); color: var(--on-danger); }
 
-/* Confidence pips: filled count = trust tier. One amber pip means "I am guessing",
-   which is what the pre-shop check acts on. */
+/* Confidence pips read as a traffic light: one lit pip is red, two amber, three green.
+   The design system's danger hue is indigo by design, so the red lives here. */
+:root { --pip-low: #D23A2C; }
+:root[data-theme="dark"] { --pip-low: #F0645A; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --pip-low: #F0645A; } }
 .pips { display: inline-flex; gap: 4px; align-items: center; vertical-align: middle; }
-.pips > i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-100); box-shadow: inset 0 0 0 1px var(--ink-200); }
-.pips.low > i.on { background: var(--amber-500); box-shadow: none; }
-.pips.med > i.on { background: var(--ink-400); box-shadow: none; }
+.pips > i { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-100); box-shadow: inset 0 0 0 1px var(--ink-300); }
+.pips.low > i.on { background: var(--pip-low); box-shadow: none; }
+.pips.med > i.on { background: var(--amber-500); box-shadow: none; }
 .pips.high > i.on { background: var(--success); box-shadow: none; }
 
 .notice {
@@ -217,7 +221,8 @@ details.plan .daychips { margin-top: var(--sp-2); }
 }
 .edit-label:hover { background: var(--surface-hover); color: var(--text-heading); }
 .item:has(.edit-toggle:checked) .edit-label { background: var(--surface-accent-soft); color: var(--on-accent-soft); }
-.item .trail { display: flex; align-items: center; gap: var(--sp-1); }
+.trail { display: flex; align-items: center; gap: var(--sp-3); white-space: nowrap; }
+.item .trail { gap: var(--sp-1); }
 .item .trail .pips { margin-right: var(--sp-2); }
 
 /* ---------- plan ---------- */

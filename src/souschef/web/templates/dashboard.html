@@ -90,11 +90,8 @@
     <div class="sechead"><h2>Least certain levels</h2><a href="/pantry">Pantry</a></div>
     {% for v in stale %}
       <a class="card tight row" href="/pantry?q={{ v.ingredient.name|urlencode }}">
-        <div class="stack">
-          <span>{{ v.ingredient.name }}</span>
-          <span class="meta num">{{ v.quantity|stock(v.ingredient) }}</span>
-        </div>
-        {{ confidence_pips(v.confidence) }}
+        <span>{{ v.ingredient.name }}</span>
+        <span class="trail"><span class="meta num">{{ v.quantity|stock(v.ingredient) }}</span>{{ confidence_pips(v.confidence) }}</span>
       </a>
     {% endfor %}
   {% endif %}

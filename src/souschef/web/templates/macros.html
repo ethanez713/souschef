@@ -17,7 +17,7 @@
   <summary>{{ label }}</summary>
   <form method="post" action="/plan/add">
     <input type="hidden" name="recipe_id" value="{{ recipe.id }}">
-    <input type="hidden" name="servings" value="{{ recipe.servings }}">
+    <input type="hidden" name="servings" value="{{ recipe.last_servings or recipe.servings }}">
     <div class="daychips" role="group" aria-label="Days to cook {{ recipe.title }}">
       {% for d in days %}
         <label>

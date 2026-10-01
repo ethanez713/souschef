@@ -14,6 +14,14 @@
       {% elif e.skipped_at %}<span class="meta">Skipped</span>{% endif %}
     </div>
     <div class="btns">
+      {% if e.recipe and not e.cooked_at and not e.skipped_at %}
+        <form method="post" action="/plan/{{ e.id }}/servings" class="inline servings">
+          <input name="servings" type="number" min="1" max="50" inputmode="numeric" value="{{ e.servings }}"
+                 aria-label="Servings for {{ e.recipe.title }}" title="Servings"
+                 onchange="this.form.requestSubmit()">
+          <noscript><button class="small" type="submit">Set</button></noscript>
+        </form>
+      {% endif %}
       {% if e.recipe and not e.cooked_at and not e.skipped_at and e.plan_date < today %}
         <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
         <form method="post" action="/plan/{{ e.id }}/skip" class="inline">

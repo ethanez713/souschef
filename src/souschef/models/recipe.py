@@ -48,6 +48,8 @@ class Recipe(Base, OwnedMixin, TimestampMixin):
     image_url: Mapped[str | None] = mapped_column(String(1000))
 
     servings: Mapped[int] = mapped_column(Integer, default=4)
+    # The servings last planned or cooked; a new plan starts here, not at the recipe's own number.
+    last_servings: Mapped[int | None] = mapped_column(Integer)
     total_minutes: Mapped[int | None] = mapped_column(Integer)
 
     # Drives the familiarity bonus and the variety penalty in suggestion

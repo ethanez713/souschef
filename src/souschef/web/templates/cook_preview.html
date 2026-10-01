@@ -5,9 +5,16 @@
 <main id="main">
   <h1>About to cook</h1>
   <p class="muted">
-    {{ recipe.title }} · <span class="num">{{ servings }}</span> serving{{ '' if servings == 1 else 's' }}.
-    Edit anything that doesn’t match what you actually used — those edits are logged.
+    {{ recipe.title }}. Edit anything that doesn’t match what you actually used — those edits are logged.
   </p>
+
+  <form method="get" action="/recipes/{{ recipe.id }}/cook" class="field">
+    {% if entry %}<input type="hidden" name="entry" value="{{ entry.id }}">{% endif %}
+    <label for="servings">Servings</label>
+    <input id="servings" name="servings" type="number" min="1" max="50" inputmode="numeric"
+           value="{{ servings }}" onchange="this.form.requestSubmit()">
+    <noscript><button class="small" type="submit">Update amounts</button></noscript>
+  </form>
 
   {% if error %}
     <div class="notice bad spaced">{{ error }}</div>

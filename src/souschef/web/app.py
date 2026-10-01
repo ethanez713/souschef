@@ -1113,6 +1113,13 @@ def correct_recipe_match(
     )
 
 
+MAX_SERVINGS = 50
+
+
+def _default_servings(recipe: Recipe) -> int:
+    return recipe.last_servings or recipe.servings or 4
+
+
 def _cook_page(
     request: Request,
     db: Session,
@@ -1124,7 +1131,10 @@ def _cook_page(
     error: str = "",
     status_code: int = 200,
 ) -> HTMLResponse:
-    servings = servings or (plan_entry.servings if plan_entry else 0) or recipe.servings or 1
+    servings = (
+        servings or (plan_entry.servings if plan_entry else 0) or _default_servings(recipe)
+    )
+    servings = min(servings, MAX_SERVINGS)
     requirements = recipe_requirements(db, recipe, servings=servings)
     pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
 
@@ -1190,7 +1200,7 @@ async def mark_cooked(
 ) -> Response:
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
     form = await request.form()
-    servings = int(form.get("servings") or 0)
+    servings = min(int(form.get("servings") or 0), MAX_SERVINGS)
     entry_id = int(form.get("entry_id") or 0)
     raw_date = str(form.get("cooked_on") or "")
     cooked_on = _parse_cook_date(raw_date)
@@ -1248,6 +1258,10 @@ async def mark_cooked(
     attached = _open_plan_entry(db, user.id, recipe.id, cooked_on)
     if attached is not None:
         attached.cooked_at = when
+        if servings:
+            attached.servings = servings
+    if servings:
+        recipe.last_servings = servings
     db.flush()
     _sync_shopping(db, user.id)
     return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
@@ -1370,11 +1384,11 @@ async def add_to_plan(
 ) -> Response:
     form = await request.form()
     recipe_id = int(form.get("recipe_id") or 0)
-    servings = int(form.get("servings") or 4)
     # Validate the recipe is theirs before planning it: without this, posting an
     # arbitrary id would put another user's recipe on your calendar, and the
     # plan page would then render its title.
-    _owned(db, Recipe, recipe_id, user, "recipe")
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    servings = min(int(form.get("servings") or 0), MAX_SERVINGS) or _default_servings(recipe)
     skipped = False
     added = False
     for raw in form.getlist("plan_date"):
@@ -1405,7 +1419,7 @@ def plan_day(
     kind, _, value = choice.partition(":")
     if kind == "r" and value.isdigit():
         recipe = _owned(db, Recipe, int(value), user, "recipe")
-        if _plan_recipe(db, user.id, recipe.id, plan_date, recipe.servings or 4):
+        if _plan_recipe(db, user.id, recipe.id, plan_date, _default_servings(recipe)):
             db.flush()
             _sync_shopping(db, user.id)
     elif kind == "n" and value in NOTE_TITLES:
@@ -1426,6 +1440,23 @@ def plan_day(
                 )
             )
     return RedirectResponse(f"/plan#d-{plan_date.isoformat()}", status_code=303)
+
+
+@app.post("/plan/{entry_id}/servings")
+def set_plan_servings(
+    entry_id: int,
+    servings: int = Form(..., ge=1, le=MAX_SERVINGS),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    entry = _owned(db, MealPlanEntry, entry_id, user, "plan entry")
+    if entry.recipe is None or entry.cooked_at is not None or entry.skipped_at is not None:
+        raise HTTPException(status_code=404, detail="No such plan entry")
+    entry.servings = servings
+    entry.recipe.last_servings = servings
+    db.flush()
+    _sync_shopping(db, user.id)
+    return RedirectResponse(f"/plan#d-{entry.plan_date.isoformat()}", status_code=303)
 
 
 @app.post("/plan/{entry_id}/remove")

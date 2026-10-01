@@ -1459,3 +1459,151 @@ def test_an_undo_link_for_someone_elses_discard_changes_nothing(
     assert theirs.quantity == 0
     notice = signed_in.get("/pantry", params={"wasted": waste.id})
     assert "Threw out" not in notice.text
+
+
+def _pasta_recipe(session: Session, user: User, servings: int = 4):  # noqa: ANN202
+    return save_imported_recipe(
+        session,
+        user.id,
+        RawRecipe(
+            title="Pasta Night",
+            ingredients=["400 g spaghetti"],
+            servings=servings,
+            source_url="https://example.com/pasta-servings",
+        ),
+        source=RecipeSource.URL,
+    )
+
+
+def _needed(session: Session, user: User, ingredient: CanonicalIngredient) -> float:
+    session.expire_all()
+    return sum(
+        item.needed_qty
+        for item in session.scalars(
+            select(ShoppingListItem).where(ShoppingListItem.ingredient_id == ingredient.id)
+        )
+    )
+
+
+def test_editing_a_planned_meals_servings_rescales_the_list_and_is_remembered(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, web_user)
+    pasta = ing(seeded_session, "spaghetti")
+    day = date.today() + timedelta(days=1)
+    entry = MealPlanEntry(
+        user_id=web_user.id, plan_date=day, slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=4,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+    signed_in.get("/shopping")
+    assert _needed(seeded_session, web_user, pasta) == 400
+
+    changed = signed_in.post(f"/plan/{entry.id}/servings", data={"servings": "2"})
+    assert changed.status_code == 303
+    assert _needed(seeded_session, web_user, pasta) == 200
+    seeded_session.refresh(recipe)
+    assert recipe.last_servings == 2
+
+    other_day = day + timedelta(days=1)
+    signed_in.post(
+        "/plan/day", data={"plan_date": other_day.isoformat(), "choice": f"r:{recipe.id}"}
+    )
+    seeded_session.expire_all()
+    added = seeded_session.scalar(
+        select(MealPlanEntry).where(
+            MealPlanEntry.recipe_id == recipe.id, MealPlanEntry.plan_date == other_day
+        )
+    )
+    assert added.servings == 2
+
+
+def test_the_plan_row_has_a_servings_field(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, web_user)
+    entry = MealPlanEntry(
+        user_id=web_user.id, plan_date=date.today() + timedelta(days=1),
+        slot=MealSlot.DINNER, recipe_id=recipe.id, servings=6,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    page = signed_in.get("/plan").text
+    assert f'action="/plan/{entry.id}/servings"' in page
+    assert 'value="6"' in page
+
+
+def test_servings_must_be_between_one_and_fifty(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, web_user)
+    entry = MealPlanEntry(
+        user_id=web_user.id, plan_date=date.today() + timedelta(days=1),
+        slot=MealSlot.DINNER, recipe_id=recipe.id, servings=4,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    for bad in ("0", "-1", "51", "x"):
+        response = signed_in.post(f"/plan/{entry.id}/servings", data={"servings": bad})
+        assert response.status_code in (400, 422), bad
+    seeded_session.refresh(entry)
+    assert entry.servings == 4
+
+
+def test_another_users_plan_entry_servings_cannot_be_edited(
+    signed_in: TestClient, seeded_session: Session, user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, user)
+    entry = MealPlanEntry(
+        user_id=user.id, plan_date=date.today() + timedelta(days=1),
+        slot=MealSlot.DINNER, recipe_id=recipe.id, servings=4,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    assert signed_in.post(f"/plan/{entry.id}/servings", data={"servings": "2"}).status_code == 404
+    seeded_session.refresh(entry)
+    assert entry.servings == 4
+
+
+def test_cook_preview_scales_to_the_servings_asked_for(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, web_user)
+    pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=1000)
+    seeded_session.commit()
+
+    assert f'name="qty_{pasta.id}"' in signed_in.get(f"/recipes/{recipe.id}/cook").text
+    half = signed_in.get(f"/recipes/{recipe.id}/cook", params={"servings": 2}).text
+    assert 'value="2"' in half
+    assert f'name="proposed_{pasta.id}" value="200.0"' in half
+
+
+def test_cooking_remembers_the_servings_on_the_recipe_and_the_entry(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, web_user)
+    pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=1000)
+    entry = MealPlanEntry(
+        user_id=web_user.id, plan_date=date.today(), slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=4,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    signed_in.post(
+        f"/recipes/{recipe.id}/cooked",
+        data={"servings": "3", "entry_id": str(entry.id), "cooked_on": date.today().isoformat()},
+    )
+    seeded_session.expire_all()
+    assert recipe.last_servings == 3
+    assert entry.servings == 3
+    assert entry.cooked_at is not None
+
+    page = signed_in.get(f"/recipes/{recipe.id}/cook").text
+    assert f'name="proposed_{pasta.id}" value="300.0"' in page

@@ -246,6 +246,7 @@ details.plan .daychips { margin-top: var(--sp-2); }
 .entry + .entry { border-top: 1px solid var(--border-subtle); margin-top: var(--sp-2); }
 .entry > :first-child { flex: 1; min-width: 0; }
 .entry .btns { display: flex; align-items: center; gap: var(--sp-1); }
+.servings input { width: 4rem; min-height: 36px; padding: 0 var(--sp-2); text-align: center; }
 .daylabel { font-family: var(--font-mono); font-size: var(--fs-caption); font-weight: var(--fw-medium); color: var(--text-heading); }
 .daylabel .rel { font-family: var(--font-ui); color: var(--text-accent); margin-left: var(--sp-2); font-weight: var(--fw-semibold); }
 

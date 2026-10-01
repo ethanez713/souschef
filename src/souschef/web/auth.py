@@ -220,6 +220,14 @@ def read_invite_flash(token: str | None) -> str | None:
     return code if isinstance(code, str) and code.strip() else None
 
 
+def sole_user(db: Session) -> User:
+    """The account every request acts as when ``single_user`` is on."""
+    user = db.scalar(select(User).where(User.is_active.is_(True)).order_by(User.id))
+    if user is None:
+        user = create_user(db, "owner", secrets.token_urlsafe(24), is_admin=True)
+    return user
+
+
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """FastAPI dependency resolving the signed-in user.
 
@@ -227,6 +235,10 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     active, and match the session epoch -- otherwise a cookie issued before a
     deletion, suspension or password change would keep working.
     """
+    if get_settings().single_user:
+        request.state.user = sole_user(db)
+        return request.state.user
+
     parsed = read_session(request.cookies.get(SESSION_COOKIE))
     if parsed is None:
         raise _Redirect(login_location(request))

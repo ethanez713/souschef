@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # test suite turns it on so a test can never hit a real service.
     no_external: bool = False
     debug: bool = False
+    # Skips sign-in and acts as the first active account. Only safe when
+    # nothing but this machine can reach the server.
+    single_user: bool = False
     log_level: str = "INFO"
 
     # Half-life in days for confidence in an unverified level. Bulk staples drift

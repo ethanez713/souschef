@@ -305,6 +305,9 @@ def _is_htmx(request: Request) -> bool:
 
 def _optional_user(request: Request, db: Session) -> User | None:
     """The signed-in account, or None. Never redirects."""
+    if get_settings().single_user:
+        request.state.user = auth.sole_user(db)
+        return request.state.user
     parsed = auth.read_session(request.cookies.get(auth.SESSION_COOKIE))
     if parsed is None:
         return None
@@ -402,7 +405,9 @@ def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str): 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(
     request: Request, db: Session = Depends(get_db)
-) -> HTMLResponse:
+) -> Response:
+    if get_settings().single_user:
+        return RedirectResponse("/", status_code=303)
     # An empty database means nobody has claimed this instance yet. Whoever
     # reaches it first becomes the admin.
     if auth.user_count(db) == 0:

@@ -494,3 +494,18 @@ def test_lockout_is_per_account_not_per_box(
     assert signed_in.post(
         "/login", data={"username": "housemate", "password": OTHER_PASSWORD}
     ).status_code == 303
+
+
+def test_single_user_mode_skips_sign_in(client, monkeypatch) -> None:  # noqa: ANN001
+    from souschef.config import get_settings
+
+    assert client.get("/").status_code == 303
+
+    monkeypatch.setenv("SOUSCHEF_SINGLE_USER", "true")
+    get_settings.cache_clear()
+    try:
+        assert client.get("/").status_code == 200
+        assert client.get("/login").headers["location"] == "/"
+    finally:
+        monkeypatch.delenv("SOUSCHEF_SINGLE_USER")
+        get_settings.cache_clear()

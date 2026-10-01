@@ -88,7 +88,9 @@
 
   {% if stale %}
     <div class="sechead"><h2>Least certain levels</h2><a href="/pantry">Pantry</a></div>
-    {% for v in stale %}{{ pantry_card(v, freshness, '', '/') }}{% endfor %}
+    <div class="grid-2">
+      {% for v in stale %}{{ pantry_card(v, freshness, '', '/') }}{% endfor %}
+    </div>
   {% endif %}
 </main>
 {% endblock %}

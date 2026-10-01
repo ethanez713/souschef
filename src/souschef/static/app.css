@@ -418,3 +418,7 @@ details.inline-fix .controls,
 
 .dayrow .dayadd { margin-top: var(--sp-2); }
 .dayrow .dayadd select { width: 100%; min-height: 40px; }
+
+.grid-2 { display: grid; gap: var(--sp-2); align-items: start; }
+.grid-2 > .card { margin-bottom: 0; }
+@media (min-width: 480px) { .grid-2 { grid-template-columns: 1fr 1fr; } }

@@ -1170,6 +1170,23 @@ async def mark_cooked(
     return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
 
 
+def _planned_days(entries: list[MealPlanEntry], today: date) -> dict[int, str]:
+    """Upcoming days each recipe is already on, for the "planned Thu" marker."""
+    planned: dict[int, list[date]] = {}
+    for entry in entries:
+        if (
+            entry.recipe_id is not None
+            and entry.plan_date >= today
+            and entry.cooked_at is None
+            and entry.skipped_at is None
+        ):
+            planned.setdefault(entry.recipe_id, []).append(entry.plan_date)
+    return {
+        recipe_id: ", ".join(day.strftime("%a") for day in days)
+        for recipe_id, days in planned.items()
+    }
+
+
 @app.get("/plan", response_class=HTMLResponse)
 def plan_page(
     request: Request,
@@ -1202,6 +1219,7 @@ def plan_page(
         days=days,
         today=today,
         has_meals=any(by_day.values()),
+        planned_days=_planned_days(entries, today),
         suggestions=suggest(db, user.id, limit=10),
         week_end=week_end,
         skipped=bool(skipped),
@@ -1256,6 +1274,27 @@ async def add_to_plan(
         db.flush()
         _sync_shopping(db, user.id)
     return RedirectResponse("/plan?skipped=1" if skipped else "/plan", status_code=303)
+
+
+@app.post("/plan/note")
+def add_note_to_plan(
+    title: str = Form(...),
+    plan_date: date = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """A night that isn't a recipe: leftovers, eating out."""
+    label = " ".join(title.split())[:200]
+    if label:
+        db.add(
+            MealPlanEntry(
+                user_id=user.id,
+                plan_date=plan_date,
+                slot=MealSlot.DINNER,
+                freeform_title=label,
+            )
+        )
+    return RedirectResponse("/plan", status_code=303)
 
 
 @app.post("/plan/{entry_id}/remove")
@@ -1421,6 +1460,7 @@ def _render_shopping(
                 MealPlanEntry.user_id == user.id,
                 MealPlanEntry.plan_date >= start,
                 MealPlanEntry.plan_date <= end,
+                MealPlanEntry.recipe_id.is_not(None),
                 MealPlanEntry.cooked_at.is_(None),
                 MealPlanEntry.skipped_at.is_(None),
             )

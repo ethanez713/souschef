@@ -54,12 +54,22 @@
     <div class="empty">Nothing planned yet. Pick a meal below and choose its days.</div>
   {% endif %}
 
+  <div class="sechead"><h2>Not cooking</h2></div>
+  <form class="card tight" method="post" action="/plan/note">
+    <input type="text" name="title" list="plan-notes" placeholder="Leftovers, eating out…" maxlength="200" required aria-label="What's happening that night">
+    <datalist id="plan-notes"><option value="Leftovers"><option value="Eating out"></datalist>
+    <select name="plan_date" aria-label="Day">
+      {% for d in days %}<option value="{{ d.isoformat() }}">{{ 'Today' if d == today else d.strftime('%a %-d') }}</option>{% endfor %}
+    </select>
+    <button class="primary small" type="submit">Add</button>
+  </form>
+
   <div class="sechead"><h2>Add a meal</h2><a href="/recipes">All recipes</a></div>
   {% for s in suggestions %}
     <div class="card tight">
       <div class="stack">
         <a href="/recipes/{{ s.recipe.id }}"><strong>{{ s.recipe.title }}</strong></a>
-        <span class="meta">{{ s.reason }}</span>
+        <span class="meta">{{ s.reason }}{% if s.recipe.id in planned_days %} · planned {{ planned_days[s.recipe.id] }}{% endif %}</span>
       </div>
       {{ plan_form(s.recipe, days, today, label='Choose days') }}
     </div>

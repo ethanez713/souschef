@@ -1270,3 +1270,41 @@ def test_a_signed_in_user_opening_join_is_told_so(signed_in: TestClient) -> None
     assert page.status_code == 200
     assert "already signed in" in page.text.casefold()
     assert "needs a valid invite" not in page.text
+
+
+def test_a_note_night_shows_on_the_plan_and_adds_nothing_to_the_list(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    posted = signed_in.post(
+        "/plan/note", data={"title": "  Eating   out ", "plan_date": date.today().isoformat()}
+    )
+    assert posted.headers["location"] == "/plan"
+
+    page = signed_in.get("/plan")
+    assert "<strong>Eating out</strong>" in page.text
+    seeded_session.expire_all()
+    assert seeded_session.scalars(select(ShoppingListItem)).all() == []
+
+
+def test_a_planned_recipe_is_marked_with_its_day_in_add_a_meal(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Marked Meal",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/marked-meal",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    today = date.today()
+    signed_in.post(
+        "/plan/add",
+        data={"recipe_id": recipe.id, "servings": 2, "plan_date": today.isoformat()},
+    )
+
+    assert f"planned {today.strftime('%a')}" in signed_in.get("/plan").text

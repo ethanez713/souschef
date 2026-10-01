@@ -1,11 +1,39 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import plan_form, day_label %}
 {% set active = 'plan' %}
+
+{% macro entry_row(e, today) %}
+  <div class="entry">
+    <div class="stack">
+      {% if e.recipe %}
+        <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
+      {% else %}
+        <strong>{{ e.freeform_title }}</strong>
+      {% endif %}
+      {% if e.cooked_at %}<span class="meta">Cooked</span>
+      {% elif e.skipped_at %}<span class="meta">Skipped</span>{% endif %}
+    </div>
+    <div class="btns">
+      {% if e.recipe and not e.cooked_at and not e.skipped_at and e.plan_date < today %}
+        <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
+        <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
+          <input type="hidden" name="next" value="/plan">
+          <button class="btn small" type="submit">Skipped</button>
+        </form>
+      {% elif e.recipe and not e.cooked_at and not e.skipped_at %}
+        <a class="btn small quiet" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>
+      {% endif %}
+      <form method="post" action="/plan/{{ e.id }}/remove" class="inline">
+        <button class="iconbtn bare small" type="submit" aria-label="Remove from plan" title="Remove from plan">{{ icon('x', 16) }}</button>
+      </form>
+    </div>
+  </div>
+{% endmacro %}
+
 {% block content %}
 <main id="main">
   <div class="page-head">
-    <h1>This week</h1>
+    <h1>Plan</h1>
     {% if has_meals %}
       <a class="btn primary" href="/audit">{{ icon('shopping-basket', 16) }}Shop for this plan</a>
     {% endif %}
@@ -15,69 +43,47 @@
     <div class="notice spaced">That meal is already on one of the days you picked, so it wasn't added again.</div>
   {% endif %}
 
-  {% for day, entries in by_day.items() %}
-    {% if entries %}
-    <div class="card tight {{ 'today' if day == today }}">
-      <div class="daylabel">{{ day.strftime('%a %-d %b') }}{% if day == today %}<span class="rel">Today</span>{% elif (day - today).days == 1 %}<span class="rel">Tomorrow</span>{% endif %}</div>
-      {% for e in entries %}
-        <div class="entry">
-          <div class="stack">
-            {% if e.recipe %}
-              <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
-            {% else %}
-              <strong>{{ e.freeform_title }}</strong>
-            {% endif %}
-            {% if e.cooked_at %}<span class="meta">Cooked</span>
-            {% elif e.skipped_at %}<span class="meta">Skipped</span>{% endif %}
-          </div>
-          <div class="btns">
-            {% if e.recipe and not e.cooked_at and not e.skipped_at and e.plan_date < today %}
-              <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
-              <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
-                <input type="hidden" name="next" value="/plan">
-                <button class="btn small" type="submit">Skipped</button>
-              </form>
-            {% elif e.recipe and not e.cooked_at and not e.skipped_at %}
-              <a class="btn small quiet" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>
-            {% endif %}
-            <form method="post" action="/plan/{{ e.id }}/remove" class="inline">
-              <button class="iconbtn bare small" type="submit" aria-label="Remove from plan" title="Remove from plan">{{ icon('x', 16) }}</button>
-            </form>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
-    {% endif %}
-  {% endfor %}
-
-  {% if not has_meals %}
-    <div class="empty">Nothing planned yet. Pick a meal below and choose its days.</div>
+  {% if past_days %}
+    <div class="sechead"><h2>Earlier</h2></div>
+    {% for day in past_days %}
+      <div class="card tight">
+        <div class="daylabel">{{ day.strftime('%a %-d %b') }}</div>
+        {% for e in by_day[day] %}{{ entry_row(e, today) }}{% endfor %}
+      </div>
+    {% endfor %}
   {% endif %}
 
-  <div class="sechead"><h2>Not cooking</h2></div>
-  <form class="card tight" method="post" action="/plan/note">
-    <input type="text" name="title" list="plan-notes" placeholder="Leftovers, eating out…" maxlength="200" required aria-label="What's happening that night">
-    <datalist id="plan-notes"><option value="Leftovers"><option value="Eating out"></datalist>
-    <select name="plan_date" aria-label="Day">
-      {% for d in days %}<option value="{{ d.isoformat() }}">{{ 'Today' if d == today else d.strftime('%a %-d') }}</option>{% endfor %}
-    </select>
-    <button class="primary small" type="submit">Add</button>
-  </form>
-
-  <div class="sechead"><h2>Add a meal</h2><a href="/recipes">All recipes</a></div>
-  {% for s in suggestions %}
-    <div class="card tight">
-      <div class="stack">
-        <a href="/recipes/{{ s.recipe.id }}"><strong>{{ s.recipe.title }}</strong></a>
-        <span class="meta">{{ s.reason }}{% if s.recipe.id in planned_days %} · planned {{ planned_days[s.recipe.id] }}{% endif %}</span>
-      </div>
-      {{ plan_form(s.recipe, days, today, label='Choose days') }}
+  <div class="sechead"><h2>Next {{ days|length }} days</h2></div>
+  {% for day in days %}
+    <div class="card tight dayrow {{ 'today' if day == today }}" id="d-{{ day.isoformat() }}">
+      <div class="daylabel">{{ day.strftime('%a %-d %b') }}{% if day == today %}<span class="rel">Today</span>{% elif (day - today).days == 1 %}<span class="rel">Tomorrow</span>{% endif %}</div>
+      {% for e in by_day[day] %}{{ entry_row(e, today) }}{% endfor %}
+      <form method="post" action="/plan/day" class="dayadd">
+        <input type="hidden" name="plan_date" value="{{ day.isoformat() }}">
+        <select name="choice" aria-label="Add to {{ day.strftime('%A %-d %B') }}" onchange="if (this.value) this.form.requestSubmit()">
+          <option value="">{{ 'Add…' if by_day[day] else 'Unplanned — add…' }}</option>
+          <optgroup label="Not cooking">
+            <option value="n:Eating out">Eating out</option>
+            <option value="n:Leftovers">Leftovers</option>
+          </optgroup>
+          {% for label, options in recipe_groups %}
+            <optgroup label="{{ label }}">
+              {% for recipe, marker in options %}
+                <option value="r:{{ recipe.id }}">{{ recipe.title }}{{ marker }}</option>
+              {% endfor %}
+            </optgroup>
+          {% endfor %}
+        </select>
+        <noscript><button class="small" type="submit">Add</button></noscript>
+      </form>
     </div>
-  {% else %}
+  {% endfor %}
+
+  {% if not recipe_groups %}
     <div class="empty">
       <p>No recipes to plan from yet.</p>
       <a class="btn primary" href="/recipes?import=1">Import a recipe</a>
     </div>
-  {% endfor %}
+  {% endif %}
 </main>
 {% endblock %}

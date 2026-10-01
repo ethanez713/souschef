@@ -275,7 +275,7 @@ def test_editing_a_level_keeps_the_active_search(
     assert response.headers["location"] == "/pantry?q=olive"
 
 
-def test_plan_page_offers_day_chips_and_an_add_recipe_button(
+def test_plan_page_offers_a_recipe_picker_per_day(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     save_imported_recipe(
@@ -293,9 +293,8 @@ def test_plan_page_offers_day_chips_and_an_add_recipe_button(
 
     page = signed_in.get("/plan")
     assert page.status_code == 200
-    assert 'href="/recipes"' in page.text
     assert 'name="plan_date"' in page.text
-    assert 'type="checkbox"' in page.text
+    assert "Chip Meal" in page.text
     assert 'type="date"' not in page.text
 
 
@@ -1272,18 +1271,75 @@ def test_a_signed_in_user_opening_join_is_told_so(signed_in: TestClient) -> None
     assert "needs a valid invite" not in page.text
 
 
-def test_a_note_night_shows_on_the_plan_and_adds_nothing_to_the_list(
+def test_a_night_off_shows_on_the_plan_and_adds_nothing_to_the_list(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
-    posted = signed_in.post(
-        "/plan/note", data={"title": "  Eating   out ", "plan_date": date.today().isoformat()}
-    )
-    assert posted.headers["location"] == "/plan"
+    day = date.today().isoformat()
+    posted = signed_in.post("/plan/day", data={"plan_date": day, "choice": "n:Eating out"})
+    assert posted.headers["location"] == f"/plan#d-{day}"
+    signed_in.post("/plan/day", data={"plan_date": day, "choice": "n:Eating out"})
 
     page = signed_in.get("/plan")
-    assert "<strong>Eating out</strong>" in page.text
+    assert page.text.count("<strong>Eating out</strong>") == 1
     seeded_session.expire_all()
     assert seeded_session.scalars(select(ShoppingListItem)).all() == []
+
+
+def test_an_unlisted_night_off_title_is_ignored(signed_in: TestClient) -> None:
+    day = date.today().isoformat()
+    signed_in.post("/plan/day", data={"plan_date": day, "choice": "n:<b>x</b>"})
+    assert "<b>x</b>" not in signed_in.get("/plan").text
+
+
+def test_the_plan_lists_every_day_with_a_picker_and_plans_a_recipe_once(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Day Pick",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/day-pick",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    day = date.today().isoformat()
+    page = signed_in.get("/plan")
+    assert page.text.count('action="/plan/day"') == 10
+    assert f'<option value="r:{recipe.id}">Day Pick' in page.text
+
+    for _ in range(2):
+        signed_in.post("/plan/day", data={"plan_date": day, "choice": f"r:{recipe.id}"})
+    seeded_session.expire_all()
+    assert len(seeded_session.scalars(select(MealPlanEntry)).all()) == 1
+    assert len(seeded_session.scalars(select(ShoppingListItem)).all()) == 1
+
+
+def test_a_recipe_that_is_not_yours_cannot_be_planned_by_day(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    other = User(username="someone-else", display_name="x", password_hash="x")
+    seeded_session.add(other)
+    seeded_session.flush()
+    recipe = save_imported_recipe(
+        seeded_session,
+        other.id,
+        RawRecipe(
+            title="Theirs",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/theirs",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    posted = signed_in.post(
+        "/plan/day", data={"plan_date": date.today().isoformat(), "choice": f"r:{recipe.id}"}
+    )
+    assert posted.status_code == 404
 
 
 def test_a_planned_recipe_is_marked_with_its_day_in_add_a_meal(

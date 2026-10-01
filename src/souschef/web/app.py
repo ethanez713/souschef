@@ -1189,6 +1189,32 @@ async def mark_cooked(
     return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
 
 
+_RECIPE_GROUPS = (
+    (Surface.COOK_NOW, "Ready to cook"),
+    (Surface.NEARLY_THERE, "Missing a few things"),
+    (Surface.REACH, "Other recipes"),
+)
+
+
+def _recipe_groups(
+    db: Session, user_id: int, entries: list[MealPlanEntry], today: date
+) -> list[tuple[str, list[tuple[Recipe, str]]]]:
+    """Every recipe for the day pickers, grouped by how cookable it is now."""
+    planned = _planned_days(entries, today)
+    grouped = by_surface(suggest(db, user_id, limit=100_000))
+    return [
+        (
+            label,
+            [
+                (s.recipe, f" · planned {planned[s.recipe.id]}" if s.recipe.id in planned else "")
+                for s in grouped[surface]
+            ],
+        )
+        for surface, label in _RECIPE_GROUPS
+        if grouped[surface]
+    ]
+
+
 def _planned_days(entries: list[MealPlanEntry], today: date) -> dict[int, str]:
     """Upcoming days each recipe is already on, for the "planned Thu" marker."""
     planned: dict[int, list[date]] = {}
@@ -1238,11 +1264,38 @@ def plan_page(
         days=days,
         today=today,
         has_meals=any(by_day.values()),
-        planned_days=_planned_days(entries, today),
-        suggestions=suggest(db, user.id, limit=10),
+        past_days=[day for day in shown if day < today and by_day[day]],
+        recipe_groups=_recipe_groups(db, user.id, entries, today),
         week_end=week_end,
         skipped=bool(skipped),
     )
+
+
+def _plan_recipe(db: Session, user_id: int, recipe_id: int, day: date, servings: int) -> bool:
+    """Plan a recipe on a day. False when it is already there.
+
+    The same recipe twice on one day doubled every ingredient on the list with
+    no signal that it had happened.
+    """
+    already = db.scalar(
+        select(MealPlanEntry.id).where(
+            MealPlanEntry.user_id == user_id,
+            MealPlanEntry.recipe_id == recipe_id,
+            MealPlanEntry.plan_date == day,
+        )
+    )
+    if already is not None:
+        return False
+    db.add(
+        MealPlanEntry(
+            user_id=user_id,
+            plan_date=day,
+            slot=MealSlot.DINNER,
+            recipe_id=recipe_id,
+            servings=servings,
+        )
+    )
+    return True
 
 
 @app.post("/plan/add")
@@ -1258,62 +1311,57 @@ async def add_to_plan(
     # arbitrary id would put another user's recipe on your calendar, and the
     # plan page would then render its title.
     _owned(db, Recipe, recipe_id, user, "recipe")
-    already = set(
-        db.scalars(
-            select(MealPlanEntry.plan_date).where(
-                MealPlanEntry.user_id == user.id,
-                MealPlanEntry.recipe_id == recipe_id,
-            )
-        )
-    )
     skipped = False
     added = False
     for raw in form.getlist("plan_date"):
         value = str(raw).strip()
         if not value:
             continue
-        day = date.fromisoformat(value)
-        # The same recipe twice on one day doubled every ingredient on the list
-        # with no signal that it had happened.
-        if day in already:
+        if _plan_recipe(db, user.id, recipe_id, date.fromisoformat(value), servings):
+            added = True
+        else:
             skipped = True
-            continue
-        already.add(day)
-        db.add(
-            MealPlanEntry(
-                user_id=user.id,
-                plan_date=day,
-                slot=MealSlot.DINNER,
-                recipe_id=recipe_id,
-                servings=servings,
-            )
-        )
-        added = True
     if added:
         db.flush()
         _sync_shopping(db, user.id)
     return RedirectResponse("/plan?skipped=1" if skipped else "/plan", status_code=303)
 
 
-@app.post("/plan/note")
-def add_note_to_plan(
-    title: str = Form(...),
+NOTE_TITLES = ("Eating out", "Leftovers")
+
+
+@app.post("/plan/day")
+def plan_day(
     plan_date: date = Form(...),
+    choice: str = Form(...),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    """A night that isn't a recipe: leftovers, eating out."""
-    label = " ".join(title.split())[:200]
-    if label:
-        db.add(
-            MealPlanEntry(
-                user_id=user.id,
-                plan_date=plan_date,
-                slot=MealSlot.DINNER,
-                freeform_title=label,
+    """Put one thing on one day: a recipe ("r:<id>") or a night off ("n:<title>")."""
+    kind, _, value = choice.partition(":")
+    if kind == "r" and value.isdigit():
+        recipe = _owned(db, Recipe, int(value), user, "recipe")
+        if _plan_recipe(db, user.id, recipe.id, plan_date, recipe.servings or 4):
+            db.flush()
+            _sync_shopping(db, user.id)
+    elif kind == "n" and value in NOTE_TITLES:
+        taken = db.scalar(
+            select(MealPlanEntry.id).where(
+                MealPlanEntry.user_id == user.id,
+                MealPlanEntry.plan_date == plan_date,
+                MealPlanEntry.freeform_title == value,
             )
         )
-    return RedirectResponse("/plan", status_code=303)
+        if taken is None:
+            db.add(
+                MealPlanEntry(
+                    user_id=user.id,
+                    plan_date=plan_date,
+                    slot=MealSlot.DINNER,
+                    freeform_title=value,
+                )
+            )
+    return RedirectResponse(f"/plan#d-{plan_date.isoformat()}", status_code=303)
 
 
 @app.post("/plan/{entry_id}/remove")

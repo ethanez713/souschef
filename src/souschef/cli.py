@@ -258,7 +258,14 @@ def cmd_invite(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    import os
+
     import uvicorn
+
+    if args.no_auth:
+        os.environ["SOUSCHEF_SINGLE_USER"] = "true"
+        get_settings.cache_clear()
+        print("--no-auth: sign-in is off; whoever can reach this port is the first account.")
 
     # The app already logs method and path. Uvicorn's access line includes the
     # query string, which is where an invite code and a shared recipe URL sit.
@@ -326,6 +333,9 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--reload", action="store_true")
+    serve.add_argument(
+        "--no-auth", action="store_true", help="skip sign-in and act as the first account"
+    )
     serve.set_defaults(func=cmd_serve)
 
     parser.add_argument(

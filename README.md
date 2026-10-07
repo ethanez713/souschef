@@ -64,6 +64,9 @@ the same wifi reaches `http://<this-machine>:8000`. Sessions and receipt photos
 work; installing it as an app does not, because a service worker needs a secure
 context and that means localhost or real TLS.
 
+`souschef serve --no-auth` skips sign-in and acts as the first account, for testing
+on a network you trust.
+
 ### Accounts
 
 Several people can share one instance, and each gets a **separate kitchen** — own

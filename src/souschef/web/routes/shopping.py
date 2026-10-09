@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from souschef.core.audit import build_audit
-from souschef.core.units import UnitConversionError
+from souschef.core.units import NeedsPackage, UnitConversionError
 from souschef.db import get_db
 from souschef.models import MealPlanEntry, ShoppingListItem, User
 from souschef.planning.shopping import (
@@ -70,6 +70,9 @@ def _render_shopping(
     add_name: str = "",
     add_amount: str = "",
     add_unit: str = "",
+    package_word: str = "",
+    package_qty: str = "",
+    package_unit: str = "",
     status_code: int = 200,
     rebuild: bool = True,
 ) -> HTMLResponse:
@@ -116,6 +119,9 @@ def _render_shopping(
         add_name=add_name,
         add_amount=add_amount,
         add_unit=add_unit,
+        package_word=package_word,
+        package_qty=package_qty,
+        package_unit=package_unit,
         audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
     )
 
@@ -174,40 +180,49 @@ def add_shopping_item(
     name: str = Form(""),
     amount: str = Form(""),
     unit: str = Form(""),
+    package_qty: str = Form(""),
+    package_unit: str = Form(""),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
+    def show(message: str = "", *, word: str = "") -> HTMLResponse:
+        return _render_shopping(
+            request,
+            db,
+            user,
+            add_error=message,
+            add_name=name,
+            add_amount=amount,
+            add_unit=unit,
+            package_word=word,
+            package_qty=package_qty,
+            package_unit=package_unit,
+            status_code=400,
+            rebuild=False,
+        )
+
     parsed: float | None = None
     text = amount.strip()
     if text:
         try:
             parsed = float(text)
         except ValueError:
-            return _render_shopping(
-                request,
-                db,
-                user,
-                add_error="Amount isn't a number.",
-                add_name=name,
-                add_amount=amount,
-                add_unit=unit,
-                status_code=400,
-            )
+            return show("Amount isn't a number.")
     listing = live_list(db, user.id) or _sync_shopping(db, user.id)
     try:
-        add_manual_item(db, listing, name, amount=parsed, unit=unit.strip() or None)
-    except ShoppingError as exc:
-        return _render_shopping(
-            request,
+        add_manual_item(
             db,
-            user,
-            add_error=str(exc),
-            add_name=name,
-            add_amount=amount,
-            add_unit=unit,
-            status_code=400,
-            rebuild=False,
+            listing,
+            name,
+            amount=parsed,
+            unit=unit.strip() or None,
+            package_qty=package_qty,
+            package_unit=package_unit,
         )
+    except NeedsPackage as exc:
+        return show(exc.detail, word=exc.word)
+    except ShoppingError as exc:
+        return show(str(exc))
     return RedirectResponse("/shopping", status_code=303)
 
 

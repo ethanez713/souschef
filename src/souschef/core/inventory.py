@@ -24,13 +24,17 @@ from souschef.config import Settings, get_settings
 from souschef.core.belief import OBSERVATIONS, Belief, BeliefEvent, aware, drift, step
 from souschef.core.units import (
     IngredientPhysical,
+    InputUnitError,
     UnitConversionError,
+    base_unit_for,
+    canonical_unit,
     count_factors_for,
     to_base,
 )
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
+    IngredientCategory,
     InventoryEvent,
     PantryItem,
     StorageLocation,
@@ -50,6 +54,39 @@ def physical_of(ingredient: CanonicalIngredient) -> IngredientPhysical:
         base_unit=ingredient.base_unit,
         count_factors=count_factors_for(ingredient.name) or None,
     )
+
+
+def save_package_size(
+    session: Session,
+    ingredient: CanonicalIngredient | None,
+    name: str,
+    package_qty: float,
+    package_unit: str,
+) -> CanonicalIngredient:
+    """Store a package size on the shared catalog.
+
+    A new ingredient takes its base unit from the size's dimension. An existing
+    one keeps its base unit, and the size has to convert into that unit.
+    """
+    if package_qty <= 0:
+        raise InputUnitError("Amount has to be more than zero.")
+    stored = canonical_unit(package_unit)
+    if ingredient is None:
+        created = CanonicalIngredient(
+            name=name.strip(),
+            category=IngredientCategory.OTHER,
+            base_unit=base_unit_for(stored),
+            package_qty=float(package_qty),
+            package_unit=stored,
+        )
+        session.add(created)
+        session.flush()
+        return created
+    to_base(float(package_qty), stored, physical_of(ingredient))
+    ingredient.package_qty = float(package_qty)
+    ingredient.package_unit = stored
+    session.flush()
+    return ingredient
 
 
 def live_events(user_id: int) -> Select[tuple[InventoryEvent]]:

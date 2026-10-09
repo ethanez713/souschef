@@ -29,10 +29,20 @@ from souschef.core.inventory import (
     live_events,
     physical_of,
     record_event,
+    save_package_size,
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements
-from souschef.core.units import UnitConversionError, dimension_of, to_base
+from souschef.core.units import (
+    InputUnitError,
+    NeedsPackage,
+    UnitConversionError,
+    dimension_of,
+    parse_input_unit,
+    parse_package_answer,
+    resolve_entry,
+    to_base,
+)
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
@@ -568,14 +578,92 @@ def stock_ticked_items(session: Session, user_id: int, shopping_list: ShoppingLi
     return added
 
 
+def _amount_only(
+    ingredient: CanonicalIngredient | None, amount: float | None
+) -> tuple[
+    CanonicalIngredient | None, float | None, str | None, str | None, float, str | None
+]:
+    if ingredient is not None and amount is None:
+        purchase_qty, purchase_unit, purchase_note = _one_package(ingredient)
+        return ingredient, purchase_qty, purchase_unit, purchase_note, 0.0, ingredient.base_unit
+    if amount is not None:
+        purchase_unit = ingredient.base_unit if ingredient is not None else "count"
+        return ingredient, amount, purchase_unit, None, amount, purchase_unit
+    return ingredient, None, None, None, 0.0, None
+
+
+def _manual_purchase(
+    session: Session,
+    ingredient: CanonicalIngredient | None,
+    name: str,
+    amount: float | None,
+    unit: str | None,
+    package_qty: str | None,
+    package_unit: str | None,
+) -> tuple[
+    CanonicalIngredient | None, float | None, str | None, str | None, float, str | None
+]:
+    typed = (unit or "").strip()
+    if not typed:
+        return _amount_only(ingredient, amount)
+
+    _measure, pack = parse_input_unit(typed)
+    # A blank amount beside a real measure still means one of the usual package.
+    # The unit box is not how that line is counted. An unknown word still errors,
+    # because parse_input_unit already ran.
+    if pack is None and amount is None:
+        return _amount_only(ingredient, None)
+
+    count = amount if amount is not None else 1.0
+    package_known = ingredient.package_qty if ingredient is not None else None
+    package_known_unit = ingredient.package_unit if ingredient is not None else None
+    try:
+        resolved = resolve_entry(
+            count,
+            typed,
+            package_qty=package_known,
+            package_unit=package_known_unit,
+        )
+    except NeedsPackage as exc:
+        try:
+            answer = parse_package_answer(package_qty or "", package_unit or "")
+        except InputUnitError as err:
+            raise NeedsPackage(exc.word, str(err)) from err
+        if answer is None:
+            raise
+        try:
+            ingredient = save_package_size(session, ingredient, name, answer[0], answer[1])
+        except (UnitConversionError, InputUnitError) as err:
+            raise NeedsPackage(exc.word, str(err)) from err
+        resolved = resolve_entry(
+            count,
+            typed,
+            package_qty=ingredient.package_qty,
+            package_unit=ingredient.package_unit,
+        )
+
+    if resolved.packages is not None:
+        base = ingredient.base_unit if ingredient is not None else None
+        return ingredient, resolved.packages, PACKAGE_COUNT_UNIT, None, 0.0, base
+    purchase_unit = resolved.unit or "count"
+    return ingredient, resolved.quantity, purchase_unit, None, resolved.quantity, purchase_unit
+
+
 def add_manual_item(
     session: Session,
     shopping_list: ShoppingList,
     name: str,
     amount: float | None = None,
     unit: str | None = None,
+    package_qty: str | None = None,
+    package_unit: str | None = None,
 ) -> ShoppingListItem:
-    """Add a free-text line. A catalog hit takes that ingredient's aisle."""
+    """Add a free-text line. A catalog hit takes that ingredient's aisle.
+
+    A package word with a known package is stored as a package count. Without
+    one, ``NeedsPackage`` is raised and nothing is written unless ``package_qty``
+    and ``package_unit`` answer it.
+    """
     clean = name.strip()
     if not clean:
         raise ShoppingError("Enter a name.")
@@ -596,24 +684,23 @@ def add_manual_item(
         if not item.is_skipped and item.label.casefold() == label.casefold():
             raise ShoppingError(f"{label} is already on the list.")
 
-    if ingredient is not None and amount is None:
-        purchase_qty, purchase_unit, purchase_note = _one_package(ingredient)
-        needed_qty = 0.0
-        needed_unit = ingredient.base_unit
-    elif amount is not None:
-        purchase_qty = amount
-        purchase_unit = (unit or "").strip() or (
-            ingredient.base_unit if ingredient is not None else "count"
+    try:
+        (
+            ingredient,
+            purchase_qty,
+            purchase_unit,
+            purchase_note,
+            needed_qty,
+            needed_unit,
+        ) = _manual_purchase(
+            session, ingredient, clean, amount, unit, package_qty, package_unit
         )
-        purchase_note = None
-        needed_qty = amount
-        needed_unit = purchase_unit
-    else:
-        purchase_qty = None
-        purchase_unit = None
-        purchase_note = None
-        needed_qty = 0.0
-        needed_unit = None
+    except InputUnitError as exc:
+        raise ShoppingError(str(exc)) from exc
+
+    if ingredient is not None:
+        label = ingredient.name
+        aisle = ingredient.aisle or DEFAULT_AISLE
 
     revived = None
     for item in shopping_list.items:

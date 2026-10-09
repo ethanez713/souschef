@@ -767,16 +767,17 @@ def _pantry_row(session: Session, user: User, name: str) -> PantryItem | None:
     )
 
 
-def test_a_bunch_of_cilantro_stays_on_the_form_instead_of_crashing(
+def test_a_bunch_of_cilantro_uses_the_catalog_package(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     response = signed_in.post(
         "/pantry/add", data={"name": "cilantro", "quantity": "1", "unit": "bunch"}
     )
-    assert response.status_code == 400
-    assert "one bunch weighs" in response.text
-    assert "<details" in response.text and "open" in response.text
-    assert _pantry_row(seeded_session, web_user, "fresh cilantro") is None
+    assert response.status_code == 303
+    row = _pantry_row(seeded_session, web_user, "fresh cilantro")
+    assert row is not None
+    assert row.quantity == pytest.approx(30)
+    assert "1 oz" in signed_in.get("/pantry").text
 
 
 def test_a_bag_of_spinach_is_not_stored_as_a_sack_of_cement(
@@ -785,9 +786,173 @@ def test_a_bag_of_spinach_is_not_stored_as_a_sack_of_cement(
     response = signed_in.post(
         "/pantry/add", data={"name": "spinach", "quantity": "1", "unit": "bag"}
     )
+    assert response.status_code == 303
+    row = _pantry_row(seeded_session, web_user, "spinach")
+    assert row is not None
+    assert row.quantity == pytest.approx(142)
+    assert row.quantity < 1000
+
+
+def test_pantry_add_parses_packages_and_kitchen_units(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    for name, quantity, unit in (
+        ("spinach", "1", "bag"),
+        ("chicken thighs", "2", "lb"),
+        ("milk", "1", "gal"),
+    ):
+        response = signed_in.post(
+            "/pantry/add", data={"name": name, "quantity": quantity, "unit": unit}
+        )
+        assert response.status_code == 303, name
+
+    page = signed_in.get("/pantry").text
+    assert "spinach" in page
+    assert "5 oz" in page
+    assert "1 bag" not in page
+    assert "chicken thigh" in page
+    assert "2 lb" in page
+    assert "whole milk" in page
+    assert "1 gal" in page
+    assert _pantry_row(seeded_session, web_user, "spinach").quantity == pytest.approx(142)
+    assert _pantry_row(seeded_session, web_user, "chicken thigh").quantity == pytest.approx(
+        907.185, rel=0.01
+    )
+    assert _pantry_row(seeded_session, web_user, "whole milk").quantity == pytest.approx(
+        3785.41, rel=0.01
+    )
+
+
+def test_an_unknown_package_asks_then_stores_the_size(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    asked = signed_in.post(
+        "/pantry/add", data={"name": "gochujang", "quantity": "1", "unit": "jar"}
+    )
+    assert asked.status_code == 400
+    assert "How much is one jar?" in asked.text
+    assert 'value="gochujang"' in asked.text
+    assert 'value="1"' in asked.text
+    assert 'value="jar"' in asked.text
+    seeded_session.expire_all()
+    assert (
+        seeded_session.scalar(
+            select(CanonicalIngredient).where(CanonicalIngredient.name == "gochujang")
+        )
+        is None
+    )
+
+    saved = signed_in.post(
+        "/pantry/add",
+        data={
+            "name": "gochujang",
+            "quantity": "1",
+            "unit": "jar",
+            "package_qty": "454",
+            "package_unit": "g",
+        },
+    )
+    assert saved.status_code == 303
+    page = signed_in.get("/pantry").text
+    assert "gochujang" in page
+    assert "1 lb" in page
+    assert "1 jar" not in page
+
+    seeded_session.expire_all()
+    created = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "gochujang")
+    )
+    assert created is not None
+    assert created.package_qty == pytest.approx(454)
+    assert created.package_unit == "g"
+    assert created.base_unit == "g"
+    assert _pantry_row(seeded_session, web_user, "gochujang").quantity == pytest.approx(454)
+
+
+def test_a_catalog_row_without_a_package_asks_before_storing(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    spinach = ing(seeded_session, "spinach")
+    spinach.package_qty = None
+    spinach.package_unit = None
+    seeded_session.commit()
+
+    response = signed_in.post(
+        "/pantry/add", data={"name": "spinach", "quantity": "2", "unit": "bag"}
+    )
     assert response.status_code == 400
-    assert "one bag weighs" in response.text
+    assert "How much is one bag?" in response.text
+    assert 'value="spinach"' in response.text
+    assert 'value="2"' in response.text
     assert _pantry_row(seeded_session, web_user, "spinach") is None
+
+
+def test_an_unknown_pantry_unit_names_the_accepted_ones(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    response = signed_in.post(
+        "/pantry/add", data={"name": "spinach", "quantity": "1", "unit": "furlong"}
+    )
+    assert response.status_code == 400
+    assert "furlong" in response.text
+    assert "fl oz" in response.text
+    assert "carton" in response.text
+    assert _pantry_row(seeded_session, web_user, "spinach") is None
+
+
+def test_shopping_add_keeps_a_known_package_and_asks_for_an_unknown_one(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    added = signed_in.post(
+        "/shopping/add", data={"name": "spinach", "amount": "1", "unit": "bag"}
+    )
+    assert added.status_code == 303
+    page = signed_in.get("/shopping").text
+    assert "1 × 5 oz" in page
+    assert "spinach" in page
+
+    asked = signed_in.post(
+        "/shopping/add", data={"name": "gochujang", "amount": "1", "unit": "jar"}
+    )
+    assert asked.status_code == 400
+    assert "How much is one jar?" in asked.text
+    assert 'value="gochujang"' in asked.text
+    seeded_session.expire_all()
+    assert (
+        seeded_session.scalar(
+            select(ShoppingListItem).where(ShoppingListItem.label == "gochujang")
+        )
+        is None
+    )
+    assert (
+        seeded_session.scalar(
+            select(CanonicalIngredient).where(CanonicalIngredient.name == "gochujang")
+        )
+        is None
+    )
+
+    saved = signed_in.post(
+        "/shopping/add",
+        data={
+            "name": "gochujang",
+            "amount": "1",
+            "unit": "jar",
+            "package_qty": "454",
+            "package_unit": "g",
+        },
+    )
+    assert saved.status_code == 303
+    again = signed_in.get("/shopping").text
+    assert "gochujang" in again
+    assert "1 × 1 lb" in again
+    seeded_session.expire_all()
+    created = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "gochujang")
+    )
+    assert created is not None
+    assert created.package_qty == pytest.approx(454)
+    assert created.package_unit == "g"
+    assert created.base_unit == "g"
 
 
 def test_a_negative_pantry_amount_is_refused(

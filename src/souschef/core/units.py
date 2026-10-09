@@ -50,6 +50,19 @@ BASE_MASS = "g"
 BASE_VOLUME = "ml"
 BASE_COUNT = "count"
 
+# What the pantry and shopping add forms accept. A package word is not a count:
+# recipes still treat "can" and "bunch" as one item through ``dimension_of``, but
+# "1 jar" on the form is one retail package, and a count of jars cannot be
+# reconciled with "2 tbsp" in a recipe.
+INPUT_UNITS = (
+    "g", "kg", "oz", "lb", "ml", "l", "tsp", "tbsp",
+    "cup", "pt", "qt", "gal", "fl oz", "count",
+)
+PACK_WORDS = (
+    "bag", "jar", "bottle", "can", "box", "pack",
+    "bunch", "head", "dozen", "loaf", "carton",
+)
+
 # Free-text unit spellings seen in recipes and on receipts, mapped to pint names.
 _UNIT_ALIASES = {
     "": BASE_COUNT,
@@ -198,6 +211,145 @@ def dimension_of(unit: str) -> str:
     if q.check("[item]"):
         return Dimension.COUNT
     raise UnitConversionError(f"Unit {unit!r} is neither mass, volume, nor count")
+
+
+_CANONICAL_UNIT = {normalize_unit(name): name for name in INPUT_UNITS}
+_ACCEPTED_MEASURES = frozenset(_CANONICAL_UNIT)
+_PACK_LOOKUP = {word: word for word in PACK_WORDS}
+_PACK_LOOKUP.update({
+    "bags": "bag",
+    "jars": "jar",
+    "bottles": "bottle",
+    "cans": "can",
+    "boxes": "box",
+    "packs": "pack",
+    "bunches": "bunch",
+    "heads": "head",
+    "dozens": "dozen",
+    "loaves": "loaf",
+    "cartons": "carton",
+})
+
+
+class InputUnitError(ValueError):
+    """An add-form unit the page can show as-is."""
+
+
+class NeedsPackage(Exception):
+    """A package word whose ingredient has no package size yet.
+
+    ``detail`` is a validation message for an answer that was offered and
+    refused. Empty means the form should ask for the first time.
+    """
+
+    def __init__(self, word: str, detail: str = ""):
+        self.word = word
+        self.detail = detail
+        super().__init__(detail or f"How much is one {word}?")
+
+
+def unknown_unit_message(word: str) -> str:
+    shown = word.strip() or "that"
+    return (
+        f"Don't know the unit {shown!r}. "
+        f"Use {', '.join(INPUT_UNITS)}, or a package: {', '.join(PACK_WORDS)}."
+    )
+
+
+def parse_input_unit(unit: str | None) -> tuple[str | None, str | None]:
+    """Return ``(measure, pack_word)`` for an add-form unit.
+
+    An empty field is ``(None, None)``: the amount is a count, or the
+    ingredient's own base unit when it already has one. ``measure`` is a pint
+    name. ``pack_word`` is the singular package word. An unknown word raises
+    ``InputUnitError``.
+    """
+    if unit is None:
+        return None, None
+    cleaned = str(unit).strip().lower().rstrip(".")
+    if not cleaned:
+        return None, None
+    pack = _PACK_LOOKUP.get(cleaned)
+    if pack:
+        return None, pack
+    normalized = normalize_unit(cleaned)
+    if normalized in _ACCEPTED_MEASURES:
+        return normalized, None
+    raise InputUnitError(unknown_unit_message(cleaned))
+
+
+def canonical_unit(unit: str) -> str:
+    """The stored spelling of a measure, such as ``g`` or ``fl oz``."""
+    measure, pack = parse_input_unit(unit)
+    if pack or measure is None:
+        raise InputUnitError(f"Give the size in {', '.join(INPUT_UNITS)}.")
+    return _CANONICAL_UNIT[measure]
+
+
+def base_unit_for(unit: str) -> str:
+    """``g``, ``ml`` or ``count`` for a measure's dimension."""
+    dim = dimension_of(unit)
+    if dim == Dimension.MASS:
+        return BASE_MASS
+    if dim == Dimension.VOLUME:
+        return BASE_VOLUME
+    return BASE_COUNT
+
+
+def parse_package_answer(quantity: str, unit: str) -> tuple[float, str] | None:
+    """A package size from the follow-up fields, or None when both are blank."""
+    qty_text = (quantity or "").strip()
+    unit_text = (unit or "").strip()
+    if not qty_text and not unit_text:
+        return None
+    if not qty_text or not unit_text:
+        raise InputUnitError("Enter an amount and a unit.")
+    try:
+        qty = float(qty_text)
+    except ValueError as exc:
+        raise InputUnitError("Amount isn't a number.") from exc
+    if qty <= 0:
+        raise InputUnitError("Amount has to be more than zero.")
+    return qty, canonical_unit(unit_text)
+
+
+@dataclass(frozen=True)
+class ResolvedEntry:
+    """An add-form amount in a real measure.
+
+    ``packages`` is set when the amount was a package word with a known size.
+    Shopping keeps that count; the pantry stores ``quantity`` of ``unit``.
+    """
+
+    quantity: float
+    unit: str | None
+    packages: float | None = None
+
+
+def resolve_entry(
+    quantity: float,
+    unit: str | None,
+    *,
+    package_qty: float | None,
+    package_unit: str | None,
+) -> ResolvedEntry:
+    """Turn an add-form amount into a measure, or ask for a package size.
+
+    A package word is never a count. ``dozen`` is twelve counts, not one package.
+    """
+    measure, pack = parse_input_unit(unit)
+    if pack is None:
+        typed = None if measure is None else str(unit).strip()
+        return ResolvedEntry(quantity, typed)
+    if pack == "dozen":
+        return ResolvedEntry(quantity * 12, "count")
+    if package_qty and package_unit:
+        return ResolvedEntry(
+            float(quantity) * float(package_qty),
+            str(package_unit),
+            packages=float(quantity),
+        )
+    raise NeedsPackage(pack)
 
 
 def to_grams(quantity: float, unit: str, physical: IngredientPhysical) -> float:

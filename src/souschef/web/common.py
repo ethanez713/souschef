@@ -13,12 +13,15 @@ from sqlalchemy.orm import Session
 
 from souschef import logconfig
 from souschef.core.units import (
+    NeedsPackage,
     UnitConversionError,
+    base_unit_for,
     dimension_of,
     entry_label,
     format_entry_amount,
     format_quantity,
     normalize_unit,
+    parse_input_unit,
 )
 from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, Recipe, User
 from souschef.models.base import Base
@@ -362,24 +365,18 @@ def _discard_notice(db: Session, user: User, event_id: int) -> dict | None:
 
 
 def _adhoc_units(unit: str) -> tuple[str, str | None]:
-    """Base unit and the (validated) input unit for a user-typed pantry item.
+    """Base unit and the input unit for a typed pantry item that is not a package.
 
-    An unrecognised unit is dropped rather than stored, so a typo cannot make the
-    level unconvertible; the amount is then counted as-is.
+    An empty field is a count. A package word is not a base unit — the caller
+    records it through the ingredient's package. An unknown word raises
+    ``InputUnitError``, whose message names the units the form accepts.
     """
-    cleaned = unit.strip()
-    if not cleaned:
+    measure, pack = parse_input_unit(unit)
+    if pack:
+        raise NeedsPackage(pack)
+    if measure is None:
         return "count", None
-    try:
-        dim = dimension_of(cleaned)
-    except UnitConversionError as exc:
-        # "bag" is a real pint unit (a sack of cement). Swallowing that error
-        # would store the number and hide the mistake; an unknown word can
-        # still be counted as-is.
-        if "Don't know how much" in str(exc):
-            raise
-        return "count", None
-    return {"mass": "g", "volume": "ml"}.get(dim, "count"), cleaned
+    return base_unit_for(measure), unit.strip() or None
 
 
 MAX_SERVINGS = 50

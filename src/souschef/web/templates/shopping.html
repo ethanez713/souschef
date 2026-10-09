@@ -100,12 +100,12 @@
     {% endfor %}
   {% endif %}
 
-  <details class="card no-print" {{ 'open' if add_error }}>
+  <details class="card no-print" {{ 'open' if add_error or package_word }}>
     <summary>Add an item</summary>
     <form method="post" action="/shopping/add" style="margin-top:var(--sp-4)">
       <div class="field">
         <label for="shop-name">Name</label>
-        <input id="shop-name" name="name" value="{{ add_name or '' }}" required {% if add_error %}autofocus{% endif %}>
+        <input id="shop-name" name="name" value="{{ add_name or '' }}" required {% if add_error and not package_word %}autofocus{% endif %}>
       </div>
       <div class="controls">
         <div class="field">
@@ -118,6 +118,18 @@
         </div>
         <button class="primary" type="submit">Add to list</button>
       </div>
+      {% if package_word %}
+      <div class="controls">
+        <div class="field">
+          <label for="shop-pkg-qty">How much is one {{ package_word }}?</label>
+          <input id="shop-pkg-qty" name="package_qty" type="number" step="any" inputmode="decimal" required value="{{ package_qty or '' }}" autofocus>
+        </div>
+        <div class="field">
+          <label for="shop-pkg-unit">Unit</label>
+          <input id="shop-pkg-unit" name="package_unit" placeholder="g / ml / count" value="{{ package_unit or '' }}" required>
+        </div>
+      </div>
+      {% endif %}
     </form>
   </details>
   </div>

@@ -23,7 +23,7 @@
       {% if add_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>{% endif %}
       <div class="field">
         <label for="n">Ingredient</label>
-        <input id="n" name="name" placeholder="spinach" value="{{ add_name or '' }}" required {% if add_open %}autofocus{% endif %}>
+        <input id="n" name="name" placeholder="spinach" value="{{ add_name or '' }}" required {% if add_open and not package_word %}autofocus{% endif %}>
       </div>
       <div class="controls">
         <div class="field">
@@ -36,6 +36,18 @@
         </div>
         <button class="primary" type="submit">Add</button>
       </div>
+      {% if package_word %}
+      <div class="controls">
+        <div class="field">
+          <label for="pkg-qty">How much is one {{ package_word }}?</label>
+          <input id="pkg-qty" name="package_qty" type="number" step="any" inputmode="decimal" required value="{{ package_qty or '' }}" autofocus>
+        </div>
+        <div class="field">
+          <label for="pkg-unit">Unit</label>
+          <input id="pkg-unit" name="package_unit" placeholder="g / ml / count" value="{{ package_unit or '' }}" required>
+        </div>
+      </div>
+      {% endif %}
     </form>
   </details>
 

@@ -15,12 +15,21 @@ from souschef.core.inventory import (
     discard_item,
     pantry_view,
     record_event,
+    save_package_size,
     set_level,
     undo_discard,
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.spoilage import freshness_by_ingredient
-from souschef.core.units import UnitConversionError, entry_unit
+from souschef.core.units import (
+    InputUnitError,
+    NeedsPackage,
+    UnitConversionError,
+    entry_unit,
+    parse_input_unit,
+    parse_package_answer,
+    resolve_entry,
+)
 from souschef.db import get_db
 from souschef.models import CanonicalIngredient, EventReason, User
 from souschef.models.ingredient import IngredientCategory
@@ -96,6 +105,9 @@ def _pantry_page(
     add_name: str = "",
     add_quantity: str = "",
     add_unit: str = "",
+    package_word: str = "",
+    package_qty: str = "",
+    package_unit: str = "",
     level_error: str = "",
     wasted: int = 0,
     status_code: int = 200,
@@ -133,6 +145,9 @@ def _pantry_page(
         add_name=add_name,
         add_quantity=add_quantity,
         add_unit=add_unit,
+        package_word=package_word,
+        package_qty=package_qty,
+        package_unit=package_unit,
         level_error=level_error,
         discarded=_discard_notice(db, user, wasted),
     )
@@ -220,6 +235,16 @@ def undo_pantry_discard(
     return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
 
+def _typed_amount(quantity: float) -> str:
+    if quantity.is_integer():
+        return str(int(quantity))
+    return str(quantity)
+
+
+def _has_package(ingredient: CanonicalIngredient | None) -> bool:
+    return bool(ingredient and ingredient.package_qty and ingredient.package_unit)
+
+
 @router.post("/pantry/add")
 def add_to_pantry(
     request: Request,
@@ -227,6 +252,8 @@ def add_to_pantry(
     quantity: float = Form(...),
     unit: str = Form(""),
     q: str = Form(""),
+    package_qty: str = Form(""),
+    package_unit: str = Form(""),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -236,8 +263,13 @@ def add_to_pantry(
     # Anything else is taken literally and added as a new ingredient -- the user
     # is stating what they have, not asking the catalog for permission.
     clean_name = name.strip()
+    shown_amount = _typed_amount(quantity)
 
-    def reject(message: str) -> HTMLResponse:
+    def show(
+        message: str = "",
+        *,
+        word: str = "",
+    ) -> HTMLResponse:
         return _pantry_page(
             request,
             db,
@@ -246,39 +278,74 @@ def add_to_pantry(
             add_open=True,
             add_error=message,
             add_name=name,
-            add_quantity=str(quantity),
+            add_quantity=shown_amount,
             add_unit=unit,
+            package_word=word,
+            package_qty=package_qty,
+            package_unit=package_unit,
             status_code=400,
         )
 
     if not clean_name:
-        return reject("Ingredient name is empty.")
+        return show("Ingredient name is empty.")
     if quantity <= 0:
-        return reject("Amount has to be more than zero.")
+        return show("Amount has to be more than zero.")
+
+    try:
+        _measure, pack = parse_input_unit(unit)
+    except InputUnitError as exc:
+        return show(str(exc))
 
     match = IngredientMatcher(db).match(clean_name)
+    ingredient: CanonicalIngredient | None = None
+    if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
+        ingredient = db.get(CanonicalIngredient, match.ingredient_id)
+
+    # A package word with no size is a question, not a row. Nothing is written
+    # until the follow-up says how big one of them is.
+    if pack and pack != "dozen" and not _has_package(ingredient):
+        try:
+            answer = parse_package_answer(package_qty, package_unit)
+        except InputUnitError as exc:
+            return show(str(exc), word=pack)
+        if answer is None:
+            return show(word=pack)
+        try:
+            ingredient = save_package_size(db, ingredient, clean_name, answer[0], answer[1])
+        except (UnitConversionError, InputUnitError) as exc:
+            db.rollback()
+            return show(str(exc), word=pack)
+
     try:
-        if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
-            ingredient = db.get(CanonicalIngredient, match.ingredient_id)
-            store_unit = unit.strip() or None
-        else:
-            base_unit, store_unit = _adhoc_units(unit)
+        resolved = resolve_entry(
+            quantity,
+            unit,
+            package_qty=ingredient.package_qty if ingredient is not None else None,
+            package_unit=ingredient.package_unit if ingredient is not None else None,
+        )
+        if ingredient is None:
+            base_unit, _store_unit = _adhoc_units(resolved.unit or "")
             ingredient = CanonicalIngredient(
                 name=clean_name, category=IngredientCategory.OTHER, base_unit=base_unit
             )
             db.add(ingredient)
             db.flush()
-
         record_event(
             db,
             user.id,
             ingredient,
             reason=EventReason.PURCHASE,
-            delta=quantity,
-            unit=store_unit,
+            delta=resolved.quantity,
+            unit=resolved.unit,
         )
+    except NeedsPackage as exc:
+        db.rollback()
+        return show(exc.detail, word=exc.word)
     except UnitConversionError as exc:
-        return reject(_kitchen_unit_message(exc, unit))
+        db.rollback()
+        if pack:
+            return show(str(exc), word=pack)
+        return show(_kitchen_unit_message(exc, unit))
     return RedirectResponse(_pantry_url(q), status_code=303)
 
 

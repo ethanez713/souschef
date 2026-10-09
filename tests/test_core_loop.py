@@ -523,8 +523,14 @@ def test_a_bad_unit_on_a_ticked_line_adds_nothing(
     )
     _plan(seeded_session, web_user.id, recipe, date.today())
     seeded_session.commit()
-    signed_in.post("/shopping/add", data={"name": "paper towels", "amount": "2", "unit": "bogus"})
+    signed_in.post("/shopping/add", data={"name": "paper towels", "amount": "2", "unit": "count"})
     page = signed_in.get("/shopping")
+    towels = seeded_session.scalar(
+        select(ShoppingListItem).where(ShoppingListItem.label == "paper towels")
+    )
+    assert towels is not None
+    towels.purchase_unit = "bogus"
+    seeded_session.commit()
     signed_in.post(f"/shopping/item/{_item_id(page.text, 'spaghetti')}/toggle")
     signed_in.post(f"/shopping/item/{_item_id(page.text, 'paper towels')}/toggle")
 

@@ -10,8 +10,12 @@ from __future__ import annotations
 import pytest
 
 from souschef.core.units import (
+    INPUT_UNITS,
+    PACK_WORDS,
     Dimension,
     IngredientPhysical,
+    InputUnitError,
+    NeedsPackage,
     UnitConversionError,
     convert,
     count_factors_for,
@@ -21,6 +25,8 @@ from souschef.core.units import (
     format_quantity,
     humanize,
     normalize_unit,
+    parse_input_unit,
+    resolve_entry,
     to_base,
     to_grams,
     us_equivalent,
@@ -107,6 +113,63 @@ def test_dimension_classification(unit: str, expected: str) -> None:
 def test_unknown_unit_raises() -> None:
     with pytest.raises(UnitConversionError):
         dimension_of("furlong-per-fortnight")
+
+
+def test_the_add_form_accepts_the_settled_unit_list() -> None:
+    assert INPUT_UNITS == (
+        "g", "kg", "oz", "lb", "ml", "l", "tsp", "tbsp",
+        "cup", "pt", "qt", "gal", "fl oz", "count",
+    )
+    assert PACK_WORDS == (
+        "bag", "jar", "bottle", "can", "box", "pack",
+        "bunch", "head", "dozen", "loaf", "carton",
+    )
+
+
+@pytest.mark.parametrize("word", INPUT_UNITS)
+def test_parse_input_accepts_measures(word: str) -> None:
+    measure, pack = parse_input_unit(word)
+    assert pack is None
+    assert measure == normalize_unit(word)
+
+
+@pytest.mark.parametrize("word", PACK_WORDS)
+def test_parse_input_accepts_pack_words(word: str) -> None:
+    assert parse_input_unit(word) == (None, word)
+
+
+def test_parse_input_accepts_plurals_and_measure_aliases() -> None:
+    assert parse_input_unit("bags") == (None, "bag")
+    assert parse_input_unit("loaves") == (None, "loaf")
+    assert parse_input_unit("lbs") == ("pound", None)
+    assert parse_input_unit("fl oz")[0] == "fluid_ounce"
+
+
+def test_an_empty_add_form_unit_is_not_a_package() -> None:
+    assert parse_input_unit("") == (None, None)
+    assert parse_input_unit(None) == (None, None)
+    assert parse_input_unit("  ") == (None, None)
+
+
+def test_unknown_unit_names_the_accepted_units() -> None:
+    with pytest.raises(InputUnitError, match="furlong") as caught:
+        parse_input_unit("furlong")
+    text = str(caught.value)
+    assert ", ".join(INPUT_UNITS) in text
+    assert ", ".join(PACK_WORDS) in text
+
+
+def test_a_pack_word_uses_the_package_and_dozen_is_twelve_count() -> None:
+    bag = resolve_entry(1, "bag", package_qty=142, package_unit="g")
+    assert (bag.quantity, bag.unit, bag.packages) == (142, "g", 1)
+    dozen = resolve_entry(2, "dozen", package_qty=142, package_unit="g")
+    assert (dozen.quantity, dozen.unit, dozen.packages) == (24, "count", None)
+    plain = resolve_entry(2, "lb", package_qty=142, package_unit="g")
+    assert (plain.quantity, plain.unit, plain.packages) == (2, "lb", None)
+    bare = resolve_entry(3, "", package_qty=142, package_unit="g")
+    assert (bare.quantity, bare.unit, bare.packages) == (3, None, None)
+    with pytest.raises(NeedsPackage, match="jar"):
+        resolve_entry(1, "jar", package_qty=None, package_unit=None)
 
 
 def test_bag_is_not_converted_as_a_sack_of_cement() -> None:

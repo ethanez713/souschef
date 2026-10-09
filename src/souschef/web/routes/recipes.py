@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from souschef.core.inventory import pantry_view
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
-from souschef.core.units import UnitConversionError
+from souschef.core.units import UnitConversionError, dimension_of
 from souschef.db import get_db
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
 from souschef.models import CanonicalIngredient, Recipe, User
@@ -22,7 +22,6 @@ from souschef.planning.suggest import by_surface, suggest
 from souschef.web import auth
 from souschef.web.common import (
     PLAN_DAYS,
-    _adhoc_units,
     _horizon,
     _is_htmx,
     _kitchen_unit_message,
@@ -31,6 +30,25 @@ from souschef.web.common import (
 )
 
 router = APIRouter()
+
+
+def _base_unit_for_named_line(unit: str) -> str:
+    """Base unit for an ingredient named from a recipe line.
+
+    Recipe lines use count words ("clove", "bunch") that the add form treats as
+    packages. A recognised dimension wins here, and an unknown word stays a count
+    so naming the line still saves.
+    """
+    cleaned = unit.strip()
+    if not cleaned:
+        return "count"
+    try:
+        dim = dimension_of(cleaned)
+    except UnitConversionError as exc:
+        if "Don't know how much" in str(exc):
+            raise
+        return "count"
+    return {"mass": "g", "volume": "ml"}.get(dim, "count")
 
 
 @router.get("/recipes", response_class=HTMLResponse)
@@ -206,9 +224,10 @@ def correct_recipe_match(
         if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
             ingredient = db.get(CanonicalIngredient, match.ingredient_id)
         else:
-            base_unit, _store_unit = _adhoc_units(lines[0].unit or "")
             ingredient = CanonicalIngredient(
-                name=clean, category=IngredientCategory.OTHER, base_unit=base_unit
+                name=clean,
+                category=IngredientCategory.OTHER,
+                base_unit=_base_unit_for_named_line(lines[0].unit or ""),
             )
             db.add(ingredient)
             db.flush()

@@ -69,6 +69,7 @@ def _settings_page(
         invites=invites,
         staples=staples,
         new_invite=new_invite,
+        invite_base=_public_base_url(request),
         error=error,
         saved=saved,
         now=datetime.now(UTC),
@@ -81,6 +82,11 @@ def _settings_page(
             secure=_is_secure_request(request),
         )
     return response
+
+
+def _public_base_url(request: Request) -> str:
+    scheme = "https" if _is_secure_request(request) else request.url.scheme
+    return f"{scheme}://{request.url.netloc}"
 
 
 @router.get("/settings", response_class=HTMLResponse)

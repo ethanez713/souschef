@@ -96,7 +96,7 @@
   <h2>Invites</h2>
   <div class="card">
     {% if new_invite %}
-      {% set invite_url = request.url.scheme ~ '://' ~ request.url.netloc ~ '/join?code=' ~ new_invite %}
+      {% set invite_url = invite_base ~ '/join?code=' ~ new_invite %}
       <div class="notice">
         {{ icon('triangle-alert', 16) }}
         <div>

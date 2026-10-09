@@ -327,6 +327,22 @@ def _invite_code(client: TestClient) -> str:
     return found.group(1)
 
 
+@pytest.mark.parametrize(
+    ("host", "expected_base", "warns"),
+    [
+        ("box.tailnet.ts.net", "https://box.tailnet.ts.net", False),
+        ("127.0.0.1:8000", "http://127.0.0.1:8000", True),
+    ],
+)
+def test_invite_notice_names_the_address_it_was_made_on(
+    signed_in: TestClient, host: str, expected_base: str, warns: bool
+) -> None:
+    signed_in.post("/settings/invites", data={"note": "for a friend"})
+    page = signed_in.get("/settings", headers={"Host": host})
+    assert f"{expected_base}/join?code=" in page.text
+    assert ("replace that" in page.text) is warns
+
+
 def test_invite_lets_exactly_one_person_join(
     signed_in: TestClient, seeded_session: Session
 ) -> None:

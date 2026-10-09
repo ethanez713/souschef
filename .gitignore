@@ -15,6 +15,7 @@ token.json
 # variants (souschef.db.bak, a dated copy) that show up whenever someone is
 # about to do something risky and takes a backup first.
 *.db
+*.db.*
 *.db-wal
 *.db-shm
 *.replaced

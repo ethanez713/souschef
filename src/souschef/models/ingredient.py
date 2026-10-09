@@ -87,6 +87,8 @@ class CanonicalIngredient(Base, TimestampMixin):
     # from both "missing ingredients" and the shopping list unless explicitly
     # marked out. Treating them like tracked items makes every recipe look
     # unmakeable and every list ten items too long.
+    # Per kitchen in meaning but global in storage: with several accounts, one
+    # user's Always have list is everyone's (README → Accounts).
     is_staple: Mapped[bool] = mapped_column(default=False)
 
     notes: Mapped[str | None] = mapped_column(String(500))

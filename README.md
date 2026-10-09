@@ -74,6 +74,13 @@ pantry, recipes, plan, shopping list, receipts and NYT cookie. The only thing
 shared is the ingredient catalog, which is reference data about food rather than
 anything personal.
 
+The app is built and tested for one kitchen. Two pieces of per-kitchen state
+still live on that shared catalog, so with several accounts they leak between
+kitchens: the **Always have** list (`CanonicalIngredient.is_staple`) and
+**ingredients typed in by hand**, which are added to the catalog with no owner
+along with any package size learned for them. Real multi-user use needs a
+per-user staples table and an owner on typed-in catalog rows.
+
 Registration is closed: after the first account, joining needs a single-use
 invite generated from Settings. That leaves exactly one anonymous form on the
 whole site, whatever network you end up serving it on.

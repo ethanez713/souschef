@@ -7,6 +7,8 @@ cook would recognise as wrong.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from souschef.core.units import (
@@ -21,6 +23,7 @@ from souschef.core.units import (
     count_factors_for,
     dimension_of,
     entry_amount,
+    entry_label,
     entry_unit,
     format_quantity,
     humanize,
@@ -282,3 +285,8 @@ def test_entry_amount_rounds_to_a_kitchen_step() -> None:
     assert entry_amount(14.8, volume, "us") == pytest.approx(1 / 16, rel=0.01)
     assert entry_amount(10, volume, "metric") == pytest.approx(10)
     assert entry_amount(12, _Ingredient("count"), "us") == pytest.approx(12)
+
+
+def test_entry_label_names_a_counted_ingredient_by_its_noun() -> None:
+    can = SimpleNamespace(name="canned crushed tomatoes", base_unit="count", count_noun="can")
+    assert entry_label(can, "us") == "cans"

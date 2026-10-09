@@ -620,8 +620,12 @@ _ENTRY_LABELS = {
 
 
 def entry_label(ingredient: object, system: str) -> str:
-    """Short label for an entry box, such as ``lb`` or ``g``."""
-    return _ENTRY_LABELS[entry_unit(ingredient, system)]
+    """Short label for an entry box, such as ``lb``, ``g`` or ``cans``."""
+    unit = entry_unit(ingredient, system)
+    noun = getattr(ingredient, "count_noun", None)
+    if unit == "count" and noun:
+        return _plural_noun(noun, 2)
+    return _ENTRY_LABELS[unit]
 
 
 def _nearest(value: float) -> int:

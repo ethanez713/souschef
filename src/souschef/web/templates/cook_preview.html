@@ -39,7 +39,7 @@
       <div class="card tight">
         <div class="stack">
           <strong>{{ d.ingredient.name }}</strong>
-          <span class="meta">have <span class="num">{{ d.have|stock(d.ingredient) }}</span></span>
+          <span class="meta">{% if d.have > 0 %}have <span class="num">{{ d.have|stock(d.ingredient) }}</span>{% else %}have none{% endif %}</span>
           {% if d.over %}<span class="badge warn">Using more than you have</span>{% endif %}
         </div>
         <input type="hidden" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">

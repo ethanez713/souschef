@@ -32,7 +32,7 @@
         </div>
         <div class="field">
           <label for="u">Unit</label>
-          <input id="u" name="unit" placeholder="g / ml / count" value="{{ add_unit or '' }}">
+          <input id="u" name="unit" placeholder="{{ 'lb / cups / jar' if user.unit_system == 'us' else 'g / ml / jar' }}" value="{{ add_unit or '' }}">
         </div>
         <button class="primary" type="submit">Add</button>
       </div>
@@ -44,7 +44,7 @@
         </div>
         <div class="field">
           <label for="pkg-unit">Unit</label>
-          <input id="pkg-unit" name="package_unit" placeholder="g / ml / count" value="{{ package_unit or '' }}" required>
+          <input id="pkg-unit" name="package_unit" placeholder="{{ 'oz / lb / cups' if user.unit_system == 'us' else 'g / ml' }}" value="{{ package_unit or '' }}" required>
         </div>
       </div>
       {% endif %}

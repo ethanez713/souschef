@@ -114,7 +114,7 @@
         </div>
         <div class="field">
           <label for="shop-unit">Unit</label>
-          <input id="shop-unit" name="unit" placeholder="g / count" value="{{ add_unit or '' }}">
+          <input id="shop-unit" name="unit" placeholder="{{ 'lb / cups / jar' if user.unit_system == 'us' else 'g / ml / jar' }}" value="{{ add_unit or '' }}">
         </div>
         <button class="primary" type="submit">Add to list</button>
       </div>
@@ -126,7 +126,7 @@
         </div>
         <div class="field">
           <label for="shop-pkg-unit">Unit</label>
-          <input id="shop-pkg-unit" name="package_unit" placeholder="g / ml / count" value="{{ package_unit or '' }}" required>
+          <input id="shop-pkg-unit" name="package_unit" placeholder="{{ 'oz / lb / cups' if user.unit_system == 'us' else 'g / ml' }}" value="{{ package_unit or '' }}" required>
         </div>
       </div>
       {% endif %}

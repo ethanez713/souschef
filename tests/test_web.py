@@ -1889,7 +1889,7 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v4" in worker
+    assert "souschef-shell-v5" in worker
 
 
 def test_pages_follow_the_signed_in_unit_system(

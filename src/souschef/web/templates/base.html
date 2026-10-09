@@ -12,9 +12,9 @@
 <meta name="theme-color" content="#15130E" media="(prefers-color-scheme: dark)">
 {% else %}<meta name="theme-color" content="#F8F6F1">{% endif %}
 <link rel="stylesheet" href="/static/fonts/fonts.css">
-<link rel="stylesheet" href="/static/ds.css">
-<link rel="stylesheet" href="/static/app.css">
-<script src="/static/htmx.min.js" defer></script>
+<link rel="stylesheet" href="{{ static_url('ds.css') }}">
+<link rel="stylesheet" href="{{ static_url('app.css') }}">
+<script src="{{ static_url('htmx.min.js') }}" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>

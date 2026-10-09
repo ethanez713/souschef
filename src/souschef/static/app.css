@@ -184,13 +184,14 @@ form.inline { display: inline; }
 .field { margin-bottom: var(--sp-4); }
 .controls { display: flex; gap: var(--sp-2); align-items: flex-end; }
 .controls .field { flex: 1; margin-bottom: 0; min-width: 0; }
-.check-line { display: flex; align-items: center; gap: var(--sp-3); margin: var(--sp-3) 0; font-size: var(--fs-body); color: var(--text-body); }
+.check-line { display: flex; align-items: center; gap: var(--sp-1); margin: var(--sp-3) 0 var(--sp-3) -10px; font-size: var(--fs-body); color: var(--text-body); }
 
 /* Expanders (`details`) grow downward from a fixed summary. */
 details.card > summary, details.plan > summary {
   display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
   min-height: 44px; cursor: pointer; list-style: none; font-weight: var(--fw-medium); color: var(--text-heading);
 }
+details > summary { display: flex; align-items: center; gap: var(--sp-2); min-height: 44px; cursor: pointer; list-style: none; }
 details > summary::-webkit-details-marker { display: none; }
 details > summary::after { content: "▼"; font-size: 9px; color: var(--text-link); }
 details[open] > summary::after { content: "▲"; }

@@ -15,7 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from souschef import logconfig
 from souschef.config import LOOPBACK_HOSTS, ensure_local_secrets, get_settings
 from souschef.web.common import (
-    WEB_DIR,
+    STATIC_DIR,
     _render,
     log,
     request_hostname,
@@ -46,7 +46,7 @@ async def lifespan(_app: FastAPI):  # noqa: ANN201
 # openapi_url is disabled alongside the docs UIs: with only those two off,
 # /openapi.json still served the full route schema to anonymous callers.
 app = FastAPI(title="SousChef", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=str(WEB_DIR.parent / "static")), name="static")
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # Requests slower than this are logged as a warning. Everything here is a

@@ -210,6 +210,16 @@ def _receipt_label(status: object) -> str:
     }.get(str(key), str(key).replace("_", " "))
 
 
+STATIC_DIR = WEB_DIR.parent / "static"
+
+
+def _static_url(name: str) -> str:
+    # Static files carry no Cache-Control, so browsers keep a stylesheet for a
+    # heuristic share of its age. The mtime in the URL makes an edit a new URL.
+    return f"/static/{name}?v={int((STATIC_DIR / name).stat().st_mtime)}"
+
+
+templates.env.globals["static_url"] = _static_url
 templates.env.filters["quantity"] = _quantity
 templates.env.filters["stock"] = _stock
 templates.env.filters["unit_label"] = _unit_label

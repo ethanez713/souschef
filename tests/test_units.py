@@ -16,6 +16,7 @@ from souschef.core.units import (
     convert,
     count_factors_for,
     dimension_of,
+    format_quantity,
     humanize,
     normalize_unit,
     to_base,
@@ -151,3 +152,35 @@ def test_humanize_adds_the_ounce_form_only_on_request() -> None:
     assert humanize(500, "g") == "500 g"
     assert humanize(500, "g", us=True) == "500 g (17.6 oz)"
     assert humanize(3, "count", us=True) == "3"
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "kwargs", "expected"),
+    [
+        (907, "g", {}, "2 lb"),
+        (453.6, "g", {}, "1 lb"),
+        (170, "g", {}, "6 oz"),
+        (14.8, "ml", {}, "1 tbsp"),
+        (5678, "ml", {}, "1.5 gal"),
+        (240, "ml", {}, "1 cup"),
+        (12, "count", {"noun": "egg", "name": "eggs"}, "1 dozen"),
+        (4.5, "g", {}, "¼ oz"),
+        (946, "ml", {}, "1 qt"),
+        (14.7, "ml", {}, "1 tbsp"),
+        (10, "ml", {}, "2 tsp"),
+        (907, "g", {"system": "metric"}, "907 g"),
+        (907, "g", {"show_alt": True}, "2 lb (907 g)"),
+        (907, "g", {"system": "metric", "show_alt": True}, "907 g (2 lb)"),
+        (680, "g", {}, "1 lb 8 oz"),
+        (1500, "g", {"system": "metric"}, "1.5 kg"),
+        (6, "count", {"noun": "clove", "name": "garlic"}, "6 cloves"),
+        (1, "count", {"noun": "clove", "name": "garlic"}, "1 clove"),
+        (3, "count", {"noun": None, "name": "yellow onion"}, "3 yellow onions"),
+        (10, "count", {"noun": "egg", "name": "eggs"}, "10 eggs"),
+        (2, "count", {"noun": "tomato", "name": "tomato"}, "2 tomatoes"),
+        (30, "ml", {}, "2 tbsp"),
+        (100, "ml", {}, "⅜ cup"),
+    ],
+)
+def test_format_quantity(value: float, unit: str, kwargs: dict, expected: str) -> None:
+    assert format_quantity(value, unit, **kwargs) == expected

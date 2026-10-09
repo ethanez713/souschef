@@ -328,3 +328,116 @@ def _humanize(quantity: float, unit: str) -> str:
     if abs(quantity - round(quantity)) < 0.05:
         return f"{int(round(quantity))} {display}"
     return f"{quantity:.1f} {display}"
+
+
+_US_TSP_ML = 4.92892
+_US_TBSP_ML = 14.7868
+_US_CUP_ML = 236.588
+_US_QT_ML = 946.353
+_US_GAL_ML = 3785.41
+# A threshold sits 2% under the measure it switches to, so a stored 946 ml carton
+# (a quart, slightly rounded) reads "1 qt" rather than "4 cups".
+_SWITCH = 0.98
+
+_EIGHTHS = {0: "", 1: "⅛", 2: "¼", 3: "⅜", 4: "½", 5: "⅝", 6: "¾", 7: "⅞"}
+_IRREGULAR_PLURALS = {
+    "leaf": "leaves",
+    "loaf": "loaves",
+    "tomato": "tomatoes",
+    "potato": "potatoes",
+}
+
+
+def _trim(value: float, places: int = 1) -> str:
+    return f"{value:.{places}f}".rstrip("0").rstrip(".")
+
+
+def _fraction(value: float, step_eighths: int, floor: bool = True) -> str:
+    """Mixed number in steps of ``step_eighths`` eighths; a positive amount is never 0."""
+    eighths = round(value * 8 / step_eighths) * step_eighths
+    if floor and value > 0:
+        eighths = max(eighths, step_eighths)
+    whole, part = divmod(eighths, 8)
+    return f"{whole or ''}{_EIGHTHS[part]}" or "0"
+
+
+def _plural_noun(noun: str, amount: float) -> str:
+    if abs(amount - 1) < 0.05:
+        return noun
+    word, _, last = noun.rpartition(" ")
+    prefix = f"{word} " if word else ""
+    if last in _IRREGULAR_PLURALS:
+        return prefix + _IRREGULAR_PLURALS[last]
+    if last.endswith("y") and last[-2:-1] not in "aeiou":
+        return prefix + last[:-1] + "ies"
+    if last.endswith(("s", "x", "ch", "sh")):
+        return prefix + last + "es"
+    return prefix + last + "s"
+
+
+def _us_weight(grams: float) -> str:
+    ounces = grams / _GRAMS_PER_OUNCE
+    if ounces >= _OUNCES_PER_POUND * _SWITCH:
+        pounds, remainder = divmod(round(ounces), _OUNCES_PER_POUND)
+        return f"{pounds} lb {remainder} oz" if remainder >= 4 else f"{pounds} lb"
+    if ounces < 4:
+        return f"{_fraction(ounces, 2)} oz"
+    return f"{round(ounces)} oz"
+
+
+def _us_volume(ml: float) -> str:
+    if ml < _US_TBSP_ML * _SWITCH:
+        return f"{_fraction(ml / _US_TSP_ML, 2)} tsp"
+    if ml < _US_CUP_ML / 4 * _SWITCH:
+        return f"{_fraction(ml / _US_TBSP_ML, 2)} tbsp"
+    if ml < _US_QT_ML * _SWITCH:
+        cups = ml / _US_CUP_ML
+        return f"{_fraction(cups, 1)} {'cup' if cups <= 1.06 else 'cups'}"
+    if ml < _US_GAL_ML * _SWITCH:
+        return f"{_trim(ml / _US_QT_ML)} qt"
+    return f"{_trim(ml / _US_GAL_ML)} gal"
+
+
+def _metric(value: float, small: str, large: str) -> str:
+    if value >= 1000:
+        return f"{_trim(value / 1000, 2)} {large}"
+    return f"{value:.0f} {small}" if value >= 100 else f"{_trim(value)} {small}"
+
+
+def _format_count(amount: float, noun: str | None, name: str) -> str:
+    shown = round(amount) if abs(amount - round(amount)) < 0.05 else None
+    label = noun or (name[:-1] if name.endswith("s") and not name.endswith("ss") else name)
+    if shown is not None and shown >= 12 and shown % 12 == 0 and noun and noun in name:
+        return f"{shown // 12} dozen"
+    text = str(shown) if shown is not None else _trim(amount)
+    return f"{text} {_plural_noun(label, amount)}"
+
+
+def format_quantity(
+    value: float,
+    unit: str,
+    *,
+    system: str = "us",
+    show_alt: bool = False,
+    noun: str | None = None,
+    name: str = "",
+) -> str:
+    """A stock-level quantity in the user's unit system; storage stays in base units.
+
+    ``noun`` is the singular word a counted ingredient is counted in; without one the
+    ingredient's own name is pluralised.
+    """
+    normalized = normalize_unit(unit)
+    dimension = dimension_of(normalized)
+    if dimension == Dimension.COUNT:
+        return _format_count(value, noun, name)
+
+    if dimension == Dimension.MASS:
+        grams = float(_ureg.Quantity(value, normalized).to("gram").magnitude)
+        primary = _us_weight(grams) if system == "us" else _metric(grams, "g", "kg")
+        alternate = _metric(grams, "g", "kg") if system == "us" else _us_weight(grams)
+    else:
+        ml = float(_ureg.Quantity(value, normalized).to("milliliter").magnitude)
+        primary = _us_volume(ml) if system == "us" else _metric(ml, "ml", "L")
+        alternate = _metric(ml, "ml", "L") if system == "us" else _us_volume(ml)
+    return f"{primary} ({alternate})" if show_alt else primary

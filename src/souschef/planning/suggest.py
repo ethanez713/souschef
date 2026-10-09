@@ -22,6 +22,7 @@ list-maker.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from enum import StrEnum
@@ -95,6 +96,8 @@ class Suggestion:
             base = f"Uses {names} before it goes off"
         elif self.surface == Surface.COOK_NOW:
             base = "You have everything"
+        elif not self.missing:
+            base = "You have everything named"
         elif self.missing_count == 1:
             base = f"Just needs {self.missing[0].ingredient.name}"
         else:
@@ -122,6 +125,23 @@ def nonoptional_unmatched(recipe: Recipe, requirements: RequirementSet) -> list[
         kept.append(line.raw_text)
     kept.extend(pool)
     return kept
+
+
+_PLAIN_WATER = re.compile(
+    r"^(?:[\d\s/.\u00bc\u00bd\u00be\u2150-\u215e-]*"
+    r"(?:cups?|c|tbsps?|tsps?|tablespoons?|teaspoons?|ml|l|liters?|oz|ounces?|quarts?|pints?)?\.?\s*)"
+    r"(?:(?:cold|warm|hot|boiling|ice|ice-cold|lukewarm|tap|filtered|more|extra)\s+)*water$"
+)
+_SERVING_SUFFIX = re.compile(r"\b(?:to serve|for serving)\W*$")
+
+
+def is_ignorable(raw_text: str) -> bool:
+    """Lines that never gate a recipe: plain water, and anything "to serve" / "for serving"."""
+    text = re.sub(r"\([^)]*\)", " ", raw_text.lower())
+    if _SERVING_SUFFIX.search(text.strip()):
+        return True
+    head = text.split(",", 1)[0].strip()
+    return bool(_PLAIN_WATER.match(re.sub(r"\s+", " ", head)))
 
 
 def _expiring_soon(view: PantryView, today: date) -> bool:
@@ -179,6 +199,9 @@ def score_recipe(
         else:
             missing.append(MissingIngredient(req.ingredient, req.quantity, 0.0, confidence))
 
+    unmatched = [
+        text for text in nonoptional_unmatched(recipe, requirements) if not is_ignorable(text)
+    ]
     # A recipe with nothing to check is not a recipe you can definitely cook --
     # it is a recipe we failed to understand (import broke, every line was
     # unmatched, or the ingredient list is empty). Scoring that as fully
@@ -206,9 +229,9 @@ def score_recipe(
 
     if not considered:
         surface = Surface.REACH
-    elif not missing:
+    elif not missing and not unmatched:
         surface = Surface.COOK_NOW
-    elif len(missing) <= 3:
+    elif len(missing) + len(unmatched) <= 3:
         surface = Surface.NEARLY_THERE
     else:
         surface = Surface.REACH
@@ -220,7 +243,7 @@ def score_recipe(
         missing=missing,
         uses_expiring=uses_expiring,
         availability=round(availability, 4),
-        unidentified=len(nonoptional_unmatched(recipe, requirements)),
+        unidentified=len(unmatched),
     )
 
 

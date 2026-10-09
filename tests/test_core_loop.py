@@ -49,7 +49,7 @@ from souschef.planning.shopping import (
     to_purchase_quantity,
     unnamed_recipe_lines,
 )
-from souschef.planning.suggest import score_recipe
+from souschef.planning.suggest import Surface, is_ignorable, score_recipe
 
 
 def ing(session: Session, name: str) -> CanonicalIngredient:
@@ -366,7 +366,7 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
         [("200 g spaghetti", pasta, False), ("1 cup xyzzybroth", None, False)],
     )
     suggestion = score_recipe(seeded_session, stocked, pantry)
-    assert suggestion.reason == "You have everything · 1 line not identified"
+    assert suggestion.reason == "You have everything named · 1 line not identified"
 
     two = _recipe(
         seeded_session,
@@ -379,7 +379,7 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
         ],
     )
     assert score_recipe(seeded_session, two, pantry).reason == (
-        "You have everything · 2 lines not identified"
+        "You have everything named · 2 lines not identified"
     )
 
     short = _recipe(
@@ -924,3 +924,30 @@ def test_a_shortfall_within_one_percent_of_a_package_buys_that_package(
     assert to_purchase_quantity(milk, 946.35)[0] == 1
     assert to_purchase_quantity(milk, 1000)[0] == 2
     assert to_purchase_quantity(milk, 5)[0] == 1
+
+
+def test_unnamed_required_lines_count_toward_readiness(
+    seeded_session: Session, owner: int
+) -> None:
+    pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, owner, pasta, reason=EventReason.PURCHASE, delta=500)
+    pantry = _pantry(seeded_session, owner)
+    stocked = ("200 g spaghetti", pasta, False)
+
+    def surface(title: str, *unmatched: str):  # noqa: ANN202
+        lines = [stocked, *((text, None, False) for text in unmatched)]
+        recipe = _recipe(seeded_session, owner, title, lines)
+        return score_recipe(seeded_session, recipe, pantry).surface
+
+    assert surface("Clean") == Surface.COOK_NOW
+    assert surface("One gap", "1 cup xyzzybroth") == Surface.NEARLY_THERE
+    assert surface("Five gaps", *(f"{n} cup xyzzy{n}" for n in range(5))) == Surface.REACH
+    assert surface("Water only", "2 tbsp water") == Surface.COOK_NOW
+    assert surface("Serve only", "xyzzy wedges, to serve") == Surface.COOK_NOW
+
+
+def test_is_ignorable_matches_plain_water_and_serving_lines_only() -> None:
+    assert is_ignorable("1 cup warm water")
+    assert is_ignorable("Rice, for serving")
+    assert not is_ignorable("2 cups watercress")
+    assert not is_ignorable("1 cup chicken stock")

@@ -1666,3 +1666,56 @@ def test_confidence_pips_follow_certainty_thresholds() -> None:
         return str(macros.confidence_pips(certainty)).count('class="on"')
 
     assert (lit(1.0), lit(0.6), lit(0.59), lit(0.01), lit(0.0)) == (3, 3, 2, 2, 1)
+
+
+def _macros():  # noqa: ANN202
+    from souschef.web.common import templates
+
+    return templates.env.get_template("macros.html").module
+
+
+def test_macros_row_renders_link_sheet_and_plain_variants() -> None:
+    macros = _macros()
+    link = str(macros.row("Pasta", sub="You have everything", value="20 min", href="/recipes/1"))
+    assert link.startswith('<a class="list-row" href="/recipes/1"')
+    assert 'class="list-row-title">Pasta<' in link
+    assert 'class="list-row-sub">You have everything<' in link
+    assert 'class="list-row-value">20 min<' in link
+
+    button = str(macros.row("Rice", sheet="rice-sheet"))
+    assert button.startswith('<button class="list-row" type="button" data-sheet="rice-sheet"')
+    assert "list-row-sub" not in button
+
+    assert str(macros.row("Plain")).startswith('<div class="list-row"')
+
+
+def test_macros_group_header_shows_the_count_only_when_given() -> None:
+    macros = _macros()
+    assert 'class="count">3<' in str(macros.group_header("Ready", 3))
+    assert 'class="count"' not in str(macros.group_header("Ready"))
+
+
+def test_macros_sheet_toast_and_sticky_bar() -> None:
+    from souschef.web.common import templates
+
+    env = templates.env
+    page = env.from_string(
+        '{% from "macros.html" import sheet, toast, sticky_bar %}'
+        '{% call sheet("pick", "Pick one") %}<p>body</p>{% endcall %}'
+        '{{ toast("Removed", "/undo/1") }}{{ toast("Saved") }}'
+        '{% call sticky_bar() %}<button>Go</button>{% endcall %}'
+    ).render()
+    assert '<dialog class="sheet" id="pick"' in page
+    assert 'id="pick-body"><p>body</p>' in page
+    assert "data-sheet-close" in page
+    assert page.count('class="toast"') == 2
+    assert 'action="/undo/1"' in page
+    assert page.count(">Undo<") == 1
+    assert '<div class="sticky-bar"><button>Go</button></div>' in page
+
+
+def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
+    from pathlib import Path
+
+    worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
+    assert "souschef-shell-v4" in worker

@@ -47,6 +47,18 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/static/sw.js').catch(() => {});
 }
 document.addEventListener("click", function (event) {
+  var opener = event.target.closest("[data-sheet]");
+  if (opener) {
+    var dialog = document.getElementById(opener.getAttribute("data-sheet"));
+    if (dialog && dialog.showModal) dialog.showModal();
+    return;
+  }
+  var closer = event.target.closest("[data-sheet-close]");
+  if (closer) { closer.closest("dialog").close(); return; }
+  if (event.target.tagName === "DIALOG" && event.target.classList.contains("sheet")) {
+    event.target.close();
+    return;
+  }
   var button = event.target.closest("[data-copy], [data-copy-target]");
   if (!button) return;
   var text = button.getAttribute("data-copy");
@@ -82,6 +94,14 @@ document.addEventListener("click", function (event) {
     finish(fallback());
   }
 });
+function armToasts() {
+  document.querySelectorAll("[data-toast]:not([data-armed])").forEach(function (toast) {
+    toast.setAttribute("data-armed", "1");
+    setTimeout(function () { toast.remove(); }, 6000);
+  });
+}
+armToasts();
+document.addEventListener("htmx:afterSwap", armToasts);
 </script>
 </body>
 </html>

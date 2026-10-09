@@ -108,3 +108,48 @@
 </div>
 {% endif %}
 {% endmacro %}
+
+
+{# One list row: min 48 px, hairline divider. `href` makes it a link, `sheet` a button that opens
+   the <dialog> with that id; `lead` and `trail` take markup, `value` is right-aligned. #}
+{% macro row(title, sub='', lead='', value='', trail='', href='', sheet='') -%}
+{%- set tag = 'a' if href else ('button' if sheet else 'div') -%}
+<{{ tag }} class="list-row"{% if href %} href="{{ href }}"{% elif sheet %} type="button" data-sheet="{{ sheet }}"{% endif %}>
+  {%- if lead %}<span class="list-row-lead">{{ lead }}</span>{% endif -%}
+  <span class="list-row-main">
+    <span class="list-row-title">{{ title }}</span>
+    {%- if sub %}<span class="list-row-sub">{{ sub }}</span>{% endif -%}
+  </span>
+  {%- if value %}<span class="list-row-value">{{ value }}</span>{% endif -%}
+  {%- if trail %}<span class="list-row-trail">{{ trail }}</span>{% endif -%}
+</{{ tag }}>
+{%- endmacro %}
+
+{% macro group_header(label, count=none) -%}
+<h2 class="group-head"><span>{{ label }}</span>{% if count is not none %}<span class="count">{{ count }}</span>{% endif %}</h2>
+{%- endmacro %}
+
+{# A bottom sheet. Open it with any element carrying data-sheet="<id>"; the body is the
+   htmx content slot (#<id>-body) as well as the call block. #}
+{% macro sheet(id, title) -%}
+<dialog class="sheet" id="{{ id }}" aria-labelledby="{{ id }}-title">
+  <div class="sheet-head">
+    <h2 id="{{ id }}-title">{{ title }}</h2>
+    <button type="button" class="iconbtn bare" data-sheet-close aria-label="Close">{{ icon('x', 18) }}</button>
+  </div>
+  <div class="sheet-body" id="{{ id }}-body">{{ caller() if caller else '' }}</div>
+</dialog>
+{%- endmacro %}
+
+{% macro toast(message, undo_action='') -%}
+<div class="toast" role="status" data-toast>
+  <span>{{ message }}</span>
+  {%- if undo_action %}
+  <form method="post" action="{{ undo_action }}"><button type="submit">Undo</button></form>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{% macro sticky_bar() -%}
+<div class="sticky-bar">{{ caller() }}</div>
+{%- endmacro %}

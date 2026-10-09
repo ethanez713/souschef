@@ -1,17 +1,12 @@
-{% set labels = {'cook_now': 'Cook now', 'nearly_there': 'Nearly there', 'reach': 'Bigger shop'} %}
+{% from "macros.html" import row, group_header %}
+{% set labels = {'cook_now': 'Ready', 'nearly_there': 'Missing 1–3', 'reach': 'Missing 4+'} %}
 {% for surface, items in grouped.items() %}
   {% if items %}
-    <h2>{{ labels.get(surface|string, surface) }}</h2>
+    {{ group_header(labels.get(surface|string, surface), items|length) }}
     {% for s in items %}
-      <a class="card tight row {{ 'tint-jade' if surface|string == 'cook_now' else ('tint-orange' if surface|string == 'nearly_there' else 'tint-grey') }}" href="/recipes/{{ s.recipe.id }}">
-        <div class="stack">
-          <h3>{{ s.recipe.title }}</h3>
-          <span class="meta">{{ s.reason }}</span>
-        </div>
-        <span class="badge {{ 'good' if surface|string == 'cook_now' else 'warn' }}">
-          {{ (s.availability * 100)|round|int }}% on hand
-        </span>
-      </a>
+      {% set gaps = s.missing_count + s.unidentified %}
+      {% set chip %}<span class="badge {{ 'good' if gaps == 0 else 'warn' }}">{{ 'Ready' if gaps == 0 else 'Missing ' ~ gaps }}</span>{% endset %}
+      {{ row(s.recipe.title, sub=s.reason, value=(s.recipe.total_minutes ~ ' min') if s.recipe.total_minutes else '', trail=chip, href='/recipes/' ~ s.recipe.id) }}
     {% endfor %}
   {% endif %}
 {% endfor %}

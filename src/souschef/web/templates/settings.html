@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Settings · SousChef{% endblock %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import group_header %}
 {% block content %}
 <main id="main">
   <h1>Settings</h1>
@@ -20,31 +21,68 @@
     </form>
   </div>
 
-  <h2>Assumed on hand</h2>
-  <div class="card">
-    <p class="muted">
-      Staples are never tracked, listed for shopping or checked before a shop. Salt, oil and
-      basic spices belong here; pasta does not. Remove one to track it like any other item.
-    </p>
-    <div style="margin-top:var(--sp-3)">
-    {% for s in staples %}
-      <div class="row" style="border-top:1px solid var(--border-subtle);padding:var(--sp-1) 0">
-        <span>{{ s.name }}</span>
-        <form method="post" action="/settings/staples/{{ s.id }}/clear" class="inline">
-          <button class="small ghost" type="submit" aria-label="Stop assuming {{ s.name }}">Stop assuming</button>
-        </form>
+  <details class="group" {{ 'open' if error }}>
+    <summary>{{ group_header('Always have', staples|length) }}</summary>
+    <div class="card">
+      <p class="muted">
+        These are never tracked, listed for shopping or checked before a shop. Salt, oil and
+        basic spices belong here; pasta does not. Track one to count it like any other item.
+      </p>
+      <div style="margin-top:var(--sp-3)">
+      {% for s in staples %}
+        <div class="row" style="border-top:1px solid var(--border-subtle)">
+          <span>{{ s.name }}</span>
+          <form method="post" action="/settings/staples/{{ s.id }}/clear" class="inline">
+            <button class="small ghost" type="submit" aria-label="Track {{ s.name }}">Track this</button>
+          </form>
+        </div>
+      {% endfor %}
       </div>
-    {% endfor %}
+      <form method="post" action="/settings/staples" class="controls" style="margin-top:var(--sp-4)">
+        <div class="field">
+          <label for="staple">Add one</label>
+          <input id="staple" name="name" placeholder="kosher salt" required>
+        </div>
+        <button type="submit">Add</button>
+      </form>
     </div>
-    <form method="post" action="/settings/staples" class="controls" style="margin-top:var(--sp-4)">
-      <div class="field">
-        <label for="staple">Add one</label>
-        <input id="staple" name="name" placeholder="kosher salt" required>
+  </details>
+
+  {{ group_header('Account') }}
+  <div class="card">
+    <div class="row">
+      <div class="stack">
+        <strong>{{ user.username }}</strong>
+        <span class="meta">{{ 'Admin — can invite people' if user.is_admin else 'Standard account' }}</span>
       </div>
-      <button type="submit">Assume</button>
-    </form>
+      <form method="post" action="/logout" class="inline">
+        <button type="submit">{{ icon('log-out', 16) }}Sign out</button>
+      </form>
+    </div>
+
+    <details style="margin-top:var(--sp-4)">
+      <summary class="small" style="cursor:pointer;color:var(--text-link)">Change password</summary>
+      <form method="post" action="/settings/password" style="margin-top:var(--sp-3)">
+        <div class="field">
+          <label for="cur">Current password</label>
+          <input id="cur" name="current" type="password" autocomplete="current-password" required>
+        </div>
+        <div class="field">
+          <label for="np">New password</label>
+          <input id="np" name="password" type="password" autocomplete="new-password" required minlength="12">
+        </div>
+        <div class="field">
+          <label for="np2">Confirm</label>
+          <input id="np2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
+        </div>
+        <button type="submit">Change password</button>
+        <p class="note">Changing your password signs out every other device you are signed in on.</p>
+      </form>
+    </details>
   </div>
 
+  <details class="group" {{ 'open' if new_invite or error }}>
+    <summary>{{ group_header('Advanced') }}</summary>
   <h2>NYT Cooking</h2>
   <div class="card">
     {% if nyt_credential %}
@@ -164,40 +202,7 @@
   </div>
   {% endif %}
 
-  <h2>Your account</h2>
-  <div class="card">
-    <div class="row">
-      <div class="stack">
-        <strong>{{ user.username }}</strong>
-        <span class="meta">{{ 'Admin — can invite people' if user.is_admin else 'Standard account' }}</span>
-      </div>
-      <form method="post" action="/logout" class="inline">
-        <button type="submit">{{ icon('log-out', 16) }}Sign out</button>
-      </form>
-    </div>
-
-    <details style="margin-top:var(--sp-4)">
-      <summary class="small" style="cursor:pointer;color:var(--text-link)">Change password</summary>
-      <form method="post" action="/settings/password" style="margin-top:var(--sp-3)">
-        <div class="field">
-          <label for="cur">Current password</label>
-          <input id="cur" name="current" type="password" autocomplete="current-password" required>
-        </div>
-        <div class="field">
-          <label for="np">New password</label>
-          <input id="np" name="password" type="password" autocomplete="new-password" required minlength="12">
-        </div>
-        <div class="field">
-          <label for="np2">Confirm</label>
-          <input id="np2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
-        </div>
-        <button type="submit">Change password</button>
-        <p class="note">Changing your password signs out every other device you are signed in on.</p>
-      </form>
-    </details>
-  </div>
-
-  <h2>External access</h2>
+  <h2>Outbound calls</h2>
   <div class="card">
     <div class="row">
       <span>Outbound calls</span>
@@ -210,5 +215,6 @@
       to allow them.
     </p>
   </div>
+  </details>
 </main>
 {% endblock %}

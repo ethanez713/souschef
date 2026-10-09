@@ -58,6 +58,10 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
     return found
 
 
+def _later() -> datetime:
+    return datetime.now(UTC) + timedelta(minutes=1)
+
+
 def _day(value: datetime) -> date:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)
@@ -207,7 +211,9 @@ def test_rebuild_keeps_when_the_list_was_built_and_drops_a_covered_item(
     assert _day(second.created_at) == _day(built_at)
     assert second.created_at == built_at
     assert chicken.id not in {item.ingredient_id for item in second.items if not item.is_skipped}
-    assert ingredients_stocked_since(seeded_session, owner, second.created_at) == {chicken.id}
+    assert ingredients_stocked_since(seeded_session, owner, second.created_at, _later()) == {
+        chicken.id
+    }
 
 
 def test_a_purchase_from_before_the_list_was_built_is_not_treated_as_this_shop(
@@ -227,7 +233,7 @@ def test_a_purchase_from_before_the_list_was_built_is_not_treated_as_this_shop(
     today, end = _week()
     listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
 
-    assert ingredients_stocked_since(seeded_session, owner, listing.created_at) == set()
+    assert ingredients_stocked_since(seeded_session, owner, listing.created_at, _later()) == set()
 
 
 def test_manual_item_with_no_catalog_match_lands_in_other_and_survives_rebuild(
@@ -654,6 +660,8 @@ def test_receipt_review_unticks_what_the_list_already_added(
     signed_in.post(f"/shopping/item/{_item_id(shop.text, 'spaghetti')}/toggle")
     assert signed_in.post("/shopping/stock").status_code == 303
     signed_in.get("/shopping")
+    receipt.created_at = datetime.now(UTC)
+    seeded_session.commit()
 
     review = signed_in.get(f"/receipts/{receipt.id}")
 
@@ -682,7 +690,7 @@ def test_receipt_review_unticks_what_the_list_already_added(
     assert get_or_create_item(seeded_session, web_user.id, garlic).quantity == pytest.approx(1)
 
 
-def test_a_line_bought_before_this_list_stays_ticked(
+def test_a_line_bought_long_before_this_receipt_stays_ticked(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
@@ -694,7 +702,7 @@ def test_a_line_bought_before_this_list_stays_ticked(
         delta=454,
         unit="g",
         source_ref="shopping:1",
-        occurred_at=datetime.now(UTC) - timedelta(days=1),
+        occurred_at=datetime.now(UTC) - timedelta(days=30),
     )
     receipt = Receipt(
         user_id=web_user.id,

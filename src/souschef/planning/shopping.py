@@ -683,13 +683,15 @@ def unnamed_recipe_lines(
     return lines
 
 
-def ingredients_stocked_since(session: Session, user_id: int, since: datetime) -> set[int]:
-    """Ingredients bought from a shopping list at or after ``since``.
+def ingredients_stocked_since(
+    session: Session, user_id: int, start: datetime, end: datetime
+) -> set[int]:
+    """Ingredients bought from a shopping list between ``start`` and ``end`` inclusive.
 
-    ``since`` is when the live list was first built. A receipt reviewed later
-    unticks those lines so the same shop is not counted twice.
+    A receipt reviewed in that window unticks those lines so the same shop is
+    not counted twice.
     """
-    bound = _aware(since)
+    lower, upper = _aware(start), _aware(end)
     rows = session.scalars(
         select(InventoryEvent).where(
             InventoryEvent.user_id == user_id,
@@ -697,13 +699,11 @@ def ingredients_stocked_since(session: Session, user_id: int, since: datetime) -
             InventoryEvent.source_ref.like("shopping:%"),
         )
     ).all()
-    found: set[int] = set()
-    for event in rows:
-        if event.occurred_at is None:
-            continue
-        if _aware(event.occurred_at) >= bound:
-            found.add(event.ingredient_id)
-    return found
+    return {
+        event.ingredient_id
+        for event in rows
+        if event.occurred_at is not None and lower <= _aware(event.occurred_at) <= upper
+    }
 
 
 def requirements_for_audit(

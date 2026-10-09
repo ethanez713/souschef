@@ -1770,18 +1770,25 @@ def receipts_page(
     return _render(request, "receipts.html", receipts=receipts)
 
 
-def _untick_stocked_lines(db: Session, user: User, receipt: Receipt) -> dict[int, str]:
-    """Drop ticks on lines whose ingredient was bought from the list since it was built.
+STOCK_WINDOW_DAYS = 3
 
-    The list's created_at is preserved across rebuilds, so a shop added on
-    Monday still unticks Tuesday's receipt for those ingredients.
+
+def _untick_stocked_lines(db: Session, user: User, receipt: Receipt) -> dict[int, str]:
+    """Drop ticks on lines whose ingredient was bought from the list for this shop.
+
+    The window runs from a few days before the receipt's purchase date through
+    the day it was uploaded, so an older shop never unticks a newer receipt.
     """
     if receipt.status == ReceiptStatus.APPLIED:
         return {}
-    listing = live_list(db, user.id)
-    if listing is None or listing.created_at is None:
-        return {}
-    stocked = ingredients_stocked_since(db, user.id, listing.created_at)
+    uploaded = receipt.created_at
+    if uploaded.tzinfo is None:
+        uploaded = uploaded.replace(tzinfo=UTC)
+    shopped_on = receipt.purchased_on or uploaded.date()
+    window_start = datetime.combine(
+        shopped_on - timedelta(days=STOCK_WINDOW_DAYS), datetime.min.time(), tzinfo=UTC
+    )
+    stocked = ingredients_stocked_since(db, user.id, window_start, uploaded)
     notes: dict[int, str] = {}
     for line in receipt.lines:
         if line.is_ignored or line.ingredient_id is None:

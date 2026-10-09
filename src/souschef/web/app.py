@@ -1253,9 +1253,12 @@ async def mark_cooked(
     if previous is None or previous < when:
         recipe.last_cooked_at = when
 
-    # The day on the form decides which plan entry closes, so logging Thursday
-    # from the recipe page still attaches to Thursday.
-    attached = _open_plan_entry(db, user.id, recipe.id, cooked_on)
+    # Without an entry_id the day on the form decides which plan entry closes,
+    # so logging Thursday from the recipe page still attaches to Thursday.
+    if plan_entry is not None:
+        attached = plan_entry if plan_entry.cooked_at is None else None
+    else:
+        attached = _open_plan_entry(db, user.id, recipe.id, cooked_on)
     if attached is not None:
         attached.cooked_at = when
         if servings:

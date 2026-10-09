@@ -863,7 +863,7 @@ def test_cooking_on_a_past_day_closes_that_entry_and_covers_the_shortfall(
 
     cooked = signed_in.post(
         f"/recipes/{recipe.id}/cooked",
-        data={"servings": "1", "cooked_on": yesterday.isoformat(), "entry_id": str(today_entry.id)},
+        data={"servings": "1", "cooked_on": yesterday.isoformat()},
     )
 
     assert cooked.status_code == 303

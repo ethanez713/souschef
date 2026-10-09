@@ -1569,6 +1569,37 @@ def test_another_users_plan_entry_servings_cannot_be_edited(
     assert entry.servings == 4
 
 
+def test_cooked_closes_entry_from_its_entry_id(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _pasta_recipe(seeded_session, web_user)
+    pasta = ing(seeded_session, "spaghetti")
+    seeded_session.commit()
+    tomorrow = date.today() + timedelta(days=1)
+    signed_in.post(
+        "/plan/add",
+        data={"recipe_id": recipe.id, "servings": 2, "plan_date": tomorrow.isoformat()},
+    )
+    entry = seeded_session.scalar(
+        select(MealPlanEntry).where(MealPlanEntry.recipe_id == recipe.id)
+    )
+    signed_in.post(
+        f"/recipes/{recipe.id}/cooked",
+        data={
+            "servings": "2",
+            "entry_id": str(entry.id),
+            "cooked_on": date.today().isoformat(),
+        },
+    )
+    seeded_session.expire_all()
+    assert entry.cooked_at is not None
+    assert f"/recipes/{recipe.id}/cook?entry={entry.id}" not in signed_in.get("/plan").text
+    listed = seeded_session.scalars(
+        select(ShoppingListItem).where(ShoppingListItem.ingredient_id == pasta.id)
+    ).all()
+    assert not listed
+
+
 def test_cook_preview_scales_to_the_servings_asked_for(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:

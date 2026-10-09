@@ -64,16 +64,13 @@ class Settings(BaseSettings):
     single_user: bool = False
     log_level: str = "INFO"
 
-    # Half-life in days for confidence in an unverified level. Bulk staples drift
-    # faster than countable items because every cook subtracts an estimate rather
-    # than a known amount. These are config, not code, precisely so they can be
-    # re-tuned against real use without a deploy.
+    # Days for the low bound of an unverified level to halve. Bulk staples drift
+    # faster than countable items: you know you have four eggs, but nobody knows
+    # how much rice is in the jar. Config so it can be re-tuned against real use.
     confidence_half_life_discrete_days: float = 45.0
     confidence_half_life_bulk_days: float = 18.0
-    # Extra confidence lost each time a cook event debits an item.
-    confidence_penalty_per_cook: float = 0.06
-    # Below this confidence an item is a candidate for the pre-shop audit.
-    audit_confidence_threshold: float = 0.72
+    # A cook's debit is an estimate: the level moves by it, the range by it +/- this fraction.
+    cook_estimate_error: float = 0.25
     # Max items the pre-shop audit will ever ask you to physically check.
     audit_max_items: int = 10
 

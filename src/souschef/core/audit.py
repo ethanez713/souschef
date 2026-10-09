@@ -14,7 +14,8 @@ An item earns a place on the checklist only if all three hold:
    and "not enough". If even the pessimistic estimate covers the requirement,
    don't buy and don't ask; if even the optimistic one falls short, buy without
    asking. Only a straddling range makes checking worthwhile.
-3. **We're unsure.** A level confirmed yesterday needs no re-check.
+3. **We're unsure.** A level confirmed yesterday has a collapsed range and so can
+   never straddle a threshold; no separate confidence cut-off is needed.
 
 The score is expected value of information: probability the belief is wrong in a
 way that flips the decision, times the cost of getting it wrong. Both failure
@@ -31,7 +32,6 @@ from enum import StrEnum
 from sqlalchemy.orm import Session
 
 from souschef.config import Settings, get_settings
-from souschef.core.estimation import estimated_bounds
 from souschef.core.inventory import PantryView, pantry_view
 from souschef.models import CanonicalIngredient
 
@@ -100,8 +100,6 @@ def score_candidate(
     required: float,
     reason: AuditReason,
 ) -> AuditCandidate:
-    low, high = estimated_bounds(view.quantity, view.confidence)
-
     if required > 0:
         threshold = required
         # Which way would an error hurt? If we believe we have enough, the risk
@@ -111,16 +109,16 @@ def score_candidate(
         threshold = view.item.restock_threshold or 0.0
         cost = COST_OF_DUPLICATE
 
-    p_wrong = _probability_wrong(low, high, threshold)
+    p_wrong = _probability_wrong(view.low, view.high, threshold)
 
     return AuditCandidate(
         ingredient=view.ingredient,
         required=required,
         threshold=threshold,
         believed=view.quantity,
-        confidence=view.confidence,
-        low=low,
-        high=high,
+        confidence=view.certainty,
+        low=view.low,
+        high=view.high,
         reason=reason,
         score=round(p_wrong * cost, 6),
     )
@@ -158,8 +156,6 @@ def build_audit(
             # goes on the list. Asking "do you have any?" when we have never
             # seen it is the kind of busywork this feature exists to avoid.
             continue
-        if view.confidence >= settings.audit_confidence_threshold:
-            continue
         candidate = score_candidate(view, required, AuditReason.NEEDED_THIS_WEEK)
         if candidate.straddles_decision and candidate.score > 0:
             candidates.append(candidate)
@@ -169,7 +165,7 @@ def build_audit(
         if ingredient_id in requirements:
             continue
         threshold = view.item.restock_threshold
-        if not threshold or view.confidence >= settings.audit_confidence_threshold:
+        if not threshold:
             continue
         candidate = score_candidate(view, 0.0, AuditReason.NEAR_RESTOCK)
         if candidate.straddles_decision and candidate.score > 0:

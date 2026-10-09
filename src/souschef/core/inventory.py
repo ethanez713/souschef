@@ -17,10 +17,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from souschef.core.estimation import confidence_for_item
+from souschef.config import Settings, get_settings
+from souschef.core.belief import OBSERVATIONS, Belief, BeliefEvent, aware, drift, step
 from souschef.core.units import (
     IngredientPhysical,
     UnitConversionError,
@@ -33,6 +34,7 @@ from souschef.models import (
     InventoryEvent,
     PantryItem,
     StorageLocation,
+    TrackingMode,
 )
 
 # A receipt line with no matcher score is stored at 0.5 (ingest/receipt_service).
@@ -50,14 +52,34 @@ def physical_of(ingredient: CanonicalIngredient) -> IngredientPhysical:
     )
 
 
+def live_events(user_id: int) -> Select[tuple[InventoryEvent]]:
+    """Every ledger read goes through here, so a voided event is never counted."""
+    return select(InventoryEvent).where(
+        InventoryEvent.user_id == user_id, InventoryEvent.voided_at.is_(None)
+    )
+
+
+def half_life_days(mode: TrackingMode, settings: Settings | None = None) -> float:
+    settings = settings or get_settings()
+    if mode == TrackingMode.DISCRETE:
+        return settings.confidence_half_life_discrete_days
+    return settings.confidence_half_life_bulk_days
+
+
 @dataclass(frozen=True)
 class PantryView:
-    """A pantry row with decay applied. What the UI and planner actually read."""
+    """A pantry row with drift applied. What the UI and planner actually read."""
 
     item: PantryItem
     ingredient: CanonicalIngredient
     quantity: float
-    confidence: float
+    low: float
+    high: float
+    is_known: bool
+
+    @property
+    def certainty(self) -> float:
+        return self.low / self.high if self.high > 0 else 1.0
 
     @property
     def is_staple(self) -> bool:
@@ -100,7 +122,8 @@ def get_or_create_item(
             user_id=user_id,
             ingredient_id=ingredient.id,
             quantity=0.0,
-            confidence=1.0,
+            low=0.0,
+            high=0.0,
             location=location or _default_location(ingredient),
         )
         session.add(item)
@@ -117,6 +140,50 @@ def _default_location(ingredient: CanonicalIngredient) -> StorageLocation:
     return StorageLocation.PANTRY
 
 
+def _belief_of(item: PantryItem) -> Belief:
+    last_confirmed = item.last_confirmed_at if item.belief_at is not None else None
+    return Belief(item.quantity, item.low, item.high, item.belief_at, last_confirmed)
+
+
+def _store(item: PantryItem, belief: Belief) -> None:
+    item.quantity, item.low, item.high = belief.quantity, belief.low, belief.high
+    item.belief_at = belief.belief_at
+    if belief.last_confirmed_at is not None:
+        item.last_confirmed_at = belief.last_confirmed_at
+
+
+def _fold_step(
+    belief: Belief, event: InventoryEvent, ingredient: CanonicalIngredient
+) -> Belief:
+    settings = get_settings()
+    folded = step(
+        belief,
+        BeliefEvent(
+            event.reason,
+            event.delta,
+            event.resulting_quantity,
+            event.uncertainty or 0.0,
+            event.occurred_at,
+        ),
+        half_life_days=half_life_days(ingredient.tracking_mode, settings),
+        cook_estimate_error=settings.cook_estimate_error,
+    )
+    if event.reason not in OBSERVATIONS:
+        event.resulting_quantity = folded.quantity
+    return folded
+
+
+def _refold(session: Session, item: PantryItem, ingredient: CanonicalIngredient) -> None:
+    """Recompute one item from its live events, in (occurred_at, id) order."""
+    events = session.scalars(
+        live_events(item.user_id).where(InventoryEvent.ingredient_id == ingredient.id)
+    ).all()
+    belief = Belief(last_confirmed_at=None)
+    for event in sorted(events, key=lambda e: (aware(e.occurred_at), e.id)):
+        belief = _fold_step(belief, event, ingredient)
+    _store(item, belief)
+
+
 def record_event(
     session: Session,
     user_id: int,
@@ -130,12 +197,16 @@ def record_event(
     note: str | None = None,
     occurred_at: datetime | None = None,
     expires_on: date | None = None,
+    level: float | None = None,
+    uncertainty: float = 0.0,
+    cook_id: int | None = None,
 ) -> InventoryEvent:
     """Append a ledger entry and fold it into the pantry row.
 
     ``delta`` is interpreted in ``unit`` (defaulting to the ingredient's base
     unit) and converted before storage, so callers can speak in whatever units
-    their source used.
+    their source used. An observation (CONFIRM, MANUAL, INITIAL) records the
+    absolute ``level`` the user saw; without one it is the current level plus delta.
     """
     physical = physical_of(ingredient)
     # Convert before creating the pantry row. A unit we can't convert used to
@@ -148,62 +219,37 @@ def record_event(
         delta_base = delta
 
     item = get_or_create_item(session, user_id, ingredient)
-    new_quantity = max(0.0, item.quantity + delta_base)
+    if reason in OBSERVATIONS:
+        resulting = level if level is not None else max(0.0, item.quantity + delta_base)
+    else:
+        resulting = max(0.0, item.quantity + delta_base)
 
     event = InventoryEvent(
         user_id=user_id,
         ingredient_id=ingredient.id,
         reason=reason,
         delta=delta_base,
-        resulting_quantity=new_quantity,
+        resulting_quantity=resulting,
+        uncertainty=uncertainty,
         event_confidence=event_confidence,
         source_ref=source_ref,
         note=note,
         occurred_at=occurred_at or datetime.now(UTC),
+        cook_id=cook_id,
     )
     session.add(event)
+    session.flush()
 
-    item.quantity = new_quantity
-    _apply_confidence(item, reason, event_confidence)
+    if item.belief_at is None or aware(event.occurred_at) >= aware(item.belief_at):
+        _store(item, _fold_step(_belief_of(item), event, ingredient))
+    else:
+        _refold(session, item, ingredient)
 
     if expires_on is not None:
         item.expires_on = expires_on
 
     session.flush()
     return event
-
-
-def _apply_confidence(item: PantryItem, reason: EventReason, event_confidence: float) -> None:
-    """Update trust in the level according to what just happened."""
-    now = datetime.now(UTC)
-
-    if reason in (EventReason.CONFIRM, EventReason.MANUAL, EventReason.INITIAL):
-        # The user physically looked. This is the only thing that fully restores
-        # trust, and it resets the decay anchor.
-        item.confidence = 1.0
-        item.last_confirmed_at = now
-        item.cooks_since_confirmed = 0
-        return
-
-    if reason == EventReason.PURCHASE:
-        # A purchase tells us a lot but not everything: we know what went in,
-        # not what was already there. Trust rises toward, but not to, certainty.
-        item.confidence = min(1.0, max(item.confidence, 0.5) + 0.35 * event_confidence)
-        return
-
-    if reason == EventReason.COOK:
-        # Subtracting an estimate. Track the count; decay does the rest.
-        item.cooks_since_confirmed += 1
-        return
-
-    if reason == EventReason.WASTE:
-        if item.quantity <= 0:
-            # Binning the last of it is a certain zero, same as looking and finding none.
-            item.confidence = 1.0
-            item.last_confirmed_at = now
-            item.cooks_since_confirmed = 0
-        else:
-            item.confidence = min(1.0, item.confidence + 0.2)
 
 
 def set_level(
@@ -232,6 +278,7 @@ def set_level(
         ingredient,
         reason=EventReason.MANUAL,
         delta=target - item.quantity,
+        level=target,
         note=note or "manual level correction",
     )
 
@@ -247,7 +294,7 @@ def confirm_level(
     """Record that the user physically checked an item.
 
     With ``quantity`` this corrects the level; without it, it asserts the
-    existing estimate was right. Either way confidence resets -- which is the
+    existing estimate was right. Either way the range collapses -- which is the
     whole point of the pre-shop audit.
     """
     if quantity is not None:
@@ -281,84 +328,33 @@ def discard_item(
     )
 
 
-def undo_discard(session: Session, user_id: int, event_id: int) -> InventoryEvent | None:
-    """Put back what a discard removed.
+def void_events(session: Session, user_id: int, event_ids: list[int]) -> list[InventoryEvent]:
+    """Undo by ignoring: mark the events voided and refold what they touched."""
+    now = datetime.now(UTC)
+    events = [
+        event
+        for event in session.scalars(
+            live_events(user_id).where(InventoryEvent.id.in_(event_ids))
+        )
+    ]
+    for event in events:
+        event.voided_at = now
+    session.flush()
+    for ingredient_id in {event.ingredient_id for event in events}:
+        ingredient = session.get(CanonicalIngredient, ingredient_id)
+        if ingredient is not None:
+            _refold(session, get_or_create_item(session, user_id, ingredient), ingredient)
+    session.flush()
+    return events
 
-    Only the user's own latest event for that ingredient qualifies, so an old
-    Undo link cannot overwrite stock logged since.
-    """
+
+def undo_discard(session: Session, user_id: int, event_id: int) -> InventoryEvent | None:
+    """Put back what a discard removed by voiding it; later events replay on top."""
     waste = session.get(InventoryEvent, event_id)
     if waste is None or waste.user_id != user_id or waste.reason != EventReason.WASTE:
         return None
-    latest = session.scalar(
-        select(InventoryEvent.id)
-        .where(
-            InventoryEvent.user_id == user_id,
-            InventoryEvent.ingredient_id == waste.ingredient_id,
-        )
-        .order_by(InventoryEvent.occurred_at.desc(), InventoryEvent.id.desc())
-        .limit(1)
-    )
-    if latest != waste.id:
-        return None
-    ingredient = session.get(CanonicalIngredient, waste.ingredient_id)
-    if ingredient is None:
-        return None
-    return record_event(
-        session,
-        user_id,
-        ingredient,
-        reason=EventReason.MANUAL,
-        delta=-waste.delta,
-        note=f"undo waste:{waste.id}",
-    )
-
-
-def cover_cook_shortfall(
-    session: Session,
-    user_id: int,
-    requirements: dict[int, float],
-    *,
-    recipe_id: int,
-    occurred_at: datetime | None = None,
-) -> list[InventoryEvent]:
-    """Record a low-confidence purchase where a cook uses more than the ledger holds.
-
-    The debit that follows then lands on a true level. Without this, the cook
-    event's delta exceeds what was there and the clamp to zero hides the purchase
-    that must have happened. Staples are skipped: they are never debited.
-    """
-    events: list[InventoryEvent] = []
-    for ingredient_id, amount in requirements.items():
-        if amount <= 0:
-            continue
-        ingredient = session.get(CanonicalIngredient, ingredient_id)
-        if ingredient is None or ingredient.is_staple:
-            continue
-        item = session.scalar(
-            select(PantryItem).where(
-                PantryItem.user_id == user_id,
-                PantryItem.ingredient_id == ingredient.id,
-            )
-        )
-        have = item.quantity if item is not None else 0.0
-        shortfall = amount - have
-        if shortfall <= 1e-6:
-            continue
-        events.append(
-            record_event(
-                session,
-                user_id,
-                ingredient,
-                reason=EventReason.PURCHASE,
-                delta=shortfall,
-                event_confidence=INFERRED_PURCHASE_CONFIDENCE,
-                source_ref=f"recipe:{recipe_id}",
-                note="implied purchase: cooked more than was on hand",
-                occurred_at=occurred_at,
-            )
-        )
-    return events
+    voided = void_events(session, user_id, [waste.id])
+    return voided[0] if voided else None
 
 
 def consume_for_recipe(
@@ -369,6 +365,7 @@ def consume_for_recipe(
     recipe_id: int,
     occurred_at: datetime | None = None,
     notes: dict[int, str] | None = None,
+    cook_id: int | None = None,
 ) -> list[InventoryEvent]:
     """Debit the pantry for a cooked recipe.
 
@@ -393,6 +390,7 @@ def consume_for_recipe(
                 source_ref=f"recipe:{recipe_id}",
                 note=(notes or {}).get(ingredient_id),
                 occurred_at=occurred_at,
+                cook_id=cook_id,
             )
         )
     return events
@@ -401,24 +399,36 @@ def consume_for_recipe(
 def pantry_view(
     session: Session, user_id: int, *, include_empty: bool = False
 ) -> list[PantryView]:
-    """One user's current pantry, with decay applied."""
+    """One user's current pantry, with drift applied."""
     rows = session.execute(
         select(PantryItem, CanonicalIngredient)
         .join(CanonicalIngredient, PantryItem.ingredient_id == CanonicalIngredient.id)
         .where(PantryItem.user_id == user_id)
         .order_by(CanonicalIngredient.name)
     ).all()
+    known = set(
+        session.scalars(
+            live_events(user_id)
+            .with_only_columns(InventoryEvent.ingredient_id)
+            .where(InventoryEvent.reason != EventReason.COOK)
+            .distinct()
+        )
+    )
 
+    now = datetime.now(UTC)
     views = []
     for item, ingredient in rows:
         if not include_empty and item.quantity <= 0:
             continue
+        belief = drift(_belief_of(item), now, half_life_days(ingredient.tracking_mode))
         views.append(
             PantryView(
                 item=item,
                 ingredient=ingredient,
-                quantity=item.quantity,
-                confidence=confidence_for_item(item),
+                quantity=belief.quantity,
+                low=belief.low,
+                high=belief.high,
+                is_known=ingredient.id in known,
             )
         )
     return views
@@ -430,40 +440,19 @@ def rebuild_from_ledger(session: Session, user_id: int) -> int:
     The materialized rows are a cache; this proves it. Useful after editing
     history, and as a self-check that the fold and the incremental path agree.
     """
-    events = session.scalars(
-        select(InventoryEvent)
-        .where(InventoryEvent.user_id == user_id)
-        .order_by(InventoryEvent.occurred_at, InventoryEvent.id)
-    ).all()
-
-    totals: dict[int, float] = {}
-    last_confirmed: dict[int, datetime] = {}
-    cooks: dict[int, int] = {}
-
-    for event in events:
-        current = totals.get(event.ingredient_id, 0.0)
-        totals[event.ingredient_id] = max(0.0, current + event.delta)
-        emptied = event.reason == EventReason.WASTE and totals[event.ingredient_id] <= 0
-        if emptied or event.reason in (
-            EventReason.CONFIRM,
-            EventReason.MANUAL,
-            EventReason.INITIAL,
-        ):
-            last_confirmed[event.ingredient_id] = event.occurred_at
-            cooks[event.ingredient_id] = 0
-        elif event.reason == EventReason.COOK:
-            cooks[event.ingredient_id] = cooks.get(event.ingredient_id, 0) + 1
+    ingredient_ids = {
+        row
+        for row in session.scalars(
+            select(PantryItem.ingredient_id).where(PantryItem.user_id == user_id)
+        )
+    } | set(session.scalars(live_events(user_id).with_only_columns(InventoryEvent.ingredient_id)))
 
     updated = 0
-    for ingredient_id, quantity in totals.items():
+    for ingredient_id in sorted(ingredient_ids):
         ingredient = session.get(CanonicalIngredient, ingredient_id)
         if ingredient is None:
             continue
-        item = get_or_create_item(session, user_id, ingredient)
-        item.quantity = quantity
-        item.cooks_since_confirmed = cooks.get(ingredient_id, 0)
-        if ingredient_id in last_confirmed:
-            item.last_confirmed_at = last_confirmed[ingredient_id]
+        _refold(session, get_or_create_item(session, user_id, ingredient), ingredient)
         updated += 1
 
     session.flush()

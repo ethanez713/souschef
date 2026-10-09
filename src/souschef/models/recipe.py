@@ -72,6 +72,23 @@ class Recipe(Base, OwnedMixin, TimestampMixin):
         return f"<Recipe {self.id} {self.title!r}>"
 
 
+class Cook(Base, OwnedMixin):
+    """One time a recipe was cooked: the unit that Undo reverses."""
+
+    __tablename__ = "cook"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipe.id", ondelete="CASCADE"), index=True
+    )
+    plan_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("meal_plan_entry.id", ondelete="SET NULL")
+    )
+    servings: Mapped[int | None] = mapped_column(Integer)
+    cooked_at: Mapped[datetime] = mapped_column()
+    undone_at: Mapped[datetime | None] = mapped_column()
+
+
 class RecipeIngredient(Base):
     """One ingredient line, keeping both the original text and the parse.
 

@@ -61,16 +61,21 @@ class MissingIngredient:
     ingredient: CanonicalIngredient
     needed: float
     have: float
-    confidence: float
+    low: float
+    high: float
 
     @property
     def shortfall(self) -> float:
         return max(0.0, self.needed - self.have)
 
     @property
+    def certainty(self) -> float:
+        return self.low / self.high if self.high > 0 else 1.0
+
+    @property
     def is_uncertain(self) -> bool:
         """We may well have it; the level is just too stale to rely on."""
-        return self.confidence < 0.6 and self.have > 0
+        return self.certainty < 0.6 and self.have > 0
 
 
 @dataclass
@@ -176,7 +181,8 @@ def score_recipe(
         considered += 1
         view = pantry.get(req.ingredient.id)
         have = view.quantity if view else 0.0
-        confidence = view.confidence if view else 0.0
+        low = view.low if view else 0.0
+        high = view.high if view else 0.0
 
         if view is not None and _expiring_soon(view, today):
             uses_expiring.append(req.ingredient)
@@ -186,7 +192,7 @@ def score_recipe(
             if have > 0:
                 satisfied += 1.0
             else:
-                missing.append(MissingIngredient(req.ingredient, 0.0, 0.0, confidence))
+                missing.append(MissingIngredient(req.ingredient, 0.0, 0.0, low, high))
             continue
 
         if have >= req.quantity:
@@ -195,9 +201,9 @@ def score_recipe(
             # Partial credit: having most of what you need is meaningfully
             # closer than having none, and this keeps ranking smooth.
             satisfied += have / req.quantity
-            missing.append(MissingIngredient(req.ingredient, req.quantity, have, confidence))
+            missing.append(MissingIngredient(req.ingredient, req.quantity, have, low, high))
         else:
-            missing.append(MissingIngredient(req.ingredient, req.quantity, 0.0, confidence))
+            missing.append(MissingIngredient(req.ingredient, req.quantity, 0.0, low, high))
 
     unmatched = [
         text for text in nonoptional_unmatched(recipe, requirements) if not is_ignorable(text)

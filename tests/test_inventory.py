@@ -1,12 +1,13 @@
-"""Ledger, decay and audit tests.
+"""Ledger, belief and audit tests.
 
 These encode the behavioural promises the app is built on: state is
-reconstructible from events, confidence erodes for the right reasons, and the
+reconstructible from events, doubt grows for the right reasons, and the
 pre-shop audit asks about few things and the *right* things.
 """
 
 from __future__ import annotations
 
+import random
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -15,21 +16,19 @@ from sqlalchemy.orm import Session
 
 from souschef.config import get_settings
 from souschef.core.audit import AuditReason, build_audit
-from souschef.core.estimation import (
-    DecayInputs,
-    current_confidence,
-    days_until_confidence,
-    estimated_bounds,
-)
+from souschef.core.belief import Belief, drift
+from souschef.core.cooking import record_cook, undo_cook
 from souschef.core.inventory import (
     confirm_level,
     consume_for_recipe,
     discard_item,
+    half_life_days,
     pantry_view,
     rebuild_from_ledger,
     record_event,
     set_level,
     undo_discard,
+    void_events,
 )
 from souschef.models import (
     CanonicalIngredient,
@@ -48,61 +47,24 @@ def ingredient(session: Session, name: str) -> CanonicalIngredient:
     return ing
 
 
-def test_confidence_decays_with_time() -> None:
-    settings = get_settings()
-    fresh = current_confidence(
-        DecayInputs(TrackingMode.BULK, NOW, 0), now=NOW, settings=settings
-    )
-    later = current_confidence(
-        DecayInputs(TrackingMode.BULK, NOW, 0),
-        now=NOW + timedelta(days=settings.confidence_half_life_bulk_days),
-        settings=settings,
-    )
-    assert fresh == pytest.approx(1.0)
-    assert later == pytest.approx(0.5, abs=0.01)
-
-
-def test_bulk_decays_faster_than_discrete() -> None:
+def test_bulk_doubt_grows_faster_than_discrete() -> None:
     """You know how many eggs you have; you don't know how much rice you have."""
-    after = NOW + timedelta(days=20)
-    bulk = current_confidence(DecayInputs(TrackingMode.BULK, NOW, 0), now=after)
-    discrete = current_confidence(DecayInputs(TrackingMode.DISCRETE, NOW, 0), now=after)
-    assert bulk < discrete
+    belief = Belief(100, 100, 100, belief_at=NOW)
+    later = NOW + timedelta(days=20)
+    bulk = drift(belief, later, half_life_days(TrackingMode.BULK))
+    discrete = drift(belief, later, half_life_days(TrackingMode.DISCRETE))
+    assert bulk.certainty < discrete.certainty
 
 
-def test_cooking_costs_confidence_beyond_elapsed_time() -> None:
-    """Each cook subtracts an estimate, so error compounds per event."""
-    no_cooks = current_confidence(DecayInputs(TrackingMode.BULK, NOW, 0), now=NOW)
-    three_cooks = current_confidence(DecayInputs(TrackingMode.BULK, NOW, 3), now=NOW)
-    assert three_cooks < no_cooks
-    assert three_cooks == pytest.approx(
-        1.0 - 3 * get_settings().confidence_penalty_per_cook, abs=1e-6
+def test_the_low_bound_halves_after_one_half_life() -> None:
+    settings = get_settings()
+    belief = Belief(100, 100, 100, belief_at=NOW)
+    later = drift(
+        belief,
+        NOW + timedelta(days=settings.confidence_half_life_bulk_days),
+        settings.confidence_half_life_bulk_days,
     )
-
-
-def test_confidence_is_clamped() -> None:
-    ancient = current_confidence(
-        DecayInputs(TrackingMode.BULK, NOW, 50), now=NOW + timedelta(days=3650)
-    )
-    assert 0.0 < ancient <= 1.0
-    # Never exceeds certainty even with a future anchor.
-    assert current_confidence(
-        DecayInputs(TrackingMode.BULK, NOW, 0), now=NOW - timedelta(days=5)
-    ) <= 1.0
-
-
-def test_days_until_confidence_matches_the_decay_curve() -> None:
-    days = days_until_confidence(TrackingMode.BULK, 0.5)
-    assert days == pytest.approx(get_settings().confidence_half_life_bulk_days, abs=0.01)
-
-
-def test_bounds_widen_as_confidence_falls() -> None:
-    certain_low, certain_high = estimated_bounds(100, 1.0)
-    assert (certain_low, certain_high) == (100, 100)
-
-    vague_low, vague_high = estimated_bounds(100, 0.2)
-    assert vague_low < 100 < vague_high
-    assert vague_low >= 0
+    assert (later.quantity, later.low, later.high) == (100, pytest.approx(50), 100)
 
 
 def test_every_change_writes_a_ledger_entry(seeded_session: Session, owner: int) -> None:
@@ -136,7 +98,7 @@ def test_purchase_units_are_converted_to_base(seeded_session: Session, owner: in
     assert item.quantity == pytest.approx(2268, rel=0.01)
 
 
-def test_confirming_restores_confidence_and_resets_the_anchor(
+def test_confirming_collapses_the_range_and_resets_the_anchor(
     seeded_session: Session, owner: int
 ) -> None:
     rice = ingredient(seeded_session, "white rice")
@@ -145,12 +107,12 @@ def test_confirming_restores_confidence_and_resets_the_anchor(
     consume_for_recipe(seeded_session, owner, {rice.id: 200}, recipe_id=2)
 
     item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == rice.id))
-    assert item.cooks_since_confirmed == 2
+    assert item.low < item.quantity < item.high
 
     confirm_level(seeded_session, owner, rice)
     seeded_session.refresh(item)
-    assert item.cooks_since_confirmed == 0
-    assert item.confidence == 1.0
+    assert item.low == item.quantity == item.high == pytest.approx(600)
+    assert (datetime.now(UTC) - item.last_confirmed_at.replace(tzinfo=UTC)).total_seconds() < 60
 
 
 def test_set_level_records_the_correction_as_a_delta(seeded_session: Session, owner: int) -> None:
@@ -202,14 +164,11 @@ def test_discarding_empties_the_item_and_counts_as_a_certain_zero(
     item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == rice.id))
     assert event is not None and event.reason == EventReason.WASTE
     assert event.delta == pytest.approx(-800)
-    assert item.quantity == 0
-    assert item.confidence == 1.0
-    assert item.cooks_since_confirmed == 0
+    assert (item.quantity, item.low, item.high) == (0, 0, 0)
 
     rebuild_from_ledger(seeded_session, owner)
     seeded_session.refresh(item)
-    assert item.quantity == 0
-    assert item.cooks_since_confirmed == 0
+    assert (item.quantity, item.low, item.high) == (0, 0, 0)
 
 
 def test_discarding_nothing_writes_nothing(seeded_session: Session, owner: int) -> None:
@@ -218,22 +177,32 @@ def test_discarding_nothing_writes_nothing(seeded_session: Session, owner: int) 
     assert seeded_session.scalars(select(InventoryEvent)).all() == []
 
 
-def test_undo_restores_the_level_through_a_correcting_event(
+def _row(session: Session, ing: CanonicalIngredient) -> PantryItem:
+    session.expire_all()
+    return session.scalar(select(PantryItem).where(PantryItem.ingredient_id == ing.id))
+
+
+def _belief_fields(item: PantryItem) -> tuple:
+    return (item.quantity, item.low, item.high, item.belief_at, item.last_confirmed_at)
+
+
+def test_undo_voids_the_discard_and_restores_every_belief_field(
     seeded_session: Session, owner: int
 ) -> None:
-    eggs = ingredient(seeded_session, "eggs")
-    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
-    waste = discard_item(seeded_session, owner, eggs)
+    rice = ingredient(seeded_session, "white rice")
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    consume_for_recipe(seeded_session, owner, {rice.id: 200}, recipe_id=1)
+    before = _belief_fields(_row(seeded_session, rice))
+    waste = discard_item(seeded_session, owner, rice)
 
     undone = undo_discard(seeded_session, owner, waste.id)
 
-    item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == eggs.id))
-    assert undone is not None and undone.reason == EventReason.MANUAL
-    assert item.quantity == 12
+    assert undone is not None and undone.voided_at is not None
+    assert _belief_fields(_row(seeded_session, rice)) == before
     assert len(seeded_session.scalars(select(InventoryEvent)).all()) == 3
 
 
-def test_undo_does_nothing_once_newer_stock_is_logged(
+def test_undo_stays_valid_after_later_events_which_replay_on_top(
     seeded_session: Session, owner: int
 ) -> None:
     eggs = ingredient(seeded_session, "eggs")
@@ -241,9 +210,20 @@ def test_undo_does_nothing_once_newer_stock_is_logged(
     waste = discard_item(seeded_session, owner, eggs)
     record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=6)
 
-    assert undo_discard(seeded_session, owner, waste.id) is None
-    item = seeded_session.scalar(select(PantryItem).where(PantryItem.ingredient_id == eggs.id))
-    assert item.quantity == 6
+    assert undo_discard(seeded_session, owner, waste.id) is not None
+    assert _row(seeded_session, eggs).quantity == 18
+
+
+def test_a_voided_event_is_skipped_by_every_read(seeded_session: Session, owner: int) -> None:
+    eggs = ingredient(seeded_session, "eggs")
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    bought = record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=6)
+
+    void_events(seeded_session, owner, [bought.id])
+
+    assert _row(seeded_session, eggs).quantity == 12
+    rebuild_from_ledger(seeded_session, owner)
+    assert _row(seeded_session, eggs).quantity == 12
 
 
 def test_undo_ignores_another_users_event(seeded_session: Session, owner: int) -> None:
@@ -254,10 +234,10 @@ def test_undo_ignores_another_users_event(seeded_session: Session, owner: int) -
     assert undo_discard(seeded_session, owner + 1000, waste.id) is None
 
 
-def _age_item(session: Session, ing: CanonicalIngredient, days: int, cooks: int = 0) -> PantryItem:
+def _age_item(session: Session, ing: CanonicalIngredient, days: int) -> PantryItem:
+    """Leave an item unlooked-at for ``days``: its low bound drifts down."""
     item = session.scalar(select(PantryItem).where(PantryItem.ingredient_id == ing.id))
-    item.last_confirmed_at = datetime.now(UTC) - timedelta(days=days)
-    item.cooks_since_confirmed = cooks
+    item.belief_at = datetime.now(UTC) - timedelta(days=days)
     session.flush()
     return item
 
@@ -289,9 +269,9 @@ def test_audit_skips_levels_that_are_not_close_to_the_decision(
     """Plenty, or nowhere near enough -- either way, checking changes nothing."""
     rice = ingredient(seeded_session, "white rice")
     record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=5000)
-    _age_item(seeded_session, rice, days=120)
+    _age_item(seeded_session, rice, days=20)
 
-    # Believed 5 kg, need 100 g: even the pessimistic bound covers it.
+    # Believed 5 kg, need 100 g: even the pessimistic bound still covers it.
     assert build_audit(seeded_session, owner, {rice.id: 100}) == []
 
 
@@ -300,7 +280,7 @@ def test_audit_surfaces_levels_straddling_the_requirement(
 ) -> None:
     rice = ingredient(seeded_session, "white rice")
     record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=500)
-    _age_item(seeded_session, rice, days=90, cooks=3)
+    _age_item(seeded_session, rice, days=90)
 
     result = build_audit(seeded_session, owner, {rice.id: 480})
     assert [c.ingredient.name for c in result] == ["white rice"]
@@ -313,15 +293,24 @@ def test_audit_surfaces_levels_straddling_the_requirement(
 def test_audit_respects_the_item_cap(seeded_session: Session, owner: int) -> None:
     """A checklist long enough to ignore has failed at its job."""
     names = [
-        "white rice", "all-purpose flour", "granulated sugar", "rolled oats",
-        "penne", "quinoa", "brown rice", "couscous", "dried lentils",
-        "breadcrumbs", "walnuts", "almonds",
+        "white rice",
+        "all-purpose flour",
+        "granulated sugar",
+        "rolled oats",
+        "penne",
+        "quinoa",
+        "brown rice",
+        "couscous",
+        "dried lentils",
+        "breadcrumbs",
+        "walnuts",
+        "almonds",
     ]
     requirements = {}
     for name in names:
         ing = ingredient(seeded_session, name)
         record_event(seeded_session, owner, ing, reason=EventReason.PURCHASE, delta=500)
-        _age_item(seeded_session, ing, days=120, cooks=4)
+        _age_item(seeded_session, ing, days=120)
         requirements[ing.id] = 480
 
     result = build_audit(seeded_session, owner, requirements, limit=5)
@@ -337,7 +326,7 @@ def test_audit_never_lists_a_staple(seeded_session: Session, owner: int) -> None
 
     for ing in (oil, chicken):
         record_event(seeded_session, owner, ing, reason=EventReason.PURCHASE, delta=500)
-        item = _age_item(seeded_session, ing, days=90, cooks=3)
+        item = _age_item(seeded_session, ing, days=90)
         item.restock_threshold = 480
     seeded_session.flush()
 
@@ -365,10 +354,162 @@ def test_restock_candidates_can_reach_the_audit(seeded_session: Session, owner: 
     """Regression: restock checks have a threshold but no plan requirement."""
     rice = ingredient(seeded_session, "white rice")
     record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=500)
-    item = _age_item(seeded_session, rice, days=90, cooks=3)
+    item = _age_item(seeded_session, rice, days=90)
     item.restock_threshold = 480
     seeded_session.flush()
 
     result = build_audit(seeded_session, owner, {})
     assert [c.ingredient.name for c in result] == ["white rice"]
     assert result[0].reason == AuditReason.NEAR_RESTOCK
+
+
+def _fields(item: PantryItem) -> tuple[float, float, float, datetime | None, datetime]:
+    return (item.quantity, item.low, item.high, item.belief_at, item.last_confirmed_at)
+
+
+def test_a_random_out_of_order_history_folds_the_same_either_way(
+    seeded_session: Session, owner: int
+) -> None:
+    rng = random.Random(20261008)
+    names = ["eggs", "white rice", "all-purpose flour", "penne", "chicken breast"]
+    ingredients = [ingredient(seeded_session, name) for name in names]
+    start = datetime.now(UTC) - timedelta(days=60)
+
+    for _ in range(200):
+        ing = rng.choice(ingredients)
+        when = start + timedelta(minutes=rng.randrange(60 * 24 * 60))
+        kind = rng.choice(["purchase", "purchase", "cook", "cook", "waste", "confirm", "manual"])
+        if kind == "purchase":
+            record_event(
+                seeded_session,
+                owner,
+                ing,
+                reason=EventReason.PURCHASE,
+                delta=rng.randrange(1, 800),
+                occurred_at=when,
+            )
+        elif kind == "cook":
+            record_event(
+                seeded_session,
+                owner,
+                ing,
+                reason=EventReason.COOK,
+                delta=-rng.randrange(1, 400),
+                occurred_at=when,
+            )
+        elif kind == "waste":
+            record_event(
+                seeded_session,
+                owner,
+                ing,
+                reason=EventReason.WASTE,
+                delta=-rng.randrange(1, 300),
+                occurred_at=when,
+            )
+        elif kind == "confirm":
+            record_event(seeded_session, owner, ing, reason=EventReason.CONFIRM, occurred_at=when)
+        else:
+            record_event(
+                seeded_session,
+                owner,
+                ing,
+                reason=EventReason.MANUAL,
+                delta=0,
+                level=rng.randrange(0, 900),
+                uncertainty=rng.randrange(0, 50),
+                occurred_at=when,
+            )
+
+    incremental = {ing.id: _fields(_row(seeded_session, ing)) for ing in ingredients}
+    results = [(e.id, e.resulting_quantity) for e in seeded_session.scalars(select(InventoryEvent))]
+    rebuild_from_ledger(seeded_session, owner)
+    seeded_session.expire_all()
+
+    for ing in ingredients:
+        folded = _fields(_row(seeded_session, ing))
+        assert folded[:3] == pytest.approx(incremental[ing.id][:3])
+        assert folded[3:] == incremental[ing.id][3:]
+    for event_id, resulting in results:
+        assert seeded_session.get(InventoryEvent, event_id).resulting_quantity == pytest.approx(
+            resulting
+        )
+
+
+def test_an_item_is_known_only_after_something_other_than_a_cook(
+    seeded_session: Session, owner: int
+) -> None:
+    rice = ingredient(seeded_session, "white rice")
+    consume_for_recipe(seeded_session, owner, {rice.id: 100}, recipe_id=1)
+    view = next(
+        v
+        for v in pantry_view(seeded_session, owner, include_empty=True)
+        if v.ingredient.id == rice.id
+    )
+    assert not view.is_known
+    assert view.certainty == 0
+
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=500)
+    view = next(v for v in pantry_view(seeded_session, owner) if v.ingredient.id == rice.id)
+    assert view.is_known
+
+
+def _recipe_and_entry(session: Session, owner: int):  # noqa: ANN202
+    from datetime import date
+
+    from souschef.models import MealPlanEntry, MealSlot, Recipe, RecipeSource
+
+    recipe = Recipe(user_id=owner, title="Rice", source=RecipeSource.MANUAL, servings=2)
+    session.add(recipe)
+    session.flush()
+    entry = MealPlanEntry(
+        user_id=owner, plan_date=date.today(), slot=MealSlot.DINNER, recipe_id=recipe.id, servings=2
+    )
+    session.add(entry)
+    session.flush()
+    return recipe, entry
+
+
+def test_undoing_a_cook_restores_beliefs_counts_and_the_plan_entry(
+    seeded_session: Session, owner: int
+) -> None:
+    rice = ingredient(seeded_session, "white rice")
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    recipe, entry = _recipe_and_entry(seeded_session, owner)
+    before = _fields(_row(seeded_session, rice))
+
+    cook = record_cook(
+        seeded_session,
+        owner,
+        recipe,
+        {rice.id: 300},
+        when=datetime.now(UTC),
+        servings=2,
+        plan_entry=entry,
+    )
+    assert (recipe.times_cooked, entry.cooked_at is not None) == (1, True)
+    assert _row(seeded_session, rice).quantity == 700
+
+    assert undo_cook(seeded_session, owner, cook.id) is not None
+
+    assert _fields(_row(seeded_session, rice)) == before
+    assert recipe.times_cooked == 0
+    assert recipe.last_cooked_at is None
+    assert entry.cooked_at is None
+    assert undo_cook(seeded_session, owner, cook.id) is None
+
+
+def test_undoing_a_cook_keeps_a_level_confirmed_after_it(
+    seeded_session: Session, owner: int
+) -> None:
+    rice = ingredient(seeded_session, "white rice")
+    record_event(seeded_session, owner, rice, reason=EventReason.PURCHASE, delta=1000)
+    recipe, _entry = _recipe_and_entry(seeded_session, owner)
+    cook = record_cook(
+        seeded_session, owner, recipe, {rice.id: 300}, when=datetime.now(UTC), servings=2
+    )
+    set_level(seeded_session, owner, rice, 650)
+
+    undo_cook(seeded_session, owner, cook.id)
+
+    item = _row(seeded_session, rice)
+    assert (item.quantity, item.low, item.high) == (650, 650, 650)

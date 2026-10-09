@@ -9,7 +9,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from souschef.core.inventory import consume_for_recipe, cover_cook_shortfall, pantry_view
+from souschef.core.cooking import record_cook
+from souschef.core.inventory import pantry_view
 from souschef.core.recipes import recipe_requirements
 from souschef.db import get_db
 from souschef.models import MealPlanEntry, Recipe, User
@@ -188,30 +189,15 @@ async def mark_cooked(
         if iid in proposed and abs(amount - proposed[iid]) > 1e-6
     }
     when = _cook_when(cooked_on)
-    # The purchase has to land before the debit so the ledger's running total
-    # never pretends the ingredient was used from an empty jar.
-    cover_cook_shortfall(db, user.id, used, recipe_id=recipe.id, occurred_at=when)
-    consume_for_recipe(
-        db, user.id, used, recipe_id=recipe.id, notes=notes or None, occurred_at=when
-    )
-
-    recipe.times_cooked += 1
-    previous = recipe.last_cooked_at
-    if previous is not None and previous.tzinfo is None:
-        previous = previous.replace(tzinfo=UTC)
-    if previous is None or previous < when:
-        recipe.last_cooked_at = when
-
     # Without an entry_id the day on the form decides which plan entry closes,
     # so logging Thursday from the recipe page still attaches to Thursday.
     if plan_entry is not None:
         attached = plan_entry if plan_entry.cooked_at is None else None
     else:
         attached = _open_plan_entry(db, user.id, recipe.id, cooked_on)
-    if attached is not None:
-        attached.cooked_at = when
-        if servings:
-            attached.servings = servings
+    record_cook(
+        db, user.id, recipe, used, when=when, servings=servings, plan_entry=attached, notes=notes
+    )
     if servings:
         recipe.last_servings = servings
     db.flush()

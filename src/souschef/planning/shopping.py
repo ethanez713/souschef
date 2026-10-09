@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from souschef.core.inventory import (
     INFERRED_PURCHASE_CONFIDENCE,
+    live_events,
     physical_of,
     record_event,
 )
@@ -693,8 +694,7 @@ def ingredients_stocked_since(
     """
     lower, upper = _aware(start), _aware(end)
     rows = session.scalars(
-        select(InventoryEvent).where(
-            InventoryEvent.user_id == user_id,
+        live_events(user_id).where(
             InventoryEvent.reason == EventReason.PURCHASE,
             InventoryEvent.source_ref.like("shopping:%"),
         )

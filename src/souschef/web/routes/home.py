@@ -67,8 +67,8 @@ def dashboard(
     use_soon = [v for v in pantry if freshness.get(v.ingredient.id) == Freshness.USE_SOON]
     probably_gone = [v for v in pantry if freshness.get(v.ingredient.id) == Freshness.PROBABLY_GONE]
     stale = sorted(
-        (v for v in pantry if v.confidence < 0.5 and _on_hand(v)),
-        key=lambda v: v.confidence,
+        (v for v in pantry if v.certainty < 0.5 and _on_hand(v)),
+        key=lambda v: v.certainty,
     )[:5]
 
     return _render(

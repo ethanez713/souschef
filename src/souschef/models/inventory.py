@@ -27,7 +27,7 @@ class EventReason(enum.StrEnum):
     COOK = "cook"  # debited by cooking a recipe
     MANUAL = "manual"  # user corrected the level directly
     WASTE = "waste"
-    CONFIRM = "confirm"  # user physically checked; level unchanged, confidence restored
+    CONFIRM = "confirm"  # user physically checked; level unchanged, range collapsed
     INITIAL = "initial"  # seeding an item for the first time
 
 
@@ -56,18 +56,18 @@ class PantryItem(Base, OwnedMixin, TimestampMixin):
     # discrete items; a best estimate for bulk ones.
     quantity: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # How much we trust `quantity` right now, in [0, 1]. Decays with elapsed time
-    # and with every cook event that debited an estimate rather than a known
-    # amount. Restored to 1.0 by a physical confirmation.
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)
+    # The range the level could plausibly sit in, in base units, with
+    # 0 <= low <= quantity <= high. `low` decays with time since `belief_at`
+    # (unlogged use only lowers a level); reads apply that drift.
+    low: Mapped[float] = mapped_column(Float, default=0.0)
+    high: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # When the user last physically looked at this item. The anchor that decay
-    # is measured from -- not `updated_at`, which a cook event also touches.
+    # The `occurred_at` of the last event folded into this row.
+    belief_at: Mapped[datetime | None] = mapped_column()
+
+    # When the user last physically looked at this item. Spoilage measures
+    # staleness from it; `updated_at` would be touched by a cook as well.
     last_confirmed_at: Mapped[datetime] = mapped_column(default=utcnow)
-
-    # Cook events applied since the last physical confirmation. Each one
-    # compounds estimation error, so this drives an extra confidence penalty.
-    cooks_since_confirmed: Mapped[int] = mapped_column(default=0)
 
     location: Mapped[StorageLocation] = mapped_column(
         Enum(StorageLocation, native_enum=False, length=10), default=StorageLocation.PANTRY
@@ -83,7 +83,7 @@ class PantryItem(Base, OwnedMixin, TimestampMixin):
     def __repr__(self) -> str:
         return (
             f"<PantryItem u={self.user_id} ing={self.ingredient_id} "
-            f"qty={self.quantity:.1f} c={self.confidence:.2f}>"
+            f"qty={self.quantity:.1f} [{self.low:.1f}, {self.high:.1f}]>"
         )
 
 
@@ -115,7 +115,19 @@ class InventoryEvent(Base, OwnedMixin):
     delta: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Level after this event, so the ledger can be read without replaying it.
+    # For an observation (CONFIRM, MANUAL, INITIAL) it is the level the user saw.
     resulting_quantity: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Half-width of the doubt around an observed level, or extra doubt on a purchase.
+    uncertainty: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+
+    # Undo voids an event instead of writing a compensating one; the fold skips it.
+    voided_at: Mapped[datetime | None] = mapped_column()
+
+    # The cook this event belongs to, so undoing the cook voids exactly its events.
+    cook_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cook.id", ondelete="SET NULL"), index=True
+    )
 
     # How sure we are of *this* event. A receipt line matched at 0.6 produces a
     # less trustworthy purchase than a manually keyed one.

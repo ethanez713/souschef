@@ -64,7 +64,7 @@ def step(
     belief = drift(belief, event.occurred_at, half_life_days)
     quantity, low, high = belief.quantity, belief.low, belief.high
     delta, uncertainty = event.delta, event.uncertainty
-    confirmed = belief.last_confirmed_at
+    confirmed = belief.last_confirmed_at or event.occurred_at
 
     if event.reason in OBSERVATIONS:
         quantity = event.resulting_quantity

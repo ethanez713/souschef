@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from souschef.core.inventory import (
     INFERRED_PURCHASE_CONFIDENCE,
     consume_for_recipe,
-    cover_cook_shortfall,
     get_or_create_item,
     pantry_view,
     record_event,
@@ -412,30 +411,27 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
     )
 
 
-def test_cooking_more_than_the_ledger_holds_records_a_purchase_first(
+def test_cooking_more_than_the_ledger_holds_proves_the_stock_without_inventing_a_purchase(
     seeded_session: Session, owner: int
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
-    record_event(seeded_session, owner, pasta, reason=EventReason.PURCHASE, delta=1)
     when = datetime(2026, 9, 29, 12, tzinfo=UTC)
-
-    purchases = cover_cook_shortfall(
-        seeded_session, owner, {pasta.id: 6}, recipe_id=9, occurred_at=when
+    record_event(
+        seeded_session, owner, pasta, reason=EventReason.PURCHASE, delta=1,
+        occurred_at=when - timedelta(days=1),
     )
+
     cooks = consume_for_recipe(
         seeded_session, owner, {pasta.id: 6}, recipe_id=9, occurred_at=when
     )
 
-    assert get_or_create_item(seeded_session, owner, pasta).quantity == pytest.approx(0)
-    assert [event.reason for event in purchases] == [EventReason.PURCHASE]
-    assert purchases[0].event_confidence == INFERRED_PURCHASE_CONFIDENCE
-    assert purchases[0].source_ref == "recipe:9"
-    assert purchases[0].note == "implied purchase: cooked more than was on hand"
-    assert purchases[0].delta == pytest.approx(5)
-    assert cooks[0].reason == EventReason.COOK
+    item = get_or_create_item(seeded_session, owner, pasta)
+    assert (item.quantity, item.low, item.high) == pytest.approx((0, 0, 6))
+    assert [event.reason for event in _events(seeded_session, owner, pasta.id)] == [
+        EventReason.PURCHASE,
+        EventReason.COOK,
+    ]
     assert cooks[0].delta == pytest.approx(-6)
-    assert purchases[0].id < cooks[0].id
-    assert purchases[0].occurred_at == when
     assert cooks[0].occurred_at == when
 
 
@@ -445,20 +441,18 @@ def test_a_cook_that_fits_the_pantry_does_not_invent_a_purchase(
     pasta = ing(seeded_session, "spaghetti")
     record_event(seeded_session, owner, pasta, reason=EventReason.PURCHASE, delta=10)
 
-    assert cover_cook_shortfall(seeded_session, owner, {pasta.id: 4}, recipe_id=3) == []
     cooks = consume_for_recipe(seeded_session, owner, {pasta.id: 4}, recipe_id=3)
 
     assert [event.reason for event in cooks] == [EventReason.COOK]
     assert get_or_create_item(seeded_session, owner, pasta).quantity == pytest.approx(6)
 
 
-def test_a_staple_shortfall_is_not_purchased_or_debited(
+def test_a_staple_is_not_debited(
     seeded_session: Session, owner: int
 ) -> None:
     oil = ing(seeded_session, "olive oil")
     record_event(seeded_session, owner, oil, reason=EventReason.PURCHASE, delta=10)
 
-    assert cover_cook_shortfall(seeded_session, owner, {oil.id: 50}, recipe_id=4) == []
     assert consume_for_recipe(seeded_session, owner, {oil.id: 50}, recipe_id=4) == []
     assert get_or_create_item(seeded_session, owner, oil).quantity == pytest.approx(10)
 
@@ -857,11 +851,14 @@ def test_cook_preview_warns_names_untracked_lines_and_offers_the_past_week(
     assert f'value="{date.today().isoformat()}" selected' in bare.text
 
 
-def test_cooking_on_a_past_day_closes_that_entry_and_covers_the_shortfall(
+def test_cooking_on_a_past_day_closes_that_entry(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
-    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=10)
+    record_event(
+        seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=10,
+        occurred_at=datetime.now(UTC) - timedelta(days=3),
+    )
     recipe = _imported_pasta(
         seeded_session, web_user.id, "Backdated Pasta", "https://example.com/core-loop-backdate"
     )
@@ -878,18 +875,11 @@ def test_cooking_on_a_past_day_closes_that_entry_and_covers_the_shortfall(
     assert cooked.status_code == 303
     seeded_session.expire_all()
     assert get_or_create_item(seeded_session, web_user.id, pasta).quantity == pytest.approx(0)
-    events = _events(seeded_session, web_user.id, pasta.id)
-    purchase = next(
+    cook = next(
         event
-        for event in events
-        if event.reason == EventReason.PURCHASE
-        and event.note
-        and "implied purchase" in event.note
+        for event in _events(seeded_session, web_user.id, pasta.id)
+        if event.reason == EventReason.COOK
     )
-    cook = next(event for event in events if event.reason == EventReason.COOK)
-    assert purchase.id < cook.id
-    assert purchase.event_confidence == INFERRED_PURCHASE_CONFIDENCE
-    assert _day(purchase.occurred_at) == yesterday
     assert _day(cook.occurred_at) == yesterday
     closed = seeded_session.get(MealPlanEntry, entry.id)
     left_open = seeded_session.get(MealPlanEntry, today_entry.id)

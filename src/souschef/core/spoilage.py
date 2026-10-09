@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import date
 from enum import StrEnum
 
-from sqlalchemy import func, select
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from souschef.core.inventory import PantryView
+from souschef.core.inventory import PantryView, live_events
 from souschef.models import EventReason, InventoryEvent
 
 USE_SOON_FRACTION = 0.75
@@ -51,12 +51,9 @@ def freshness_by_ingredient(
     last_purchase = {
         ingredient_id: when.date()
         for ingredient_id, when in session.execute(
-            select(InventoryEvent.ingredient_id, func.max(InventoryEvent.occurred_at))
-            .where(
-                InventoryEvent.user_id == user_id,
-                InventoryEvent.reason == EventReason.PURCHASE,
-                InventoryEvent.delta > 0,
-            )
+            live_events(user_id)
+            .with_only_columns(InventoryEvent.ingredient_id, func.max(InventoryEvent.occurred_at))
+            .where(InventoryEvent.reason == EventReason.PURCHASE, InventoryEvent.delta > 0)
             .group_by(InventoryEvent.ingredient_id)
         )
     }

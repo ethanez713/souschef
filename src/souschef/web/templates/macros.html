@@ -1,6 +1,6 @@
 {% from "icons.html" import icon %}
-{% macro confidence_pips(confidence) %}
-{%- set level = 3 if confidence >= 0.8 else (2 if confidence >= 0.5 else 1) -%}
+{% macro confidence_pips(certainty) %}
+{%- set level = 3 if certainty >= 0.6 else (2 if certainty > 0 else 1) -%}
 {%- set tier = 'high' if level == 3 else ('med' if level == 2 else 'low') -%}
 {%- set label = 'High confidence in this level' if level == 3
     else ('Medium confidence' if level == 2 else 'Low confidence — worth a look') -%}
@@ -62,7 +62,7 @@
       </span>
     </div>
     <div class="trail">
-      {{ confidence_pips(v.confidence) }}
+      {{ confidence_pips(v.certainty) }}
       <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline"
             {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/confirm" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
         <input type="hidden" name="q" value="{{ query }}">

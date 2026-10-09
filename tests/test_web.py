@@ -7,6 +7,7 @@ mocked version of that proves nothing.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -610,7 +611,23 @@ def test_import_is_blocked_while_external_calls_are_disabled(signed_in: TestClie
 def test_manifest_declares_share_target(client: TestClient) -> None:
     payload = client.get("/manifest.webmanifest").json()
     assert payload["share_target"]["action"] == "/share"
+    assert payload["share_target"]["enctype"] == "application/x-www-form-urlencoded"
     assert payload["display"] == "standalone"
+
+
+TOP_LEVEL_PAGES = ("/", "/recipes", "/plan", "/shopping", "/pantry", "/receipts", "/settings")
+
+
+def test_top_level_pages_have_distinct_titles(signed_in: TestClient) -> None:
+    titles = []
+    for path in TOP_LEVEL_PAGES:
+        response = signed_in.get(path)
+        assert response.status_code == 200, path
+        match = re.search(r"<title>(.*?)</title>", response.text)
+        assert match is not None, path
+        titles.append(match.group(1))
+    assert all(title.endswith(" · SousChef") and title != " · SousChef" for title in titles)
+    assert len(set(titles)) == len(TOP_LEVEL_PAGES)
 
 
 def test_share_target_extracts_a_url_from_shared_text(signed_in: TestClient) -> None:

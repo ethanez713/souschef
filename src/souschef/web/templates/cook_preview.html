@@ -46,7 +46,8 @@
         <div class="field" style="margin:var(--sp-3) 0 0">
           <label for="qty{{ d.ingredient.id }}">Using ({{ d.ingredient|unit_label }})</label>
           <input id="qty{{ d.ingredient.id }}" name="qty_{{ d.ingredient.id }}"
-                 type="number" step="any" inputmode="decimal" value="{{ d.quantity|round(2) }}">
+                 type="number" step="any" inputmode="decimal"
+                 value="{{ d.quantity|entry_amount(d.ingredient) }}">
         </div>
       </div>
     {% else %}

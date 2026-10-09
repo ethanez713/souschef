@@ -26,32 +26,24 @@ from souschef.web.common import (
     _horizon,
     _render,
     _sync_shopping,
+    purchase_qty_text,
 )
 
 router = APIRouter()
 
 
-def _shop_line(item: ShoppingListItem) -> str:
-    label = item.label
-    qty = item.purchase_qty
-    unit = (item.purchase_unit or "").strip()
-    if not qty:
-        return label
-    n = int(round(qty))
-    if unit == "count" and label.casefold() == "garlic":
-        word = "clove" if n == 1 else "cloves"
-        return f"{n} {word} {label}"
-    if unit == "count":
-        return f"{n}× {label}"
-    if unit:
-        return f"{n} {unit} {label}"
-    return label
+def _shop_line(item: ShoppingListItem, user: User) -> str:
+    system = user.unit_system or "us"
+    qty = purchase_qty_text(item, system=system, show_alt=bool(user.show_alt_units))
+    if qty:
+        return f"{qty} {item.label}"
+    return item.label
 
 
-def _shopping_copy(by_aisle: dict[str, list]) -> str:
+def _shopping_copy(by_aisle: dict[str, list], user: User) -> str:
     blocks = []
     for aisle, items in by_aisle.items():
-        lines = [aisle, *(f"- {_shop_line(item)}" for item in items)]
+        lines = [aisle, *(f"- {_shop_line(item, user)}" for item in items)]
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
 
@@ -115,7 +107,7 @@ def _render_shopping(
         shopping_list=active,
         items=visible,
         by_aisle=by_aisle,
-        copy_text=_shopping_copy(by_aisle),
+        copy_text=_shopping_copy(by_aisle, user),
         has_plan=has_plan,
         pending_stock=pending_stock,
         unnamed=_group_unnamed(unnamed_recipe_lines(db, user.id, start, end)),

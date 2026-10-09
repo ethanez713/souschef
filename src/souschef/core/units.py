@@ -441,3 +441,108 @@ def format_quantity(
         primary = _us_volume(ml) if system == "us" else _metric(ml, "ml", "L")
         alternate = _metric(ml, "ml", "L") if system == "us" else _us_volume(ml)
     return f"{primary} ({alternate})" if show_alt else primary
+
+
+def entry_unit(ingredient: object, system: str) -> str:
+    """The unit a number box is labelled in and parsed from.
+
+    US mass is pounds and US volume is cups; metric stays in grams or milliliters.
+    Counts stay counts. Stored levels remain in the ingredient's base unit.
+    """
+    base = normalize_unit(getattr(ingredient, "base_unit", None))
+    dimension = dimension_of(base)
+    if dimension == Dimension.COUNT:
+        return BASE_COUNT
+    if system == "metric":
+        return "gram" if dimension == Dimension.MASS else "milliliter"
+    return "pound" if dimension == Dimension.MASS else "cup"
+
+
+_ENTRY_LABELS = {
+    "pound": "lb",
+    "cup": "cup",
+    "gram": "g",
+    "milliliter": "ml",
+    "count": "count",
+}
+
+
+def entry_label(ingredient: object, system: str) -> str:
+    """Short label for an entry box, such as ``lb`` or ``g``."""
+    return _ENTRY_LABELS[entry_unit(ingredient, system)]
+
+
+def _nearest(value: float) -> int:
+    return int(value + 0.5) if value >= 0 else int(value - 0.5)
+
+
+def _round_metric(value: float) -> float:
+    """Whole units under 10, otherwise the nearest 5. A positive amount is never 0."""
+    if value <= 0:
+        return 0.0
+    if value < 10:
+        return float(max(_nearest(value), 1))
+    return float(max(_nearest(value / 5) * 5, 5))
+
+
+def _rounded_ounces(grams: float) -> float:
+    """Ounces at the same steps ``format_quantity`` uses for a US weight."""
+    if grams <= 0:
+        return 0.0
+    ounces = grams / _GRAMS_PER_OUNCE
+    if ounces >= _OUNCES_PER_POUND * _SWITCH:
+        rounded = _nearest(ounces)
+        pounds, remainder = divmod(rounded, _OUNCES_PER_POUND)
+        if remainder < 4:
+            remainder = 0
+        return float(pounds * _OUNCES_PER_POUND + remainder)
+    if ounces < 4:
+        return max(_nearest(ounces * 4), 1) / 4
+    return float(max(_nearest(ounces), 1))
+
+
+def _rounded_ml(ml: float) -> float:
+    """Milliliters at the same steps ``format_quantity`` uses for a US volume."""
+    if ml <= 0:
+        return 0.0
+    if ml < _US_TBSP_ML * _SWITCH:
+        quarters = max(_nearest(ml / _US_TSP_ML * 4), 1)
+        return quarters / 4 * _US_TSP_ML
+    if ml < _US_CUP_ML / 4 * _SWITCH:
+        quarters = max(_nearest(ml / _US_TBSP_ML * 4), 1)
+        return quarters / 4 * _US_TBSP_ML
+    if ml < _US_QT_ML * _SWITCH:
+        eighths = max(_nearest(ml / _US_CUP_ML * 8), 1)
+        return eighths / 8 * _US_CUP_ML
+    if ml < _US_GAL_ML * _SWITCH:
+        return _nearest(ml / _US_QT_ML * 10) / 10 * _US_QT_ML
+    return _nearest(ml / _US_GAL_ML * 10) / 10 * _US_GAL_ML
+
+
+def entry_amount(value: float, ingredient: object, system: str) -> float:
+    """A base-unit quantity as a number in ``entry_unit``, rounded for the kitchen.
+
+    Metric mass and volume use whole units under 10 and steps of 5 above that.
+    US amounts use the same ounce and cup steps as ``format_quantity``.
+    """
+    base = normalize_unit(getattr(ingredient, "base_unit", None))
+    dimension = dimension_of(base)
+    if dimension == Dimension.COUNT:
+        if value <= 0:
+            return 0.0
+        return float(max(_nearest(value), 1))
+    if dimension == Dimension.MASS:
+        grams = float(_ureg.Quantity(value, base).to("gram").magnitude)
+        if system == "metric":
+            return _round_metric(grams)
+        return _rounded_ounces(grams) / _OUNCES_PER_POUND
+    ml = float(_ureg.Quantity(value, base).to("milliliter").magnitude)
+    if system == "metric":
+        return _round_metric(ml)
+    return _rounded_ml(ml) / _US_CUP_ML
+
+
+def format_entry_amount(value: float, ingredient: object, system: str) -> str:
+    """``entry_amount`` as a number an ``<input type="number">`` can round-trip."""
+    amount = entry_amount(value, ingredient, system)
+    return f"{amount:.6f}".rstrip("0").rstrip(".") or "0"

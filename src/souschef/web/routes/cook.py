@@ -10,10 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from souschef.core.cooking import record_cook
-from souschef.core.inventory import pantry_view
+from souschef.core.inventory import pantry_view, physical_of
 from souschef.core.recipes import recipe_requirements
+from souschef.core.units import entry_unit, format_entry_amount, to_base
 from souschef.db import get_db
-from souschef.models import MealPlanEntry, Recipe, User
+from souschef.models import CanonicalIngredient, MealPlanEntry, Recipe, User
 from souschef.web import auth
 from souschef.web.common import (
     MAX_SERVINGS,
@@ -170,7 +171,7 @@ async def mark_cooked(
         cooked_on = date.today()
 
     proposed: dict[int, float] = {}
-    used: dict[int, float] = {}
+    posted: dict[int, float] = {}
     for key, raw in form.items():
         value = str(raw).strip()
         if not value:
@@ -178,16 +179,31 @@ async def mark_cooked(
         if key.startswith("proposed_"):
             proposed[int(key.removeprefix("proposed_"))] = float(value)
         elif key.startswith("qty_"):
-            used[int(key.removeprefix("qty_"))] = float(value)
+            posted[int(key.removeprefix("qty_"))] = float(value)
 
-    if not used:
+    system = user.unit_system or "us"
+    if not posted:
         used = recipe_requirements(db, recipe, servings=servings or None).as_map()
-
-    notes = {
-        iid: f"cook adjust: proposed {proposed[iid]:g}, used {amount:g}"
-        for iid, amount in used.items()
-        if iid in proposed and abs(amount - proposed[iid]) > 1e-6
-    }
+        notes: dict[int, str] = {}
+    else:
+        # The box shows the entry unit. proposed_* stays in base units, so an
+        # edit is a posted number that is not the rounded entry amount.
+        used = {}
+        notes = {}
+        for ingredient_id, amount in posted.items():
+            ingredient = db.get(CanonicalIngredient, ingredient_id)
+            if ingredient is None:
+                continue
+            base = to_base(amount, entry_unit(ingredient, system), physical_of(ingredient))
+            used[ingredient_id] = base
+            if ingredient_id not in proposed:
+                continue
+            posted_text = f"{amount:.6f}".rstrip("0").rstrip(".") or "0"
+            shown = format_entry_amount(proposed[ingredient_id], ingredient, system)
+            if posted_text != shown:
+                notes[ingredient_id] = (
+                    f"cook adjust: proposed {proposed[ingredient_id]:g}, used {base:g}"
+                )
     when = _cook_when(cooked_on)
     # Without an entry_id the day on the form decides which plan entry closes,
     # so logging Thursday from the recipe page still attaches to Thursday.

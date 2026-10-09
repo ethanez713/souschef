@@ -50,7 +50,13 @@
               {% if line.is_confirmed and line.ingredient %}{{ line.ingredient.name }}
               {% elif line.ingredient %}{{ line.ingredient.name }} · not added
               {% else %}not added{% endif %}
-              {% if line.parsed_quantity %} · {{ line.parsed_quantity }} {{ line.parsed_unit or '' }}{% endif %}
+              {% if line.parsed_quantity %}
+                {% if line.ingredient %}
+                  · <span class="num">{{ line.parsed_quantity|quantity(line.ingredient, line.parsed_unit or none) }}</span>
+                {% else %}
+                  · {{ line.parsed_quantity }} {{ line.parsed_unit or '' }}
+                {% endif %}
+              {% endif %}
             </p>
           </div>
         {% else %}

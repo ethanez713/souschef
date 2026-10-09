@@ -10,13 +10,15 @@ from __future__ import annotations
 import re
 from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from tests.conftest import WEB_PASSWORD, WEB_USERNAME
 
-from souschef.core.inventory import discard_item, get_or_create_item, record_event
+from souschef.core.inventory import discard_item, get_or_create_item, physical_of, record_event
 from souschef.core.recipes import save_imported_recipe
+from souschef.core.units import entry_unit, to_base
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
@@ -401,8 +403,10 @@ def test_cook_preview_logs_an_edit(
     ).first()
     assert event is not None
     assert event.note is not None
+    # The posted 100 is pounds, the entry unit, and the ledger stays in grams.
+    used = to_base(100, entry_unit(pasta, "us"), physical_of(pasta))
     assert "proposed 300" in event.note
-    assert "used 100" in event.note
+    assert f"used {used:g}" in event.note
 
 
 def test_marking_cooked_debits_the_pantry(
@@ -971,7 +975,9 @@ def test_one_audit_save_records_every_answer(
         data={f"quantity_{oil.id}": "80", f"quantity_{eggs.id}": "5"},
     )
     assert response.status_code == 303
-    assert _pantry_row(seeded_session, web_user, "olive oil").quantity == 80
+    # 80 is cups for a US user; eggs stay a count. The ledger stores milliliters.
+    oil_ml = to_base(80, entry_unit(oil, "us"), physical_of(oil))
+    assert _pantry_row(seeded_session, web_user, "olive oil").quantity == pytest.approx(oil_ml)
     assert _pantry_row(seeded_session, web_user, "eggs").quantity == 5
 
 
@@ -1719,3 +1725,94 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
     assert "souschef-shell-v4" in worker
+
+
+def test_pages_follow_the_signed_in_unit_system(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Unit Systems",
+            ingredients=["1 pound spaghetti", "2 tsp smoked paprika", "1 cup whole milk"],
+            servings=1,
+            source_url="https://example.com/unit-systems",
+        ),
+        source=RecipeSource.URL,
+    )
+    chicken = ing(seeded_session, "chicken thigh")
+    pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, web_user.id, chicken, reason=EventReason.PURCHASE, delta=907)
+    record_event(
+        seeded_session,
+        web_user.id,
+        pasta,
+        reason=EventReason.PURCHASE,
+        delta=to_base(1, "pound", physical_of(pasta)),
+    )
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=date.today() + timedelta(days=1),
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=2,
+        )
+    )
+    seeded_session.commit()
+
+    pantry = signed_in.get("/pantry").text
+    assert '<span class="num">2 lb</span>' in pantry
+    assert "Set to… (lb)" in pantry
+    assert "907 g" not in pantry
+
+    recipe_page = signed_in.get(f"/recipes/{recipe.id}").text
+    assert 'need <span class="num">2 tsp</span>' in recipe_page
+    assert 'need <span class="num">1 cup</span>' in recipe_page
+    assert 'need <span class="num">1 lb</span>' in recipe_page
+    assert 'have <span class="num">1 lb</span>' in recipe_page
+
+    shopping = signed_in.get("/shopping").text
+    assert "1 × 1 lb" in shopping
+    assert "needs 1 lb" in shopping
+    assert "454 g" not in shopping
+
+    web_user.unit_system = "metric"
+    seeded_session.commit()
+
+    pantry = signed_in.get("/pantry").text
+    assert '<span class="num">907 g</span>' in pantry
+    assert "Set to… (g)" in pantry
+    assert "2 lb" not in pantry
+
+    recipe_page = signed_in.get(f"/recipes/{recipe.id}").text
+    assert 'need <span class="num">9.9 ml</span>' in recipe_page
+    assert 'need <span class="num">237 ml</span>' in recipe_page
+    assert 'need <span class="num">454 g</span>' in recipe_page
+    assert 'have <span class="num">454 g</span>' in recipe_page
+
+    shopping = signed_in.get("/shopping").text
+    assert "1 × 454 g" in shopping
+    assert "needs 454 g" in shopping
+
+
+def test_pantry_set_level_stores_base_grams_from_the_entry_unit(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    response = signed_in.post(f"/pantry/{chicken.id}/level", data={"quantity": "2"})
+    assert response.status_code == 303
+    stored = _pantry_row(seeded_session, web_user, "chicken thigh")
+    assert stored is not None
+    assert stored.quantity == pytest.approx(
+        to_base(2, entry_unit(chicken, "us"), physical_of(chicken))
+    )
+
+    web_user.unit_system = "metric"
+    seeded_session.commit()
+    response = signed_in.post(f"/pantry/{chicken.id}/level", data={"quantity": "250"})
+    assert response.status_code == 303
+    stored = _pantry_row(seeded_session, web_user, "chicken thigh")
+    assert stored is not None
+    assert stored.quantity == pytest.approx(250)

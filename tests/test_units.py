@@ -16,6 +16,8 @@ from souschef.core.units import (
     convert,
     count_factors_for,
     dimension_of,
+    entry_amount,
+    entry_unit,
     format_quantity,
     humanize,
     normalize_unit,
@@ -184,3 +186,36 @@ def test_humanize_adds_the_ounce_form_only_on_request() -> None:
 )
 def test_format_quantity(value: float, unit: str, kwargs: dict, expected: str) -> None:
     assert format_quantity(value, unit, **kwargs) == expected
+
+
+class _Ingredient:
+    def __init__(self, base_unit: str) -> None:
+        self.base_unit = base_unit
+
+
+@pytest.mark.parametrize(
+    ("base", "system", "expected"),
+    [
+        ("g", "us", "pound"),
+        ("g", "metric", "gram"),
+        ("ml", "us", "cup"),
+        ("ml", "metric", "milliliter"),
+        ("count", "us", "count"),
+        ("count", "metric", "count"),
+    ],
+)
+def test_entry_unit_follows_the_system(base: str, system: str, expected: str) -> None:
+    assert entry_unit(_Ingredient(base), system) == expected
+
+
+def test_entry_amount_rounds_to_a_kitchen_step() -> None:
+    mass = _Ingredient("g")
+    volume = _Ingredient("ml")
+    assert entry_amount(907, mass, "us") == pytest.approx(2)
+    assert entry_amount(200, mass, "us") == pytest.approx(7 / 16)
+    assert entry_amount(4.5, mass, "us") == pytest.approx(0.015625)
+    assert entry_amount(4.5, mass, "metric") == pytest.approx(5)
+    assert entry_amount(907, mass, "metric") == pytest.approx(905)
+    assert entry_amount(14.8, volume, "us") == pytest.approx(1 / 16, rel=0.01)
+    assert entry_amount(10, volume, "metric") == pytest.approx(10)
+    assert entry_amount(12, _Ingredient("count"), "us") == pytest.approx(12)

@@ -65,7 +65,7 @@
               {{ r.ingredient.name }}
               {%- if r.is_staple %} · assumed on hand
               {%- elif r.is_vague %} · amount unspecified
-              {%- else %} · need <span class="num">{{ r.quantity|measure(r.ingredient) }}</span>,
+              {%- else %} · need <span class="num">{% if row.line and row.line.quantity is not none %}{{ row.line.quantity|quantity(r.ingredient, row.line.unit or none) }}{% else %}{{ r.quantity|quantity(r.ingredient) }}{% endif %}</span>,
                 have <span class="num">{{ have|stock(r.ingredient) }}</span>{% endif %}
             </span>
           </div>

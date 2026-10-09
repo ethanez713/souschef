@@ -20,7 +20,7 @@ from souschef.core.inventory import (
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.spoilage import freshness_by_ingredient
-from souschef.core.units import UnitConversionError
+from souschef.core.units import UnitConversionError, entry_unit
 from souschef.db import get_db
 from souschef.models import CanonicalIngredient, EventReason, User
 from souschef.models.ingredient import IngredientCategory
@@ -165,8 +165,10 @@ def update_level(
     ingredient = db.get(CanonicalIngredient, ingredient_id)
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
+    # An empty unit means the number was typed in the entry unit shown on the box.
+    typed = unit.strip() or entry_unit(ingredient, user.unit_system or "us")
     try:
-        set_level(db, user.id, ingredient, quantity, unit=unit or None)
+        set_level(db, user.id, ingredient, quantity, unit=typed)
     except (UnitConversionError, ValueError) as exc:
         return _pantry_page(request, db, user, q, level_error=str(exc), status_code=400)
     return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)

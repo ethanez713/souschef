@@ -555,10 +555,9 @@ def test_purchase_quantity_rounds_up_to_a_real_package(seeded_session: Session) 
     chicken = ing(seeded_session, "chicken thigh")
     qty, unit, note = to_purchase_quantity(chicken, 680)
     assert qty == 1
-    assert "907" in unit
-    assert note and "680" in note
-    assert unit == "x 907 g (32 oz)"
-    assert note == "needs 680 g (24 oz)"
+    # The package size stays on the ingredient; the list formats it for whoever is reading.
+    assert unit == "x"
+    assert note is None
 
     # Two packs once the need exceeds one.
     qty, _, _ = to_purchase_quantity(chicken, 1500)

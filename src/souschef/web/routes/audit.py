@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from souschef.core.audit import build_audit
 from souschef.core.inventory import confirm_level
-from souschef.core.units import UnitConversionError
+from souschef.core.units import UnitConversionError, entry_unit
 from souschef.db import get_db
 from souschef.models import CanonicalIngredient, User
 from souschef.planning.shopping import requirements_for_audit
@@ -47,7 +47,16 @@ def _confirm_audit_field(db: Session, user: User, ingredient_id: int, raw: str) 
     # An empty box means "the estimate was right", which still restores
     # confidence -- that is the whole point of asking.
     text = raw.strip()
-    confirm_level(db, user.id, ingredient, float(text) if text else None)
+    if not text:
+        confirm_level(db, user.id, ingredient)
+        return
+    confirm_level(
+        db,
+        user.id,
+        ingredient,
+        float(text),
+        unit=entry_unit(ingredient, user.unit_system or "us"),
+    )
 
 
 @router.post("/audit")

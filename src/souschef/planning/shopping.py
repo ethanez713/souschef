@@ -32,7 +32,7 @@ from souschef.core.inventory import (
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.recipes import recipe_requirements
-from souschef.core.units import UnitConversionError, dimension_of, humanize, to_base
+from souschef.core.units import UnitConversionError, dimension_of, to_base
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
@@ -49,6 +49,16 @@ from souschef.models.planning import ItemSource
 from souschef.planning.suggest import nonoptional_unmatched
 
 DEFAULT_AISLE = "Other"
+
+# A purchase counted in packages, not a unit of measure. The package size stays
+# on the ingredient so a later render can follow the viewer's unit system.
+# Older rows stored the formatted size after this marker ("x 907 g (32 oz)").
+PACKAGE_COUNT_UNIT = "x"
+
+
+def is_package_count(unit: str | None) -> bool:
+    text = (unit or "").strip()
+    return text == PACKAGE_COUNT_UNIT or text.startswith(f"{PACKAGE_COUNT_UNIT} ")
 
 
 @dataclass
@@ -176,16 +186,15 @@ def to_purchase_quantity(
     if ingredient.base_unit == "count" and ingredient.package_qty == 1:
         return float(packages), "count", None
 
-    note = f"needs {humanize(shortfall, ingredient.base_unit, us=True)}"
-    unit_label = f"x {humanize(ingredient.package_qty, ingredient.package_unit, us=True)}"
-    return float(packages), unit_label, note
+    # The shortfall stays in needed_qty. The package size stays on the ingredient.
+    return float(packages), PACKAGE_COUNT_UNIT, None
 
 
 def _one_package(ingredient: CanonicalIngredient) -> tuple[float, str, str]:
     """One purchasable unit, when the recipe named the food but not the amount."""
     note = "amount wasn't on the recipe"
     if ingredient.package_qty and ingredient.package_unit:
-        return 1.0, f"x {humanize(ingredient.package_qty, ingredient.package_unit, us=True)}", note
+        return 1.0, PACKAGE_COUNT_UNIT, note
     return 1.0, ingredient.base_unit, note
 
 
@@ -469,7 +478,7 @@ def listed_purchase(
     """
     unit = (purchase_unit or "").strip()
     qty = float(purchase_qty or 0)
-    if unit.startswith("x ") and ingredient.package_qty and ingredient.package_unit:
+    if is_package_count(unit) and ingredient.package_qty and ingredient.package_unit:
         packages = qty if qty > 0 else 1.0
         return packages * float(ingredient.package_qty), ingredient.package_unit
     if qty > 0:
@@ -497,7 +506,7 @@ def _create_adhoc(session: Session, name: str, unit: str | None) -> CanonicalIng
         return existing
     base = "count"
     cleaned = (unit or "").strip()
-    if cleaned and not cleaned.startswith("x "):
+    if cleaned and not is_package_count(cleaned):
         try:
             dim = dimension_of(cleaned)
         except UnitConversionError:

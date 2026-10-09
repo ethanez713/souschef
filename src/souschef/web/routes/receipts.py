@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from souschef.core.matching import IngredientMatcher
+from souschef.core.units import UnitConversionError, format_quantity
 from souschef.db import get_db
 from souschef.ingest.receipt_service import (
     ReceiptError,
@@ -286,24 +287,25 @@ def update_receipt_line(
     return RedirectResponse(f"/receipts/{receipt_id}", status_code=303)
 
 
-def _added_label(line: ReceiptLine, ingredient: CanonicalIngredient) -> str:
+def _added_label(line: ReceiptLine, ingredient: CanonicalIngredient, user: User) -> str:
     if not line.parsed_quantity:
         return ingredient.name
-    amount = line.parsed_quantity
-    text = str(int(round(amount))) if abs(amount - round(amount)) < 0.05 else f"{amount:g}"
-    unit = (line.parsed_unit or "").strip()
-    garlic = ingredient.name.casefold() == "garlic"
-    if garlic and unit.casefold() in {"", "count", "clove", "cloves"}:
-        word = "clove" if text == "1" else "cloves"
-        return f"{ingredient.name} ({text} {word})"
-    if unit and unit.casefold() != "count":
-        return f"{ingredient.name} ({text} {unit})"
-    if unit.casefold() == "count":
-        return f"{ingredient.name} ({text} count)"
+    unit = (line.parsed_unit or "").strip() or ingredient.base_unit
+    try:
+        text = format_quantity(
+            line.parsed_quantity,
+            unit,
+            system=user.unit_system or "us",
+            show_alt=bool(user.show_alt_units),
+            noun=ingredient.count_noun,
+            name=ingredient.name,
+        )
+    except UnitConversionError:
+        text = f"{line.parsed_quantity:g} {unit}".strip()
     return f"{ingredient.name} ({text})"
 
 
-def _added_labels(db: Session, receipt: Receipt, warnings: list[str]) -> list[str]:
+def _added_labels(db: Session, receipt: Receipt, warnings: list[str], user: User) -> list[str]:
     failed = set()
     for warning in warnings:
         raw, sep, _rest = warning.partition(":")
@@ -318,7 +320,7 @@ def _added_labels(db: Session, receipt: Receipt, warnings: list[str]) -> list[st
         ingredient = db.get(CanonicalIngredient, line.ingredient_id)
         if ingredient is None:
             continue
-        labels.append(_added_label(line, ingredient))
+        labels.append(_added_label(line, ingredient, user))
     return labels
 
 
@@ -362,5 +364,5 @@ async def apply_receipt_route(
         receipt=receipt,
         warnings=warnings,
         added=added,
-        added_labels=_added_labels(db, receipt, warnings),
+        added_labels=_added_labels(db, receipt, warnings, user),
     )

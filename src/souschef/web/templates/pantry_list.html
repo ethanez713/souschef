@@ -1,5 +1,6 @@
 {% from "icons.html" import icon %}
-{% from "macros.html" import pantry_card, discard_notice %}
+{# `with context` so the card's quantity filters see the signed-in user. A bare import does not. #}
+{% from "macros.html" import pantry_card, discard_notice with context %}
 {{ discard_notice(discarded, query) }}
 {% if level_error %}
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>

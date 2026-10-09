@@ -45,16 +45,15 @@
               <span class="tick">{{ icon('check', 14) }}</span>
               <span class="stack">
                 <strong>
-                  {% if it.purchase_qty and it.purchase_unit == 'count' and it.label|lower == 'garlic' %}
-                    <span class="num">{{ it.purchase_qty|round|int }} {{ 'clove' if (it.purchase_qty|round|int) == 1 else 'cloves' }}</span>
-                  {% elif it.purchase_qty and it.purchase_unit == 'count' %}<span class="num">{{ it.purchase_qty|round|int }}×</span>
-                  {% elif it.purchase_qty %}<span class="num">{{ it.purchase_qty|round|int }} {{ it.purchase_unit }}{% set us = it.purchase_qty|us_equivalent(it.purchase_unit or '') %}{% if us %} ({{ us }}){% endif %}</span>
-                  {% endif %}
+                  {% set qty_text = it|shop_qty %}
+                  {% if qty_text %}<span class="num">{{ qty_text }}</span> {% endif %}
                   {{ it.label }}
                 </strong>
                 <span class="meta">
                   {%- if it.is_stocked %}Added to pantry · {% endif -%}
-                  {%- if it.purchase_note %}{{ it.purchase_note }} · {% endif -%}
+                  {%- set need = it|shop_need -%}
+                  {%- if need %}{{ need }} · {% endif -%}
+                  {%- if it.purchase_note and not it.purchase_note.startswith('needs ') %}{{ it.purchase_note }} · {% endif -%}
                   for {{ it.driven_by or 'restock' }}
                 </span>
               </span>

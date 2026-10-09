@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Home · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import pantry_card, suggestion_card, day_label, discard_notice %}
+{# `with context` so the card's quantity filters see the signed-in user. A bare import does not. #}
+{% from "macros.html" import pantry_card, suggestion_card, day_label, discard_notice with context %}
 {% set active = 'home' %}
 {% block content %}
 <main id="main">

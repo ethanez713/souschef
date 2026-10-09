@@ -41,14 +41,14 @@
             <h3>{{ c.ingredient.name }}</h3>
             <span class="meta">
               {% if c.reason == 'needed_this_week' %}
-                Recipes need about <span class="num">{{ c.required|measure(c.ingredient, True) }}</span>.
-                Best guess: <span class="num">{{ c.believed|measure(c.ingredient, True) }}</span>.
+                Recipes need about <span class="num">{{ c.required|quantity(c.ingredient, round_count=True) }}</span>.
+                Best guess: <span class="num">{{ c.believed|quantity(c.ingredient, round_count=True) }}</span>.
               {% else %}
                 Might be below your restock level.
-                Best guess: <span class="num">{{ c.believed|measure(c.ingredient, True) }}</span>.
+                Best guess: <span class="num">{{ c.believed|quantity(c.ingredient, round_count=True) }}</span>.
               {% endif %}
-              Could be anywhere from <span class="num">{{ c.low|measure(c.ingredient, True) }}</span>
-              to <span class="num">{{ c.high|measure(c.ingredient, True) }}</span>.
+              Could be anywhere from <span class="num">{{ c.low|quantity(c.ingredient, round_count=True) }}</span>
+              to <span class="num">{{ c.high|quantity(c.ingredient, round_count=True) }}</span>.
             </span>
           </div>
           <span class="badge warn">
@@ -61,7 +61,7 @@
             <label for="q{{ c.ingredient.id }}">Actual amount ({{ c.ingredient|unit_label }})</label>
             <input id="q{{ c.ingredient.id }}" name="quantity_{{ c.ingredient.id }}" type="number" step="any"
                    inputmode="decimal"
-                   placeholder="{{ (c.believed|round|int) if c.ingredient.base_unit == 'count' else (c.believed|round(1)) }}">
+                   placeholder="{{ c.believed|entry_amount(c.ingredient) }}">
           </div>
         </div>
         <p class="note">Leave blank if the best guess looks right.</p>

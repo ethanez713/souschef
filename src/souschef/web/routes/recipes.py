@@ -80,12 +80,12 @@ def _recipe_rows(recipe: Recipe, requirements) -> tuple[list[dict], int]:  # noq
     for line in recipe.ingredients:
         bucket = pools.get(line.raw_text)
         if bucket:
-            rows.append({"req": bucket.pop(0), "raw": line.raw_text})
+            rows.append({"req": bucket.pop(0), "raw": line.raw_text, "line": line})
         else:
-            rows.append({"req": None, "raw": line.raw_text})
+            rows.append({"req": None, "raw": line.raw_text, "line": line})
             unmatched += 1
     for bucket in pools.values():
-        rows.extend({"req": req, "raw": req.raw_text} for req in bucket)
+        rows.extend({"req": req, "raw": req.raw_text, "line": None} for req in bucket)
     return rows, unmatched
 
 

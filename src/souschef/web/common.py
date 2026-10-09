@@ -8,13 +8,21 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+from jinja2 import pass_context
 from sqlalchemy.orm import Session
 
 from souschef import logconfig
-from souschef.core.units import UnitConversionError, dimension_of, humanize, us_equivalent
+from souschef.core.units import (
+    UnitConversionError,
+    dimension_of,
+    entry_label,
+    format_entry_amount,
+    format_quantity,
+    normalize_unit,
+)
 from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, Recipe, User
 from souschef.models.base import Base
-from souschef.planning.shopping import build_shopping_list
+from souschef.planning.shopping import build_shopping_list, is_package_count
 from souschef.web import auth
 
 PLAN_DAYS = 10
@@ -30,29 +38,162 @@ WEB_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 
 
-def _measure(quantity: float, ingredient: CanonicalIngredient, round_count: bool = False) -> str:
-    """A quantity the way it should read, without touching the stored number."""
-    shown = float(quantity)
-    if round_count and ingredient.base_unit == "count":
+def _user_system(context: dict) -> tuple[str, bool]:
+    user = context.get("user")
+    system = getattr(user, "unit_system", None) or "us"
+    if system not in ("us", "metric"):
+        system = "us"
+    return system, bool(getattr(user, "show_alt_units", False))
+
+
+def _format_for(
+    value: float,
+    unit: str,
+    ingredient: CanonicalIngredient | None,
+    system: str,
+    show_alt: bool,
+    *,
+    noun: str | None = None,
+    name: str | None = None,
+) -> str:
+    return format_quantity(
+        value,
+        unit,
+        system=system,
+        show_alt=show_alt,
+        noun=ingredient.count_noun if ingredient is not None and noun is None else noun,
+        name=(ingredient.name if ingredient is not None else "") if name is None else name,
+    )
+
+
+@pass_context
+def _quantity(
+    context: dict,
+    value: float,
+    ingredient: CanonicalIngredient,
+    unit: str | None = None,
+    round_count: bool = False,
+) -> str:
+    """A quantity in the signed-in user's unit system.
+
+    ``unit`` defaults to the ingredient's base unit. A named count word ("clove",
+    "head") is kept as written instead of being restated in the base count.
+    """
+    system, show_alt = _user_system(context)
+    chosen = unit or ingredient.base_unit
+    shown = float(value)
+    normalized = normalize_unit(chosen)
+    if round_count and dimension_of(normalized) == "count":
         shown = float(round(shown))
-    text = humanize(shown, ingredient.base_unit)
-    if ingredient.name.casefold() == "garlic" and ingredient.base_unit == "count":
-        word = "clove" if abs(shown - 1) < 0.05 else "cloves"
-        return f"{text} {word}"
-    return text
+    if unit and dimension_of(normalized) == "count" and normalized != "count":
+        return format_quantity(shown, normalized, noun=normalized, name="")
+    return _format_for(shown, chosen, ingredient, system, show_alt)
 
 
-def _stock(quantity: float, ingredient: CanonicalIngredient) -> str:
+@pass_context
+def _stock(context: dict, quantity: float, ingredient: CanonicalIngredient) -> str:
     """Pantry levels. A remainder below one base unit reads as out, not "0.4 g"."""
     if 0 < quantity < 1:
         return "out"
-    return _measure(quantity, ingredient)
+    return _quantity(context, quantity, ingredient)
 
 
-def _unit_label(ingredient: CanonicalIngredient) -> str:
-    if ingredient.name.casefold() == "garlic" and ingredient.base_unit == "count":
-        return "cloves"
-    return ingredient.base_unit
+@pass_context
+def _unit_label(context: dict, ingredient: CanonicalIngredient) -> str:
+    system, _show_alt = _user_system(context)
+    return entry_label(ingredient, system)
+
+
+@pass_context
+def _entry_amount(context: dict, value: float, ingredient: CanonicalIngredient) -> str:
+    system, _show_alt = _user_system(context)
+    return format_entry_amount(float(value), ingredient, system)
+
+
+def _plain_amount(qty: float) -> str:
+    if abs(qty - round(qty)) < 0.05:
+        return str(int(round(qty)))
+    return f"{qty:g}"
+
+
+def _count_prefix(
+    qty: float, ingredient: CanonicalIngredient | None, system: str, show_alt: bool
+) -> str:
+    if ingredient is None:
+        return f"{_plain_amount(qty)}×"
+    formatted = _format_for(qty, "count", ingredient, system, show_alt)
+    if " dozen" in formatted:
+        return formatted
+    noun = ingredient.count_noun
+    if noun and not _noun_names_the_ingredient(noun, ingredient.name):
+        return formatted
+    return f"{_plain_amount(qty)}×"
+
+
+def _noun_names_the_ingredient(noun: str, name: str) -> bool:
+    """True when the count word is the food itself ("onion", "egg"), not "clove"."""
+    word = noun.casefold()
+    tokens = name.casefold().split()
+    if word in tokens:
+        return True
+    last = tokens[-1] if tokens else ""
+    return last == word or last.removesuffix("s") == word or word.removesuffix("s") == last
+
+
+def purchase_qty_text(item: object, *, system: str, show_alt: bool) -> str:
+    """The amount in front of a shopping-list name, in the viewer's unit system."""
+    qty = getattr(item, "purchase_qty", None)
+    if not qty:
+        return ""
+    unit = (getattr(item, "purchase_unit", None) or "").strip()
+    ingredient = getattr(item, "ingredient", None)
+    amount = float(qty)
+    if is_package_count(unit):
+        packages = int(round(amount))
+        if ingredient is not None and ingredient.package_qty and ingredient.package_unit:
+            size = _format_for(
+                ingredient.package_qty,
+                ingredient.package_unit,
+                ingredient,
+                system,
+                show_alt,
+            )
+            return f"{packages} × {size}"
+        return f"{packages}×"
+    measure = unit or (ingredient.base_unit if ingredient is not None else "count")
+    if measure == "count":
+        return _count_prefix(amount, ingredient, system, show_alt)
+    try:
+        dimension_of(measure)
+    except UnitConversionError:
+        return f"{_plain_amount(amount)} {measure}".strip()
+    return _format_for(amount, measure, ingredient, system, show_alt)
+
+
+def purchase_need_text(item: object, *, system: str, show_alt: bool) -> str:
+    """The recipe shortfall under a package line. Empty when the line is the shortfall."""
+    if not is_package_count(getattr(item, "purchase_unit", None)):
+        return ""
+    needed = getattr(item, "needed_qty", None) or 0
+    if needed <= 0:
+        return ""
+    ingredient = getattr(item, "ingredient", None)
+    if ingredient is None:
+        return ""
+    amount = _format_for(needed, ingredient.base_unit, ingredient, system, show_alt)
+    return f"needs {amount}"
+
+
+@pass_context
+def _shop_qty(context: dict, item: object) -> str:
+    system, show_alt = _user_system(context)
+    return purchase_qty_text(item, system=system, show_alt=show_alt)
+
+
+@pass_context
+def _shop_need(context: dict, item: object) -> str:
+    system, show_alt = _user_system(context)
+    return purchase_need_text(item, system=system, show_alt=show_alt)
 
 
 def _receipt_label(status: object) -> str:
@@ -66,21 +207,12 @@ def _receipt_label(status: object) -> str:
     }.get(str(key), str(key).replace("_", " "))
 
 
-templates.env.filters["humanize"] = humanize
-
-
-templates.env.filters["us_equivalent"] = us_equivalent
-
-
-templates.env.filters["measure"] = _measure
-
-
+templates.env.filters["quantity"] = _quantity
 templates.env.filters["stock"] = _stock
-
-
 templates.env.filters["unit_label"] = _unit_label
-
-
+templates.env.filters["entry_amount"] = _entry_amount
+templates.env.filters["shop_qty"] = _shop_qty
+templates.env.filters["shop_need"] = _shop_need
 templates.env.filters["receipt_label"] = _receipt_label
 
 

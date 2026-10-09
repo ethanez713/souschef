@@ -59,13 +59,18 @@ blocks every outbound call, for a run that provably cannot reach a third party.
 
 ### From your phone
 
-`souschef serve --host 0.0.0.0` publishes it to your own network, and a phone on
-the same wifi reaches `http://<this-machine>:8000`. Sessions and receipt photos
-work; installing it as an app does not, because a service worker needs a secure
-context and that means localhost or real TLS.
+Run Tailscale on the machine that hosts SousChef and on the phone, then
+`tailscale serve --bg --https=443 http://127.0.0.1:8000`. The phone reaches
+`https://<machine>.<tailnet>.ts.net` over a real certificate, which is what
+installing the app, the service worker, the share target and the clipboard
+need. The server stays bound to loopback and is never exposed publicly.
 
-`souschef serve --no-auth` skips sign-in and acts as the first account, for testing
-on a network you trust.
+`souschef serve --host 0.0.0.0` publishes to the local network only. Sessions
+and receipt photos work there; installing and offline use do not, because
+plain HTTP is not a secure context.
+
+`souschef serve --no-auth` skips sign-in and acts as the first account. It
+accepts only a loopback `--host`, and answers only requests made on this machine.
 
 ### Accounts
 

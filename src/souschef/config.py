@@ -43,6 +43,9 @@ def _read_secret(name: str, config_dir: Path) -> str | None:
     return None
 
 
+LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SOUSCHEF_", extra="ignore")
 

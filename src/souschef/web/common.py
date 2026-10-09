@@ -178,6 +178,9 @@ def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str): 
     return obj
 
 
+TAILNET_SUFFIX = ".ts.net"
+
+
 def _is_secure_request(request: Request) -> bool:
     """Whether the *browser* reached us over HTTPS.
 
@@ -189,7 +192,15 @@ def _is_secure_request(request: Request) -> bool:
     forwarded = request.headers.get("x-forwarded-proto", "")
     if forwarded:
         return forwarded.split(",")[0].strip() == "https"
-    return request.url.scheme == "https"
+    return request.url.scheme == "https" or request_hostname(request).endswith(TAILNET_SUFFIX)
+
+
+def request_hostname(request: Request) -> str:
+    """The Host header without its port, lowercased; bracketed IPv6 loses its brackets."""
+    host = request.headers.get("host", "").strip().lower()
+    if host.startswith("["):
+        return host[1:].split("]", 1)[0]
+    return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
 
 
 def _set_session_cookie(request: Request, response: Response, user: User) -> None:

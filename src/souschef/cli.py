@@ -262,6 +262,14 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     import uvicorn
 
+    from souschef.config import LOOPBACK_HOSTS
+
+    if args.no_auth and args.host not in LOOPBACK_HOSTS:
+        print(
+            f"--no-auth is only allowed on a loopback host, not {args.host}.", file=sys.stderr
+        )
+        return 2
+
     if args.no_auth:
         os.environ["SOUSCHEF_SINGLE_USER"] = "true"
         get_settings.cache_clear()

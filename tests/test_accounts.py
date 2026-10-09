@@ -496,6 +496,9 @@ def test_lockout_is_per_account_not_per_box(
     ).status_code == 303
 
 
+LOOPBACK = {"Host": "127.0.0.1:8000"}
+
+
 def test_single_user_mode_skips_sign_in(client, monkeypatch) -> None:  # noqa: ANN001
     from souschef.config import get_settings
 
@@ -504,8 +507,56 @@ def test_single_user_mode_skips_sign_in(client, monkeypatch) -> None:  # noqa: A
     monkeypatch.setenv("SOUSCHEF_SINGLE_USER", "true")
     get_settings.cache_clear()
     try:
-        assert client.get("/").status_code == 200
-        assert client.get("/login").headers["location"] == "/"
+        assert client.get("/", headers=LOOPBACK).status_code == 200
+        assert client.get("/login", headers=LOOPBACK).headers["location"] == "/"
     finally:
         monkeypatch.delenv("SOUSCHEF_SINGLE_USER")
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        ({"Host": "127.0.0.1:8000"}, 200),
+        ({"Host": "localhost:8000"}, 200),
+        ({"Host": "[::1]:8000"}, 200),
+        ({"Host": "box.tailnet.ts.net"}, 403),
+        ({"Host": "192.168.1.5:8000"}, 403),
+        ({"Host": "127.0.0.1:8000", "X-Forwarded-For": "100.64.0.2"}, 403),
+        ({"Host": "127.0.0.1:8000", "X-Forwarded-Proto": "https"}, 403),
+    ],
+)
+def test_no_auth_mode_answers_only_this_machine(
+    client, monkeypatch, headers: dict[str, str], status: int  # noqa: ANN001
+) -> None:
+    from souschef.config import get_settings
+
+    monkeypatch.setenv("SOUSCHEF_SINGLE_USER", "true")
+    get_settings.cache_clear()
+    try:
+        response = client.get("/", headers=headers)
+    finally:
+        monkeypatch.delenv("SOUSCHEF_SINGLE_USER")
+        get_settings.cache_clear()
+    assert response.status_code == status
+    if status == 403:
+        assert "only this machine" in response.text
+
+
+def test_a_tailnet_host_gets_a_secure_session_cookie(client) -> None:  # noqa: ANN001
+    response = client.post(
+        "/setup",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+        headers={"Host": "box.tailnet.ts.net"},
+    )
+    assert response.status_code == 303
+    assert "secure" in response.headers["set-cookie"].lower()
+
+
+def test_a_loopback_host_gets_a_plain_session_cookie(client) -> None:  # noqa: ANN001
+    response = client.post(
+        "/setup",
+        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+        headers=LOOPBACK,
+    )
+    assert "secure" not in response.headers["set-cookie"].lower()

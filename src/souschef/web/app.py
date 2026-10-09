@@ -8,16 +8,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import Response
+from fastapi.responses import PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from souschef import logconfig
-from souschef.config import ensure_local_secrets, get_settings
+from souschef.config import LOOPBACK_HOSTS, ensure_local_secrets, get_settings
 from souschef.web.common import (
     WEB_DIR,
     _render,
     log,
+    request_hostname,
 )
 from souschef.web.routes import (
     audit,
@@ -52,6 +53,21 @@ app.mount("/static", StaticFiles(directory=str(WEB_DIR.parent / "static")), name
 # handful of SQLite reads except receipt OCR, so a slow page means something
 # is wrong rather than merely busy.
 SLOW_REQUEST_SECONDS = 3.0
+
+
+@app.middleware("http")
+async def single_user_guard(request: Request, call_next):  # noqa: ANN001, ANN201
+    """No-auth mode answers only this machine.
+
+    A loopback bind behind a reverse proxy such as `tailscale serve` is still
+    reachable from the proxy's network, so the Host and forwarding headers are
+    checked as well as the bind address.
+    """
+    if get_settings().single_user:
+        forwarded = any(name.startswith("x-forwarded-") for name in request.headers)
+        if forwarded or request_hostname(request) not in LOOPBACK_HOSTS:
+            return PlainTextResponse("No-auth mode answers only this machine", status_code=403)
+    return await call_next(request)
 
 
 @app.middleware("http")

@@ -121,3 +121,16 @@ def test_restore_refuses_an_unknown_snapshot(install: Settings) -> None:
     _seed_database(install, "before")
     assert cmd_restore(argparse.Namespace(snapshot="backups/nope.db")) == 1
     assert _read_note(install) == "before"
+
+
+def test_no_auth_refuses_a_non_loopback_host(monkeypatch, capsys) -> None:  # noqa: ANN001
+    import uvicorn
+
+    from souschef.cli import main
+
+    started: list[object] = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: started.append((a, k)))
+
+    assert main(["serve", "--no-auth", "--host", "0.0.0.0"]) != 0
+    assert started == []
+    assert "loopback" in capsys.readouterr().err

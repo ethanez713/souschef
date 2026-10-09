@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from souschef.core.inventory import pantry_view, record_event
+from souschef.core.inventory import pantry_view, record_event, void_events
 from souschef.core.spoilage import Freshness, freshness_by_ingredient
 from souschef.models import (
     CanonicalIngredient,
@@ -151,3 +151,19 @@ def test_home_levels_use_the_pantry_card_and_return_home(
         f"/pantry/{ingredient.id}/confirm", data={"next": "https://example.com/x"}
     )
     assert elsewhere.headers["location"] == "/"
+
+
+def test_a_voided_purchase_no_longer_anchors_freshness(
+    seeded_session: Session, owner: int
+) -> None:
+    chicken = _ing(seeded_session, "chicken breast")
+    record_event(seeded_session, owner, chicken, reason=EventReason.PURCHASE, delta=500.0,
+                 occurred_at=_at(21))
+    fresh = record_event(seeded_session, owner, chicken, reason=EventReason.PURCHASE,
+                         delta=500.0, occurred_at=_at(0))
+    _item(seeded_session, owner, chicken).last_confirmed_at = _at(21)
+    assert _status(seeded_session, owner, chicken) is None
+
+    void_events(seeded_session, owner, [fresh.id])
+
+    assert _status(seeded_session, owner, chicken) == Freshness.PROBABLY_GONE

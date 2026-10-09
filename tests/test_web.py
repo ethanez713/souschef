@@ -1655,3 +1655,14 @@ def test_cooking_remembers_the_servings_on_the_recipe_and_the_entry(
 
     page = signed_in.get(f"/recipes/{recipe.id}/cook").text
     assert f'name="proposed_{pasta.id}" value="300.0"' in page
+
+
+def test_confidence_pips_follow_certainty_thresholds() -> None:
+    from souschef.web.common import templates
+
+    macros = templates.env.get_template("macros.html").module
+
+    def lit(certainty: float) -> int:
+        return str(macros.confidence_pips(certainty)).count('class="on"')
+
+    assert (lit(1.0), lit(0.6), lit(0.59), lit(0.01), lit(0.0)) == (3, 3, 2, 2, 1)

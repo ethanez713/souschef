@@ -11,7 +11,7 @@ admission. That just moves the drudgery — you still audit everything, you just
 do it in an app.
 
 SousChef assumes its inventory is **wrong, and knows how wrong**. Every level
-carries a confidence that decays with time and with each meal cooked. Before you
+is a best guess inside a range that widens with time and with each meal cooked. Before you
 shop, it asks you to physically check only the handful of items where the
 uncertainty would actually change what you buy:
 

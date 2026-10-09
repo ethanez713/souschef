@@ -167,7 +167,9 @@ def to_purchase_quantity(
     if package_base <= 0:
         return shortfall, ingredient.base_unit, None
 
-    packages = math.ceil(shortfall / package_base)
+    # A need within 1% of a whole package is that package: a stored 946 ml carton
+    # against a 946.35 ml conversion must not buy a second carton.
+    packages = max(1, math.ceil(shortfall / package_base - 0.01))
 
     # For countable things the package *is* the unit, so say "3 onions".
     if ingredient.base_unit == "count" and ingredient.package_qty == 1:

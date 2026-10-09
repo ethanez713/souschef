@@ -46,6 +46,7 @@ from souschef.planning.shopping import (
     build_shopping_list,
     ingredients_stocked_since,
     stock_ticked_items,
+    to_purchase_quantity,
     unnamed_recipe_lines,
 )
 from souschef.planning.suggest import score_recipe
@@ -912,3 +913,14 @@ def test_a_cook_date_outside_the_week_changes_nothing(
     assert get_or_create_item(seeded_session, web_user.id, pasta).quantity == pytest.approx(10)
     assert seeded_session.get(MealPlanEntry, entry.id).cooked_at is None
     assert seeded_session.get(Recipe, recipe.id).times_cooked == 0
+
+
+def test_a_shortfall_within_one_percent_of_a_package_buys_that_package(
+    seeded_session: Session,
+) -> None:
+    milk = ing(seeded_session, "whole milk")
+    milk.package_qty, milk.package_unit = 946, "ml"
+
+    assert to_purchase_quantity(milk, 946.35)[0] == 1
+    assert to_purchase_quantity(milk, 1000)[0] == 2
+    assert to_purchase_quantity(milk, 5)[0] == 1

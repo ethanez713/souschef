@@ -1863,8 +1863,12 @@ def _save_receipt_lines(db: Session, receipt: Receipt, form) -> None:  # noqa: A
             if quantity <= 0:
                 raise ReceiptError(f"Amount for '{line.raw_text}' has to be more than zero.")
         confirmed = form.get(f"confirmed_{line.id}") in ("on", "true", "1")
-        if confirmed and ingredient_id is None:
+        if ingredient_id is None:
             confirmed = False
+        elif line.ingredient_id is None:
+            # Naming an unmatched line is the user vouching for it; leaving the
+            # box unticked silently dropped the purchase on apply.
+            confirmed = True
         planned.append((line, ingredient_id, quantity, unit_raw, confirmed))
 
     matcher = IngredientMatcher(db)

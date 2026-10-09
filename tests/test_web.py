@@ -1981,3 +1981,35 @@ def test_pantry_set_level_stores_base_grams_from_the_entry_unit(
     stored = _pantry_row(seeded_session, web_user, "chicken thigh")
     assert stored is not None
     assert stored.quantity == pytest.approx(250)
+
+
+def test_recipe_page_agrees_with_the_list_about_spoiled_stock(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Old Chicken",
+            ingredients=["1 pound chicken thighs", "1 pound spaghetti"],
+            servings=1,
+            source_url="https://example.com/old-chicken",
+        ),
+        source=RecipeSource.URL,
+    )
+    record_event(
+        seeded_session,
+        web_user.id,
+        ing(seeded_session, "chicken thigh"),
+        reason=EventReason.PURCHASE,
+        delta=907,
+        occurred_at=datetime.now(UTC) - timedelta(days=60),
+    )
+    seeded_session.commit()
+
+    assert "Missing 2" in signed_in.get("/recipes").text
+
+    page = signed_in.get(f"/recipes/{recipe.id}").text
+    assert "probably gone" in page
+    assert "have none" in page
+    assert '<span class="badge good">have</span>' not in page

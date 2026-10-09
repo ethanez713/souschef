@@ -18,7 +18,7 @@ from souschef.db import get_db
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
 from souschef.models import CanonicalIngredient, Recipe, User
 from souschef.models.ingredient import AliasSource, IngredientCategory
-from souschef.planning.suggest import by_surface, suggest
+from souschef.planning.suggest import by_surface, probably_gone_ids, suggest
 from souschef.web import auth
 from souschef.web.common import (
     PLAN_DAYS,
@@ -121,8 +121,10 @@ def _recipe_page(
 ) -> HTMLResponse:
     requirements = recipe_requirements(db, recipe)
     rows, unmatched = _recipe_rows(recipe, requirements)
-    pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
     today, _ = _horizon()
+    views = pantry_view(db, user.id)
+    pantry = {v.ingredient.id: v for v in views}
+    gone = probably_gone_ids(db, user.id, views, today)
     catalog = db.scalars(select(CanonicalIngredient.name).order_by(CanonicalIngredient.name)).all()
     return _render(
         request,
@@ -133,6 +135,7 @@ def _recipe_page(
         unmatched=unmatched,
         catalog=catalog,
         pantry=pantry,
+        gone=gone,
         cooked=cooked,
         notice=notice,
         match_error=match_error,

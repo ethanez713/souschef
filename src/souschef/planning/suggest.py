@@ -253,6 +253,19 @@ def score_recipe(
     )
 
 
+def probably_gone_ids(
+    session: Session, user_id: int, views: list[PantryView], today: date
+) -> set[int]:
+    """Ingredients whose stock has outlived its shelf life: on the shelf, not to be cooked with."""
+    return {
+        ingredient_id
+        for ingredient_id, status in freshness_by_ingredient(
+            session, user_id, views, today
+        ).items()
+        if status == Freshness.PROBABLY_GONE
+    }
+
+
 def suggest(
     session: Session,
     user_id: int,
@@ -263,13 +276,7 @@ def suggest(
 ) -> list[Suggestion]:
     """Rank one user's library against their pantry."""
     views = pantry_view(session, user_id)
-    gone = {
-        ingredient_id
-        for ingredient_id, status in freshness_by_ingredient(
-            session, user_id, views, today or date.today()
-        ).items()
-        if status == Freshness.PROBABLY_GONE
-    }
+    gone = probably_gone_ids(session, user_id, views, today or date.today())
     pantry = {v.ingredient.id: v for v in views if v.ingredient.id not in gone}
 
     query = (

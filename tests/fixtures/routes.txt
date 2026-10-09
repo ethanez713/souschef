@@ -48,6 +48,7 @@ POST /settings/password
 POST /settings/staples
 POST /settings/staples/{ingredient_id}/clear
 POST /settings/theme
+POST /settings/units
 POST /setup
 POST /shopping/add
 POST /shopping/generate

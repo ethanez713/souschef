@@ -576,3 +576,21 @@ def test_a_loopback_host_gets_a_plain_session_cookie(client) -> None:  # noqa: A
         headers=LOOPBACK,
     )
     assert "secure" not in response.headers["set-cookie"].lower()
+
+
+def test_unit_preferences_persist(signed_in, seeded_session) -> None:  # noqa: ANN001
+    from souschef.models import User
+
+    page = signed_in.get("/settings")
+    assert "Show metric in parentheses" in page.text
+
+    signed_in.post("/settings/units", data={"unit_system": "metric", "show_alt_units": "on"})
+    seeded_session.expire_all()
+    user = seeded_session.scalar(select(User).where(User.username == WEB_USERNAME))
+    assert (user.unit_system, user.show_alt_units) == ("metric", True)
+    assert "Show US in parentheses" in signed_in.get("/settings").text
+
+    signed_in.post("/settings/units", data={"unit_system": "us"})
+    seeded_session.expire_all()
+    user = seeded_session.scalar(select(User).where(User.username == WEB_USERNAME))
+    assert (user.unit_system, user.show_alt_units) == ("us", False)

@@ -27,6 +27,10 @@ def test_head_migration_adds_the_later_columns(tmp_path: Path, monkeypatch) -> N
         meal = {column["name"]: column for column in columns.get_columns("meal_plan_entry")}
         shop = {column["name"]: column for column in columns.get_columns("shopping_list_item")}
         recipe = {column["name"]: column for column in columns.get_columns("recipe")}
+        user = {column["name"]: column for column in columns.get_columns("app_user")}
+        ingredient = {
+            column["name"]: column for column in columns.get_columns("canonical_ingredient")
+        }
         with engine.connect() as conn:
             version = conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
         engine.dispose()
@@ -36,6 +40,9 @@ def test_head_migration_adds_the_later_columns(tmp_path: Path, monkeypatch) -> N
 
     assert version == ScriptDirectory.from_config(Config("alembic.ini")).get_current_head()
     assert recipe["last_servings"]["nullable"] is True
+    assert user["unit_system"]["nullable"] is False
+    assert user["show_alt_units"]["nullable"] is False
+    assert ingredient["count_noun"]["nullable"] is True
     assert meal["skipped_at"]["nullable"] is True
     assert shop["is_stocked"]["nullable"] is False
     assert shop["is_skipped"]["nullable"] is False

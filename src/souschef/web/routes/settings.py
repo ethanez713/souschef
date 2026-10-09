@@ -112,6 +112,20 @@ def set_theme(
     return response
 
 
+@router.post("/settings/units")
+def set_units(
+    unit_system: str = Form(...),
+    show_alt_units: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    if unit_system in ("us", "metric"):
+        user.unit_system = unit_system
+    user.show_alt_units = show_alt_units in ("on", "true", "1")
+    db.flush()
+    return RedirectResponse("/settings", status_code=303)
+
+
 @router.post("/settings/staples")
 def add_staple(
     request: Request,

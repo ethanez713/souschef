@@ -59,6 +59,7 @@ def seed_ingredients(session: Session, path: Path | None = None) -> tuple[int, i
         ing.grams_per_count = rec.get("grams_per_count")
         ing.package_qty = rec.get("package_qty")
         ing.package_unit = rec.get("package_unit")
+        ing.count_noun = rec.get("count_noun")
         ing.shelf_life_days = rec.get("shelf_life_days")
         ing.is_staple = bool(rec.get("is_staple", False))
 

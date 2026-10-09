@@ -644,7 +644,8 @@
       "is_staple": true,
       "aliases": [
         "bay leaf"
-      ]
+      ],
+      "count_noun": "leaf"
     },
     {
       "name": "ground cinnamon",
@@ -761,7 +762,8 @@
         "brown onion",
         "spanish onion",
         "yellow onions"
-      ]
+      ],
+      "count_noun": "onion"
     },
     {
       "name": "red onion",
@@ -776,7 +778,8 @@
       "aliases": [
         "red onions",
         "purple onion"
-      ]
+      ],
+      "count_noun": "onion"
     },
     {
       "name": "shallot",
@@ -790,7 +793,8 @@
       "shelf_life_days": 30,
       "aliases": [
         "shallots"
-      ]
+      ],
+      "count_noun": "shallot"
     },
     {
       "name": "scallion",
@@ -808,7 +812,8 @@
         "scallions",
         "spring onion",
         "spring onions"
-      ]
+      ],
+      "count_noun": "scallion"
     },
     {
       "name": "garlic",
@@ -822,7 +827,8 @@
       "shelf_life_days": 60,
       "aliases": [
         "fresh garlic"
-      ]
+      ],
+      "count_noun": "clove"
     },
     {
       "name": "ginger",
@@ -853,7 +859,8 @@
       "aliases": [
         "carrots",
         "baby carrots"
-      ]
+      ],
+      "count_noun": "carrot"
     },
     {
       "name": "celery",
@@ -865,7 +872,8 @@
       "package_qty": 10,
       "package_unit": "count",
       "shelf_life_days": 21,
-      "aliases": []
+      "aliases": [],
+      "count_noun": "stalk"
     },
     {
       "name": "potato",
@@ -883,7 +891,8 @@
         "yukon gold",
         "yukon gold potatoes",
         "white potato"
-      ]
+      ],
+      "count_noun": "potato"
     },
     {
       "name": "sweet potato",
@@ -899,7 +908,8 @@
         "sweet potatoes",
         "yam",
         "yams"
-      ]
+      ],
+      "count_noun": "sweet potato"
     },
     {
       "name": "tomato",
@@ -916,7 +926,8 @@
         "roma tomato",
         "roma tomatoes",
         "beefsteak tomato"
-      ]
+      ],
+      "count_noun": "tomato"
     },
     {
       "name": "cherry tomatoes",
@@ -952,7 +963,8 @@
         "red peppers",
         "capsicum",
         "sweet pepper"
-      ]
+      ],
+      "count_noun": "pepper"
     },
     {
       "name": "jalapeno",
@@ -969,7 +981,8 @@
         "jalapeño",
         "jalapeño pepper",
         "jalapeno pepper"
-      ]
+      ],
+      "count_noun": "jalapeno"
     },
     {
       "name": "serrano pepper",
@@ -984,7 +997,8 @@
       "aliases": [
         "serrano",
         "serranos"
-      ]
+      ],
+      "count_noun": "pepper"
     },
     {
       "name": "cucumber",
@@ -1000,7 +1014,8 @@
         "cucumbers",
         "english cucumber",
         "persian cucumber"
-      ]
+      ],
+      "count_noun": "cucumber"
     },
     {
       "name": "zucchini",
@@ -1015,7 +1030,8 @@
       "aliases": [
         "courgette",
         "summer squash"
-      ]
+      ],
+      "count_noun": "zucchini"
     },
     {
       "name": "broccoli",
@@ -1100,7 +1116,8 @@
       "aliases": [
         "lettuce",
         "romaine"
-      ]
+      ],
+      "count_noun": "head"
     },
     {
       "name": "mushrooms",
@@ -1174,7 +1191,8 @@
       "shelf_life_days": 7,
       "aliases": [
         "sweet corn"
-      ]
+      ],
+      "count_noun": "ear"
     },
     {
       "name": "avocado",
@@ -1189,7 +1207,8 @@
       "aliases": [
         "avocados",
         "hass avocado"
-      ]
+      ],
+      "count_noun": "avocado"
     },
     {
       "name": "lemon",
@@ -1203,7 +1222,8 @@
       "shelf_life_days": 21,
       "aliases": [
         "lemons"
-      ]
+      ],
+      "count_noun": "lemon"
     },
     {
       "name": "lime",
@@ -1217,7 +1237,8 @@
       "shelf_life_days": 21,
       "aliases": [
         "limes"
-      ]
+      ],
+      "count_noun": "lime"
     },
     {
       "name": "orange",
@@ -1232,7 +1253,8 @@
       "aliases": [
         "oranges",
         "navel orange"
-      ]
+      ],
+      "count_noun": "orange"
     },
     {
       "name": "apple",
@@ -1248,7 +1270,8 @@
         "apples",
         "granny smith",
         "honeycrisp"
-      ]
+      ],
+      "count_noun": "apple"
     },
     {
       "name": "banana",
@@ -1262,7 +1285,8 @@
       "shelf_life_days": 7,
       "aliases": [
         "bananas"
-      ]
+      ],
+      "count_noun": "banana"
     },
     {
       "name": "fresh parsley",
@@ -1405,7 +1429,8 @@
       "aliases": [
         "roasting chicken",
         "fryer chicken"
-      ]
+      ],
+      "count_noun": "chicken"
     },
     {
       "name": "ground beef",
@@ -1478,7 +1503,8 @@
       "shelf_life_days": 3,
       "aliases": [
         "pork chops"
-      ]
+      ],
+      "count_noun": "chop"
     },
     {
       "name": "bacon",
@@ -1604,7 +1630,8 @@
         "tuna",
         "chunk light tuna",
         "albacore tuna"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "eggs",
@@ -1623,7 +1650,8 @@
         "grade a eggs",
         "egg yolk",
         "egg yolks"
-      ]
+      ],
+      "count_noun": "egg"
     },
     {
       "name": "whole milk",
@@ -1915,7 +1943,8 @@
         "flour tortillas",
         "corn tortillas",
         "tortilla"
-      ]
+      ],
+      "count_noun": "tortilla"
     },
     {
       "name": "sandwich bread",
@@ -1946,7 +1975,8 @@
       "aliases": [
         "diced tomatoes",
         "canned tomatoes"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "canned crushed tomatoes",
@@ -1964,7 +1994,8 @@
         "whole peeled tomatoes",
         "pureed tomatoes",
         "canned pureed tomatoes"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "tomato paste",
@@ -2009,7 +2040,8 @@
       "aliases": [
         "canned black beans",
         "blk beans"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "chickpeas",
@@ -2024,7 +2056,8 @@
       "aliases": [
         "garbanzo beans",
         "canned chickpeas"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "cannellini beans",
@@ -2040,7 +2073,8 @@
         "white beans",
         "great northern beans",
         "navy beans"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "dried lentils",
@@ -2118,7 +2152,8 @@
       "aliases": [
         "canned coconut milk",
         "full fat coconut milk"
-      ]
+      ],
+      "count_noun": "can"
     },
     {
       "name": "soy sauce",

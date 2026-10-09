@@ -8,7 +8,7 @@
   {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
   {% if saved == 'password' %}<div class="notice good">{{ icon('circle-check', 16) }}<div>Password changed.</div></div>{% endif %}
 
-  <h2>Appearance</h2>
+  {{ group_header('Appearance') }}
   <div class="card">
     <form method="post" action="/settings/theme" class="daychips" role="radiogroup" aria-label="Theme">
       {% for value, label in [('light', 'Light'), ('dark', 'Dark'), ('auto', 'Match system')] %}
@@ -17,6 +17,25 @@
           <span>{{ label }}</span>
         </label>
       {% endfor %}
+      <noscript><button class="primary small" type="submit">Apply</button></noscript>
+    </form>
+  </div>
+
+  {{ group_header('Units') }}
+  <div class="card">
+    <form method="post" action="/settings/units" id="units-form">
+      <div class="daychips" role="radiogroup" aria-label="Unit system">
+        {% for value, label in [('us', 'US (lb, oz, cups)'), ('metric', 'Metric (g, ml)')] %}
+          <label>
+            <input type="radio" name="unit_system" value="{{ value }}" {{ 'checked' if user.unit_system == value }} onchange="this.form.requestSubmit()">
+            <span>{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <label class="check-line">
+        <input type="checkbox" name="show_alt_units" {{ 'checked' if user.show_alt_units }} onchange="this.form.requestSubmit()">
+        <span>Show {{ 'US' if user.unit_system == 'metric' else 'metric' }} in parentheses</span>
+      </label>
       <noscript><button class="primary small" type="submit">Apply</button></noscript>
     </form>
   </div>

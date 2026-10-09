@@ -43,6 +43,10 @@ class User(Base, TimestampMixin):
 
     last_login_at: Mapped[datetime | None] = mapped_column()
 
+    # Display only; stored quantities are always base units.
+    unit_system: Mapped[str] = mapped_column(String(6), default="us", server_default="us")
+    show_alt_units: Mapped[bool] = mapped_column(default=False, server_default="0")
+
     # Bumped by a password change or a "sign out everywhere". Sessions carry the
     # value they were issued under, so raising it invalidates every existing
     # cookie -- without it, a stolen session survives the password reset meant

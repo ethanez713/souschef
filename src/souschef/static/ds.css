@@ -54,8 +54,8 @@
 --border-accent:var(--orange-500);
 --focus-ring:var(--orange-500);
 
---accent:var(--orange-500);
---accent-hover:var(--orange-600);/* the accent label is white, so states darken — same direction in both themes */
+--accent:#AF5A1D;/* --orange-500's hue taken down until --on-accent clears 4.5:1 */
+--accent-hover:#A0531B;/* the accent label is white, so states darken — same direction in both themes */
 --accent-press:var(--orange-700);
 --accent-quiet:var(--orange-100);
 
@@ -110,8 +110,9 @@
         --paper-2 the sunken panel in both themes, and a raised
         surface moves AWAY from the app ground toward the
         theme's foreground end.
-     2. The brand colour does not move. --orange-500 is #DD7A32
-        in both themes and carries a warm white label in both.
+     2. The brand colour does not move. --orange-500 #DD7A32 and
+        the labelled fill --accent #AF5A1D are the same in both
+        themes, and the accent carries a warm white label in both.
      3. A soft fill is a lightness lift with a hint of hue, held
         to oklch C/L <= .09.
      4. Semantic aliases are re-declared per scope, never
@@ -129,8 +130,8 @@ color-scheme:dark;
 /* INK — role-flipped: 900 is the brightest foreground, 050 the faintest lift off the ground. */
 --ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#A59E90;--ink-400:#7F7869;--ink-300:#6B6457;--ink-200:#504A3F;--ink-100:#3A352C;--ink-050:#322E25;
 
-/* ORANGE — --orange-500 is the same #DD7A32 as light and carries the same warm white
-   label. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
+/* ORANGE — --orange-500 is the same #DD7A32 as light and marks without a label; a
+   labelled fill uses --accent. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
 --orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#54453A;--orange-100:#403529;--orange-050:#3A3029;
 
 /* SEMANTIC HUES — 600 for text and icons, 500 for fills and dots, 100 for soft backgrounds.
@@ -180,10 +181,10 @@ color-scheme:dark;
 --border-accent:var(--orange-500);
 --focus-ring:var(--orange-500);
 
-/* The accent label is white, so states darken in both themes. */
---accent:var(--orange-500);
---accent-hover:#E68A42;
---accent-press:var(--orange-400);
+/* The accent fill and its states are the light theme's, so the white label clears 4.5:1 in both. */
+--accent:#AF5A1D;
+--accent-hover:#A0531B;
+--accent-press:#944A17;
 --accent-quiet:var(--orange-100);
 
 --success:var(--jade-500);--success-soft:var(--jade-100);
@@ -248,8 +249,8 @@ color-scheme:dark;
 /* INK — role-flipped: 900 is the brightest foreground, 050 the faintest lift off the ground. */
 --ink-900:#F7F4ED;--ink-800:#E8E3DA;--ink-700:#D6D0C5;--ink-600:#B4AEA2;--ink-500:#A59E90;--ink-400:#7F7869;--ink-300:#6B6457;--ink-200:#504A3F;--ink-100:#3A352C;--ink-050:#322E25;
 
-/* ORANGE — --orange-500 is the same #DD7A32 as light and carries the same warm white
-   label. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
+/* ORANGE — --orange-500 is the same #DD7A32 as light and marks without a label; a
+   labelled fill uses --accent. The low steps are soft fills: L .285-.365 at oklch C/L <=.09 (see Category tints). */
 --orange-700:#F6C08B;--orange-600:#EE9E4E;--orange-500:#DD7A32;--orange-400:#C4682A;--orange-200:#54453A;--orange-100:#403529;--orange-050:#3A3029;
 
 /* SEMANTIC HUES — 600 for text and icons, 500 for fills and dots, 100 for soft backgrounds.
@@ -299,10 +300,10 @@ color-scheme:dark;
 --border-accent:var(--orange-500);
 --focus-ring:var(--orange-500);
 
-/* The accent label is white, so states darken in both themes. */
---accent:var(--orange-500);
---accent-hover:#E68A42;
---accent-press:var(--orange-400);
+/* The accent fill and its states are the light theme's, so the white label clears 4.5:1 in both. */
+--accent:#AF5A1D;
+--accent-hover:#A0531B;
+--accent-press:#944A17;
 --accent-quiet:var(--orange-100);
 
 --success:var(--jade-500);--success-soft:var(--jade-100);

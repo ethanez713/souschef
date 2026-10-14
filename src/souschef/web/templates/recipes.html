@@ -28,6 +28,16 @@
       Most recipe pages work; a few sites block automated imports. NYT Cooking also needs your session cookie saved in <a href="/settings">Settings</a>.
       From your phone browser, share a recipe page to SousChef to land here.
     </p>
+    <details>
+      <summary>Paste recipe</summary>
+      <form method="post" action="/recipes/paste">
+        <div class="field">
+          <label for="recipe-text">Paste the recipe text</label>
+          <textarea id="recipe-text" name="text" rows="8" required></textarea>
+        </div>
+        <button class="primary" type="submit">Paste recipe</button>
+      </form>
+    </details>
   {% endcall %}
 
   <div id="recipe-list">

@@ -178,6 +178,10 @@ input::placeholder { color: var(--text-faint); }
 input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: none; border-color: var(--border-accent); box-shadow: 0 0 0 3px var(--orange-100);
 }
+textarea {
+  height: auto; min-height: 8.5rem; padding: var(--sp-3) var(--sp-4);
+  line-height: 1.45; resize: vertical;
+}
 input[type="checkbox"] {
   appearance: none; -webkit-appearance: none; position: relative; flex: none; cursor: pointer;
   width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; background: none; box-shadow: none;

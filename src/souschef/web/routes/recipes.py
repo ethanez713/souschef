@@ -16,7 +16,8 @@ from souschef.core.recipes import recipe_requirements, save_imported_recipe
 from souschef.core.units import UnitConversionError, dimension_of
 from souschef.db import get_db
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
-from souschef.models import CanonicalIngredient, Recipe, User
+from souschef.ingest.recipes.paste import parse_pasted_recipe
+from souschef.models import CanonicalIngredient, Recipe, RecipeSource, User
 from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.planning.suggest import by_surface, probably_gone_ids, suggest
 from souschef.web import auth
@@ -190,6 +191,31 @@ def import_recipe(
     if result.notice:
         location += "?notice=" + quote(result.notice)
     return RedirectResponse(location, status_code=303)
+
+
+@router.post("/recipes/paste")
+def paste_recipe(
+    request: Request,
+    text: str = Form(""),
+    save: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    raw = parse_pasted_recipe(text)
+    if not raw.is_usable:
+        return _render(
+            request,
+            "import_result.html",
+            error=(
+                "No recipe found in that text. Start with the title, then the ingredient lines."
+            ),
+            text=text,
+        )
+    if save != "1":
+        return _render(request, "import_result.html", recipe=raw, text=text)
+    # Pasted text is not a site import. MANUAL is that source; the column is a string.
+    recipe = save_imported_recipe(db, user.id, raw, source=RecipeSource.MANUAL)
+    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
 
 
 @router.post("/recipes/{recipe_id}/match")

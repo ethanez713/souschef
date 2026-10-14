@@ -14,6 +14,7 @@ from souschef.core.matching import IngredientMatcher
 from souschef.core.recipes import recipe_requirements, save_imported_recipe
 from souschef.ingest.recipes.jsonld import RawRecipe, extract_recipe
 from souschef.ingest.recipes.parsing import parse_and_match, parse_line
+from souschef.ingest.recipes.paste import parse_pasted_recipe
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
@@ -144,6 +145,101 @@ def test_ignores_non_recipe_nodes(recipe_html: str) -> None:
 def test_unusable_pages_return_none(html: str) -> None:
     """Malformed input fails soft; a recipe with no ingredients is not usable."""
     assert extract_recipe(html) is None
+
+
+def _pasted(name: str) -> RawRecipe:
+    return parse_pasted_recipe((FIXTURE.parent / name).read_text(encoding="utf-8"))
+
+
+def test_pasted_recipe_with_headings_and_colons() -> None:
+    raw = _pasted("paste_headings.txt")
+    assert raw.title == "Skillet Chili"
+    assert raw.ingredients == [
+        "1 lb ground beef",
+        "1 onion, chopped",
+        "2 cloves garlic",
+        "1 can diced tomatoes",
+        "1 tbsp chili powder",
+    ]
+    assert raw.instructions is not None
+    assert raw.instructions.split("\n\n") == [
+        "Brown the beef with the onion and garlic.",
+        "Stir in the tomatoes and chili powder.",
+        "Simmer until thickened.",
+    ]
+    assert raw.servings == 4
+    assert raw.total_minutes == 75
+
+
+def test_pasted_recipe_without_an_ingredients_heading_uses_bullets() -> None:
+    raw = _pasted("paste_bullets.txt")
+    assert raw.title == "Tomato Salad"
+    assert raw.ingredients == [
+        "2 tomatoes",
+        "1 cucumber",
+        "2 tbsp olive oil",
+        "a pinch of salt",
+    ]
+    assert raw.instructions is not None
+    assert raw.instructions.split("\n\n") == [
+        "Slice the tomatoes and cucumber.",
+        "Toss with the oil and salt.",
+    ]
+    assert raw.servings == 2
+
+
+def test_pasted_recipe_reads_servings_from_a_makes_line() -> None:
+    raw = _pasted("paste_makes.txt")
+    assert raw.title == "Chocolate Chip Cookies"
+    assert len(raw.ingredients) == 4
+    assert raw.instructions is not None
+    assert len(raw.instructions.split("\n\n")) == 4
+    assert raw.servings == 12
+    assert raw.total_minutes == 45
+
+
+def test_paste_strips_list_numbers_but_keeps_decimal_quantities() -> None:
+    raw = parse_pasted_recipe(
+        "Pancakes\n\n"
+        "## INGREDIENTS:\n"
+        "1. 2 cups flour\n"
+        "2. 2.5 tbsp sugar\n"
+        "3. 1 egg\n"
+        "\n"
+        "Method:\n"
+        "1. Mix the flour and the sugar.\n"
+    )
+    assert raw.ingredients == ["2 cups flour", "2.5 tbsp sugar", "1 egg"]
+    assert raw.instructions == "Mix the flour and the sugar."
+
+
+def test_paste_keeps_the_first_servings_line() -> None:
+    raw = parse_pasted_recipe("Soup\n\nServes: 4\n\n- 1 onion\n\nSimmer.\n\nServes: 8\n")
+    assert raw.servings == 4
+    assert raw.instructions == "Simmer."
+    assert raw.ingredients == ["1 onion"]
+
+
+def test_paste_keeps_a_cook_sentence_instead_of_reading_it_as_a_time() -> None:
+    raw = parse_pasted_recipe("Pasta\n\n- 1 pound spaghetti\n\nCook for 10 minutes.\n")
+    assert raw.total_minutes is None
+    assert raw.instructions == "Cook for 10 minutes."
+    assert raw.ingredients == ["1 pound spaghetti"]
+
+
+def test_pasted_total_time_wins_over_prep_and_cook() -> None:
+    raw = parse_pasted_recipe(
+        "Soup\n\nPrep time: 10 minutes\nCook time: 2 hours\nTotal time: 50 minutes\n\n"
+        "- 1 onion\n\nSimmer.\n"
+    )
+    assert raw.total_minutes == 50
+    assert raw.servings is None
+    assert raw.ingredients == ["1 onion"]
+
+
+@pytest.mark.parametrize("text", ["", "   \n\n", "Tuesday plan\n\nBuy milk.\n"])
+def test_pasted_text_without_ingredients_is_not_a_recipe(text: str) -> None:
+    assert parse_pasted_recipe(text).is_usable is False
 
 
 def test_jsonld_prefers_the_recipe_at_the_requested_url() -> None:

@@ -34,6 +34,7 @@ POST /receipts/upload
 POST /receipts/{receipt_id}/apply
 POST /receipts/{receipt_id}/line/{line_id}
 POST /recipes/import
+POST /recipes/paste
 POST /recipes/{recipe_id}/cooked
 POST /recipes/{recipe_id}/match
 POST /settings/nyt-cookie

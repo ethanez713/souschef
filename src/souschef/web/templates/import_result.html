@@ -1,10 +1,50 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import group_header, row %}
 {% set active = 'recipes' %}
+{% block title %}{% if recipe %}Review recipe{% else %}Import failed{% endif %} · SousChef{% endblock %}
 {% block content %}
 <main id="main">
+  {% if recipe %}
+  <h1>{{ recipe.title }}</h1>
+  {% if recipe.servings or recipe.total_minutes %}
+  <p class="meta">
+    {% if recipe.servings %}serves <span class="num">{{ recipe.servings }}</span>{% endif %}
+    {% if recipe.total_minutes %}{% if recipe.servings %} · {% endif %}<span class="num">{{ recipe.total_minutes }}</span> min{% endif %}
+  </p>
+  {% endif %}
+  {{ group_header('Ingredients', recipe.ingredients|length) }}
+  {% for item in recipe.ingredients %}
+    {{ row(item, cls='ingredient-row') }}
+  {% endfor %}
+  {% if recipe.instructions %}
+  <h2>Method</h2>
+  <div class="card method">
+    {% for step in recipe.instructions.split('\n\n') %}
+      {% if step.strip() %}<p>{{ step }}</p>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+  <form method="post" action="/recipes/paste">
+    <textarea name="text" hidden>{{ text }}</textarea>
+    <input type="hidden" name="save" value="1">
+    <div class="actions">
+      <button class="primary" type="submit">Save recipe</button>
+      <a class="btn" href="/recipes?import=1">Back to recipes</a>
+    </div>
+  </form>
+  {% else %}
   <h1>Import failed</h1>
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
+  {% if text is defined %}
+  <form method="post" action="/recipes/paste" class="card">
+    <div class="field">
+      <label for="recipe-text">Paste the recipe text</label>
+      <textarea id="recipe-text" name="text" rows="8" required>{{ text }}</textarea>
+    </div>
+    <button class="primary" type="submit">Paste recipe</button>
+  </form>
+  {% else %}
   <form method="post" action="/recipes/import" class="card">
     <div class="field">
       <label for="url">Recipe URL</label>
@@ -12,6 +52,8 @@
     </div>
     <button class="primary" type="submit">Try again</button>
   </form>
+  {% endif %}
   <div class="actions"><a class="btn" href="/recipes?import=1">Back to recipes</a></div>
+  {% endif %}
 </main>
 {% endblock %}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -732,6 +733,37 @@ def test_import_is_blocked_while_external_calls_are_disabled(signed_in: TestClie
         "/recipes/import", data={"url": "https://example.com/some-recipe"}
     )
     assert "external calls are disabled" in response.text.lower()
+
+
+def test_pasted_recipe_is_reviewed_then_saved_with_its_ingredients(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    text = (Path(__file__).parent / "fixtures" / "paste_headings.txt").read_text(encoding="utf-8")
+    assert "Paste the recipe text" in signed_in.get("/recipes").text
+
+    review = signed_in.post("/recipes/paste", data={"text": text})
+    assert review.status_code == 200
+    assert "Skillet Chili" in review.text
+    assert "1 lb ground beef" in review.text
+    assert "Save recipe" in review.text
+    assert seeded_session.scalar(select(Recipe).where(Recipe.title == "Skillet Chili")) is None
+
+    saved = signed_in.post("/recipes/paste", data={"text": text, "save": "1"})
+    assert saved.status_code == 303
+
+    seeded_session.expire_all()
+    recipe = seeded_session.scalar(select(Recipe).where(Recipe.title == "Skillet Chili"))
+    assert recipe is not None
+    assert recipe.source == RecipeSource.MANUAL
+    assert recipe.servings == 4
+    assert len(recipe.ingredients) == 5
+    assert recipe.ingredients[0].raw_text == "1 lb ground beef"
+    assert recipe.ingredients[4].raw_text == "1 tbsp chili powder"
+
+    detail = signed_in.get(saved.headers["location"])
+    assert detail.status_code == 200
+    assert "Skillet Chili" in detail.text
+    assert "1 lb ground beef" in detail.text
 
 
 def test_manifest_declares_share_target(client: TestClient) -> None:

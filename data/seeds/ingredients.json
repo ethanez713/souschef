@@ -108,7 +108,9 @@
       "aliases": [
         "light brown sugar",
         "dark brown sugar"
-      ]
+      ],
+      "package_noun": "box",
+      "package_source": "Open Food Facts container vote; size kept from catalog"
     },
     {
       "name": "powdered sugar",
@@ -148,12 +150,14 @@
       "tracking_mode": "bulk",
       "base_unit": "ml",
       "density_g_per_ml": 1.32,
-      "package_qty": 355,
+      "package_qty": 946,
       "package_unit": "ml",
       "shelf_life_days": 365,
       "aliases": [
         "pure maple syrup"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
     },
     {
       "name": "molasses",
@@ -281,7 +285,9 @@
         "evoo",
         "extra-virgin olive oil",
         "virgin olive oil"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 8 US products, 2026-10"
     },
     {
       "name": "vegetable oil",
@@ -300,7 +306,9 @@
         "cooking oil",
         "sunflower oil",
         "grapeseed oil"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts container vote; size kept from catalog"
     },
     {
       "name": "sesame oil",
@@ -383,12 +391,14 @@
       "tracking_mode": "bulk",
       "base_unit": "ml",
       "density_g_per_ml": 1.09,
-      "package_qty": 250,
+      "package_qty": 500,
       "package_unit": "ml",
       "shelf_life_days": 1825,
       "aliases": [
         "balsamic"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "rice vinegar",
@@ -397,13 +407,15 @@
       "tracking_mode": "bulk",
       "base_unit": "ml",
       "density_g_per_ml": 1.01,
-      "package_qty": 355,
+      "package_qty": 428,
       "package_unit": "ml",
       "shelf_life_days": 1825,
       "aliases": [
         "rice wine vinegar",
         "seasoned rice vinegar"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
     },
     {
       "name": "red wine vinegar",
@@ -1578,12 +1590,14 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 1.05,
-      "package_qty": 454,
+      "package_qty": 418,
       "package_unit": "g",
       "shelf_life_days": 2,
       "aliases": [
         "atlantic salmon"
-      ]
+      ],
+      "package_noun": "can",
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
     },
     {
       "name": "shrimp",
@@ -1631,7 +1645,9 @@
         "chunk light tuna",
         "albacore tuna"
       ],
-      "count_noun": "can"
+      "count_noun": "can",
+      "package_noun": "can",
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
     },
     {
       "name": "eggs",
@@ -1668,7 +1684,9 @@
         "2% milk",
         "skim milk",
         "whole mlk"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "heavy cream",
@@ -1728,7 +1746,9 @@
         "yogurt",
         "plain yogurt",
         "plain greek yogurt"
-      ]
+      ],
+      "package_noun": "tub",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "parmesan cheese",
@@ -1744,7 +1764,9 @@
         "parmesan",
         "parmigiano reggiano",
         "parmigiano"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "cheddar cheese",
@@ -1769,14 +1791,16 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 0.45,
-      "package_qty": 227,
+      "package_qty": 340,
       "package_unit": "g",
       "shelf_life_days": 30,
       "aliases": [
         "mozzarella",
         "shredded mozzarella",
         "fresh mozzarella"
-      ]
+      ],
+      "package_noun": "bag",
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
     },
     {
       "name": "cream cheese",
@@ -1850,7 +1874,9 @@
         "spaghettini",
         "linguine",
         "angel hair"
-      ]
+      ],
+      "package_noun": "box",
+      "package_source": "Open Food Facts, median of 8 US products, 2026-10"
     },
     {
       "name": "penne",
@@ -1877,14 +1903,16 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 0.38,
-      "package_qty": 1190,
+      "package_qty": 1191,
       "package_unit": "g",
       "shelf_life_days": 545,
       "aliases": [
         "oats",
         "old fashioned oats",
         "oatmeal"
-      ]
+      ],
+      "package_noun": "box",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "quinoa",
@@ -1905,13 +1933,15 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 0.72,
-      "package_qty": 454,
+      "package_qty": 164,
       "package_unit": "g",
       "shelf_life_days": 730,
       "aliases": [
         "israeli couscous",
         "pearl couscous"
-      ]
+      ],
+      "package_noun": "box",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "breadcrumbs",
@@ -1976,7 +2006,9 @@
         "diced tomatoes",
         "canned tomatoes"
       ],
-      "count_noun": "can"
+      "count_noun": "can",
+      "package_noun": "can",
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
     },
     {
       "name": "canned crushed tomatoes",
@@ -2009,7 +2041,9 @@
       "shelf_life_days": 1095,
       "aliases": [
         "tomato puree"
-      ]
+      ],
+      "package_noun": "can",
+      "package_source": "Open Food Facts, median of 8 US products, 2026-10"
     },
     {
       "name": "tomato sauce",
@@ -2018,14 +2052,16 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 1.05,
-      "package_qty": 425,
+      "package_qty": 439,
       "package_unit": "g",
       "shelf_life_days": 1095,
       "aliases": [
         "marinara",
         "pasta sauce",
         "marinara sauce"
-      ]
+      ],
+      "package_noun": "jar",
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
     },
     {
       "name": "black beans",
@@ -2041,7 +2077,9 @@
         "canned black beans",
         "blk beans"
       ],
-      "count_noun": "can"
+      "count_noun": "can",
+      "package_noun": "can",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "chickpeas",
@@ -2153,7 +2191,9 @@
         "canned coconut milk",
         "full fat coconut milk"
       ],
-      "count_noun": "can"
+      "count_noun": "can",
+      "package_noun": "can",
+      "package_source": "Open Food Facts container vote; size kept from catalog"
     },
     {
       "name": "soy sauce",
@@ -2162,7 +2202,7 @@
       "tracking_mode": "bulk",
       "base_unit": "ml",
       "density_g_per_ml": 1.15,
-      "package_qty": 296,
+      "package_qty": 500,
       "package_unit": "ml",
       "shelf_life_days": 1095,
       "is_staple": true,
@@ -2170,7 +2210,9 @@
         "shoyu",
         "light soy sauce",
         "tamari"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "fish sauce",
@@ -2200,7 +2242,9 @@
         "mustard",
         "whole grain mustard",
         "yellow mustard"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "mayonnaise",
@@ -2215,7 +2259,9 @@
       "aliases": [
         "mayo",
         "hellmanns"
-      ]
+      ],
+      "package_noun": "jar",
+      "package_source": "Open Food Facts container vote; size kept from catalog"
     },
     {
       "name": "ketchup",
@@ -2224,13 +2270,15 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 1.14,
-      "package_qty": 567,
+      "package_qty": 580,
       "package_unit": "g",
       "shelf_life_days": 365,
       "aliases": [
         "tomato ketchup",
         "catsup"
-      ]
+      ],
+      "package_noun": "bottle",
+      "package_source": "Open Food Facts, median of 11 US products, 2026-10"
     },
     {
       "name": "hot sauce",
@@ -2270,14 +2318,16 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 1.08,
-      "package_qty": 454,
+      "package_qty": 462,
       "package_unit": "g",
       "shelf_life_days": 365,
       "aliases": [
         "pb",
         "creamy peanut butter",
         "natural peanut butter"
-      ]
+      ],
+      "package_noun": "jar",
+      "package_source": "Open Food Facts, median of 11 US products, 2026-10"
     },
     {
       "name": "salsa",
@@ -2286,13 +2336,15 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 1.02,
-      "package_qty": 454,
+      "package_qty": 377,
       "package_unit": "g",
       "shelf_life_days": 365,
       "aliases": [
         "pico de gallo",
         "salsa verde"
-      ]
+      ],
+      "package_noun": "jar",
+      "package_source": "Open Food Facts, median of 16 US products, 2026-10"
     },
     {
       "name": "miso paste",
@@ -2331,10 +2383,12 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 0.5,
-      "package_qty": 227,
+      "package_qty": 454,
       "package_unit": "g",
       "shelf_life_days": 180,
-      "aliases": []
+      "aliases": [],
+      "package_noun": "bag",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "almonds",
@@ -2343,13 +2397,15 @@
       "tracking_mode": "bulk",
       "base_unit": "g",
       "density_g_per_ml": 0.6,
-      "package_qty": 227,
+      "package_qty": 907,
       "package_unit": "g",
       "shelf_life_days": 270,
       "aliases": [
         "sliced almonds",
         "slivered almonds"
-      ]
+      ],
+      "package_noun": "bag",
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
       "name": "pine nuts",

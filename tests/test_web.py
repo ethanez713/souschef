@@ -1857,3 +1857,175 @@ def test_recipe_page_agrees_with_the_list_about_spoiled_stock(
     assert "probably gone" in page
     assert "have none" in page
     assert '<span class="badge good">have</span>' not in page
+
+
+def _row_titles(page: str) -> list[str]:
+    return re.findall(r'class="list-row-title">(.*?)</span>', page)
+
+
+def test_picker_ingredient_query_lists_chicken_breast_before_unrelated_rows(
+    signed_in: TestClient,
+) -> None:
+    page = signed_in.get("/pick/ingredient", params={"q": "chick"}).text
+    titles = _row_titles(page)
+    assert titles[0] == "chicken breast"
+    assert "chickpeas" in titles
+    assert titles.index("chicken breast") < titles.index("chickpeas")
+    assert titles[-1] == "Add “chick” as new"
+
+
+def test_picker_ingredient_query_lists_penne(signed_in: TestClient) -> None:
+    page = signed_in.get("/pick/ingredient", params={"q": "pen"}).text
+    titles = _row_titles(page)
+    assert "penne" in titles
+    assert titles.index("penne") < titles.index("Add “pen” as new")
+
+
+def test_picker_ingredient_query_matches_aliases_and_carries_row_data(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    chicken = ing(seeded_session, "chicken breast")
+    alias_hit = signed_in.get("/pick/ingredient", params={"q": "chicken breasts"}).text
+    assert "chicken breast" in alias_hit
+    assert "Add “chicken breasts” as new" not in alias_hit
+
+    prefix = signed_in.get("/pick/ingredient", params={"q": "boneless skinless"}).text
+    assert _row_titles(prefix)[0] == "chicken breast"
+
+    exact = signed_in.get("/pick/ingredient", params={"q": "chicken breast"}).text
+    assert f'data-id="{chicken.id}"' in exact
+    assert 'data-name="chicken breast"' in exact
+    assert f'data-base-unit="{chicken.base_unit}"' in exact
+    assert 'data-count-noun="' in exact
+    assert f'data-package-qty="{chicken.package_qty}"' in exact
+    assert f'data-package-unit="{chicken.package_unit}"' in exact
+    assert 'data-package-noun="' in exact
+    assert "Add “chicken breast” as new" not in exact
+
+
+def test_picker_ingredient_empty_query_lists_recents(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    from sqlalchemy import update
+
+    penne = ing(seeded_session, "penne")
+    chicken = ing(seeded_session, "chicken breast")
+    chickpeas = ing(seeded_session, "chickpeas")
+    record_event(seeded_session, web_user.id, chicken, reason=EventReason.PURCHASE, delta=100)
+    record_event(seeded_session, web_user.id, penne, reason=EventReason.PURCHASE, delta=100)
+    other = User(username="picker-other", display_name="picker-other", password_hash="x")
+    seeded_session.add(other)
+    seeded_session.flush()
+    record_event(seeded_session, other.id, chickpeas, reason=EventReason.PURCHASE, delta=100)
+    seeded_session.commit()
+    seeded_session.execute(
+        update(PantryItem)
+        .where(PantryItem.user_id == web_user.id, PantryItem.ingredient_id == chicken.id)
+        .values(updated_at=datetime(2020, 1, 1, tzinfo=UTC))
+    )
+    seeded_session.execute(
+        update(PantryItem)
+        .where(PantryItem.user_id == web_user.id, PantryItem.ingredient_id == penne.id)
+        .values(updated_at=datetime(2024, 6, 1, tzinfo=UTC))
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/pick/ingredient").text
+    titles = _row_titles(page)
+    assert titles.index("penne") < titles.index("chicken breast")
+    assert "chickpeas" not in titles
+    assert "Add “" not in page
+
+
+def test_picker_ingredient_unknown_query_offers_only_add_new(signed_in: TestClient) -> None:
+    page = signed_in.get("/pick/ingredient", params={"q": "zzzz"}).text
+    assert page.count('class="list-row"') == 1
+    assert "Add “zzzz” as new" in page
+
+
+def test_picker_recipe_omits_archived_and_lists_recent_cooks_and_plans(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    older = Recipe(
+        user_id=web_user.id,
+        title="Older Soup",
+        servings=2,
+        last_cooked_at=datetime(2020, 1, 1, tzinfo=UTC),
+    )
+    fresh = Recipe(
+        user_id=web_user.id,
+        title="Fresh Soup",
+        servings=2,
+        last_cooked_at=datetime(2024, 6, 1, tzinfo=UTC),
+    )
+    untouched = Recipe(user_id=web_user.id, title="Untouched Soup", servings=2)
+    archived = Recipe(
+        user_id=web_user.id,
+        title="Old Stew",
+        servings=2,
+        is_archived=True,
+        last_cooked_at=datetime(2025, 1, 1, tzinfo=UTC),
+    )
+    live_stew = Recipe(
+        user_id=web_user.id,
+        title="Weeknight Stew",
+        servings=2,
+        last_cooked_at=datetime(2024, 1, 1, tzinfo=UTC),
+    )
+    planned = Recipe(user_id=web_user.id, title="Planned Soup", servings=2)
+    seeded_session.add_all([older, fresh, untouched, archived, live_stew, planned])
+    seeded_session.flush()
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=date.today(),
+            slot=MealSlot.DINNER,
+            recipe_id=planned.id,
+            servings=2,
+        )
+    )
+    seeded_session.commit()
+
+    recents = signed_in.get("/pick/recipe").text
+    titles = _row_titles(recents)
+    assert "Old Stew" not in titles
+    assert "Untouched Soup" not in titles
+    assert titles.index("Planned Soup") < titles.index("Fresh Soup")
+    assert titles.index("Fresh Soup") < titles.index("Older Soup")
+    assert 'class="badge good">Ready<' in recents
+
+    found = signed_in.get("/pick/recipe", params={"q": "stew"}).text
+    found_titles = _row_titles(found)
+    assert found_titles == ["Weeknight Stew"]
+    assert "Old Stew" not in found
+
+
+def test_picker_macro_renders_the_hidden_input_and_the_sheet_search() -> None:
+    from souschef.web.common import templates
+
+    page = templates.env.from_string(
+        '{% from "macros.html" import picker %}'
+        "{{ picker('ingredient_id', 'Ingredient', 'ingredient', 'chicken breast') }}"
+    ).render()
+    assert '<input type="hidden" name="ingredient_id" value="chicken breast">' in page
+    assert 'hx-get="/pick/ingredient"' in page
+    assert "data-picker-query" in page
+    assert "chicken breast" in page
+
+    recipe = templates.env.from_string(
+        '{% from "macros.html" import picker %}'
+        "{{ picker('recipe_id', 'Recipe', 'recipe', '') }}"
+    ).render()
+    assert 'name="recipe_id"' in recipe
+    assert 'hx-get="/pick/recipe"' in recipe
+    assert 'data-picker-query' in recipe
+
+
+def test_picker_focuses_the_search_field_inside_the_tap_handler() -> None:
+    from pathlib import Path
+
+    source = (
+        Path(__file__).parent.parent / "src" / "souschef" / "static" / "picker.js"
+    ).read_text()
+    opener = source.split("function openPicker", 1)[1].split("function choose", 1)[0]
+    assert opener.index(".focus(") < opener.index("htmx.trigger")

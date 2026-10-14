@@ -153,3 +153,29 @@
 {% macro sticky_bar() -%}
 <div class="sticky-bar">{{ caller() }}</div>
 {%- endmacro %}
+
+{% macro picker(name, label, kind, value='') -%}
+{%- set current = value|string if value else '' -%}
+{%- set sheet_id = 'picker-' ~ kind ~ '-' ~ name -%}
+<div class="picker" data-picker-sheet="{{ sheet_id }}">
+  <input type="hidden" name="{{ name }}" value="{{ current }}">
+  <button type="button" class="block picker-trigger" data-sheet="{{ sheet_id }}" data-picker-open
+          {% if not current %}data-empty{% endif %}
+          aria-haspopup="dialog" aria-controls="{{ sheet_id }}">
+    <span class="picker-label">{{ label }}</span>
+    <span class="picker-choice" data-picker-value>{{ current or 'Choose' }}</span>
+  </button>
+</div>
+{% call sheet(sheet_id, label) %}
+<div class="picker-search">
+  <input type="search" name="q" value="" placeholder="Search" autocomplete="off" enterkeyhint="search"
+         data-picker-query form="picker-unowned" aria-label="Search {{ label }}"
+         hx-get="/pick/{{ kind }}"
+         hx-trigger="picker-open, input changed delay:200ms, search"
+         hx-target="#{{ sheet_id }}-results"
+         hx-swap="innerHTML"
+         hx-params="q">
+</div>
+<div class="picker-results" id="{{ sheet_id }}-results"></div>
+{% endcall %}
+{%- endmacro %}

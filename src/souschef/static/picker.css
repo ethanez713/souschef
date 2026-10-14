@@ -1,0 +1,9 @@
+.picker { margin-bottom: var(--sp-4); }
+.picker-trigger {
+  justify-content: space-between; text-align: left; white-space: normal; gap: var(--sp-4);
+}
+.picker-label { font-weight: var(--fw-medium); color: var(--text-heading); }
+.picker-choice { color: var(--text-muted); font-weight: var(--fw-regular); text-align: right; }
+.picker-trigger[data-empty] .picker-choice { color: var(--text-faint); }
+.picker-search { margin-bottom: var(--sp-3); }
+.picker-results .list-row { width: 100%; }

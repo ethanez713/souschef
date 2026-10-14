@@ -1,0 +1,22 @@
+{% for row in rows %}
+<button type="button" class="list-row" data-picker-choice data-id="{{ row.id }}" data-name="{{ row.name }}"
+        {%- if kind == 'ingredient' %}
+        data-base-unit="{{ row.base_unit }}"
+        data-count-noun="{{ row.count_noun or '' }}"
+        data-package-qty="{{ row.package_qty if row.package_qty is not none else '' }}"
+        data-package-unit="{{ row.package_unit or '' }}"
+        data-package-noun="{{ row.package_noun or '' }}"
+        {%- endif %}>
+  <span class="list-row-main"><span class="list-row-title">{{ row.name }}</span></span>
+  {%- if row.chip %}
+  <span class="list-row-trail"><span class="badge {{ 'good' if row.chip == 'Ready' else 'warn' }}">{{ row.chip }}</span></span>
+  {%- endif %}
+</button>
+{% endfor %}
+{% if add_query %}
+<button type="button" class="list-row" data-picker-choice data-new="1" data-name="{{ add_query }}">
+  <span class="list-row-main"><span class="list-row-title">Add “{{ add_query }}” as new</span></span>
+</button>
+{% elif not rows %}
+<p class="meta">{% if asked %}No matching {{ 'recipes' if kind == 'recipe' else 'ingredients' }}.{% else %}Nothing recent.{% endif %}</p>
+{% endif %}

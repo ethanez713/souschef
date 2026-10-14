@@ -27,6 +27,7 @@ from souschef.web.routes import (
     home,
     meta,
     pantry,
+    pick,
     plan,
     receipts,
     recipes,
@@ -190,6 +191,7 @@ async def validation_page(request: Request, exc: RequestValidationError) -> Resp
 
 app.include_router(home.router)
 app.include_router(pantry.router)
+app.include_router(pick.router)
 app.include_router(recipes.router)
 app.include_router(cook.router)
 app.include_router(plan.router)

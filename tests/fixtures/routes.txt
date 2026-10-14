@@ -4,6 +4,8 @@ GET /healthz
 GET /manifest.webmanifest
 GET /pantry
 GET /pantry/add
+GET /pick/ingredient
+GET /pick/recipe
 GET /plan
 GET /receipts
 GET /receipts/{receipt_id}

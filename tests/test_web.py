@@ -953,15 +953,16 @@ def test_add_sheet_preselects_can_for_canned_tomatoes_and_clove_for_garlic(
     assert _checked_unit(tomatoes) == "can"
     garlic = _pantry_add_sheet(signed_in, "garlic")
     assert _checked_unit(garlic) == "clove"
-    assert "1 package = 12 cloves" in garlic
+    assert "1 pack = 12 cloves" in garlic
 
     assert _checked_unit(_shop_add_sheet(signed_in, "canned tomatoes")) == "can"
     assert _checked_unit(_shop_add_sheet(signed_in, "garlic")) == "clove"
 
+    # A known package size with no container word still leads with the package.
     spinach = _pantry_add_sheet(signed_in, "spinach")
-    assert _unit_values(spinach) == ["g", "oz", "lb"]
-    assert _checked_unit(spinach) == "g"
-    assert "1 package = 5 oz" in spinach
+    assert _unit_values(spinach) == ["pack", "g", "oz", "lb"]
+    assert _checked_unit(spinach) == "pack"
+    assert "1 pack = 5 oz" in spinach
 
     beans = ing(seeded_session, "black beans")
     beans.package_noun = "tin"
@@ -986,6 +987,17 @@ def test_two_cans_store_twice_the_package_in_base_units(
         2 * tomatoes.package_qty, tomatoes.package_unit, physical_of(tomatoes)
     )
     assert row.quantity == pytest.approx(expected)
+
+    spinach = ing(seeded_session, "spinach")
+    packs = signed_in.post(
+        "/pantry/add", data={"name": "spinach", "quantity": "2", "unit": "pack"}
+    )
+    assert packs.status_code == 303
+    leaves = _pantry_row(seeded_session, web_user, "spinach")
+    assert leaves is not None
+    assert leaves.quantity == pytest.approx(
+        to_base(2 * spinach.package_qty, spinach.package_unit, physical_of(spinach))
+    )
 
     cloves = signed_in.post(
         "/pantry/add", data={"name": "garlic", "quantity": "2", "unit": "clove"}

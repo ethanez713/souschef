@@ -130,13 +130,16 @@
     var packageNoun = attr(root, "data-package-noun");
     var countNoun = attr(root, "data-count-noun");
     var base = attr(root, "data-base-unit") || "count";
-    var preferred = packageNoun || countNoun || baseWord(base, countNoun);
+    var hasSize = attr(root, "data-package-qty") && attr(root, "data-package-unit");
+    var generic = !packageNoun && hasSize ? "pack" : "";
+    var preferred = packageNoun || countNoun || generic || baseWord(base, countNoun);
     var words = [];
     function add(word) {
       if (word && words.indexOf(word) < 0) words.push(word);
     }
     add(preferred);
     add(countNoun);
+    add(generic);
     dimensionWords(base, countNoun).forEach(add);
     return { words: words, selected: preferred };
   }
@@ -146,7 +149,7 @@
     if (noun) return noun;
     var count = attr(root, "data-count-noun");
     if (count && PACK[count]) return count;
-    if (attr(root, "data-package-qty") && attr(root, "data-package-unit")) return "package";
+    if (attr(root, "data-package-qty") && attr(root, "data-package-unit")) return "pack";
     return "";
   }
 

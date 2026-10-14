@@ -765,9 +765,11 @@ def add_unit_choices(ingredient: object, selected: str = "") -> list[UnitChip]:
     package_noun = (getattr(ingredient, "package_noun", None) or "").strip()
     count_noun = (getattr(ingredient, "count_noun", None) or "").strip()
     base = (getattr(ingredient, "base_unit", None) or "").strip() or "count"
-    preferred = package_noun or count_noun or _base_chip(base, count_noun)
+    # A known size without a container word still beats grams: "pack" is the generic word.
+    generic = "pack" if not package_noun and _has_package_size(ingredient) else ""
+    preferred = package_noun or count_noun or generic or _base_chip(base, count_noun)
     ordered: list[str] = []
-    for word in (preferred, count_noun, *_dimension_chips(base, count_noun)):
+    for word in (preferred, count_noun, generic, *_dimension_chips(base, count_noun)):
         if word and word not in ordered:
             ordered.append(word)
     if not ordered:
@@ -782,6 +784,11 @@ def add_unit_choices(ingredient: object, selected: str = "") -> list[UnitChip]:
         else:
             chosen = match
     return [UnitChip(word, word == chosen) for word in ordered]
+
+
+def _has_package_size(ingredient: object) -> bool:
+    qty = getattr(ingredient, "package_qty", None)
+    return bool(qty and getattr(ingredient, "package_unit", None))
 
 
 def _is_pack_word(word: str) -> bool:
@@ -805,7 +812,7 @@ def package_caption_word(
     if count and _is_pack_word(count):
         return count
     if has_package:
-        return "package"
+        return "pack"
     return ""
 
 

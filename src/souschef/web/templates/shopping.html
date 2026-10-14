@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Shop · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import add_units, group_header, package_size, picker, row, sheet %}
+{% from "macros.html" import add_units, group_header, package_size, picker, row, sheet, toast %}
 {% set active = 'shopping' %}
 
 {# Restock and hand-added lines are not recipe titles, so they get no "for" line. #}
@@ -12,16 +12,52 @@
 <button type="submit" class="tick" aria-pressed="{{ 'true' if it.is_checked else 'false' }}" aria-label="{{ it.label }}">{{ icon('check', 16) }}</button>
 {% endset %}
 {% set amount %}{% if qty %}<span class="num">{{ qty }}</span>{% endif %}{% endset %}
+{% set need = it|shop_need %}
+{% set note = it.purchase_note if it.purchase_note and not it.purchase_note.startswith('needs ') else '' %}
+{% if amount_for == it.id %}
+  {% set shown_amount = amount_value %}
+  {% set shown_unit = amount_unit %}
+{% else %}
+  {% set shown_amount = '{:g}'.format(it.purchase_qty) if it.purchase_qty is not none else '' %}
+  {% set shown_unit = it.purchase_unit or '' %}
+{% endif %}
 <div class="shop-row">
   <form method="post" action="/shopping/item/{{ it.id }}/check" class="shop-item{{ ' checked' if it.is_checked }}"
         hx-post="/shopping/item/{{ it.id }}/check" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
     <input type="hidden" name="checked" value="{{ '0' if it.is_checked else '1' }}">
-    {{ row(it.label, sub=('for ' ~ for_recipes) if for_recipes else '', lead=lead, value=amount if qty else '') }}
-  </form>
-  <form method="post" action="/shopping/item/{{ it.id }}/skip" class="shop-skip no-print">
-    <button class="iconbtn" type="submit" aria-label="Remove {{ it.label }}">{{ icon('x', 16) }}</button>
+    {{ row(it.label, sub=('for ' ~ for_recipes) if for_recipes else '', lead=lead, value=amount if qty else '', name_sheet='shop-item-' ~ it.id) }}
   </form>
 </div>
+{% call sheet('shop-item-' ~ it.id, it.label, open=(amount_for == it.id)) %}
+  {% if need or note %}<p class="sheet-need">{% if need %}{{ need }}{% endif %}{% if need and note %} · {% endif %}{% if note %}{{ note }}{% endif %}</p>{% endif %}
+  {% if amount_error and amount_for == it.id %}
+    <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ amount_error }}</div></div>
+  {% endif %}
+  <div class="sheet-actions">
+    <form method="post" action="/shopping/item/{{ it.id }}/have"
+          hx-post="/shopping/item/{{ it.id }}/have" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <button class="block primary" type="submit">Have it</button>
+    </form>
+    <form method="post" action="/shopping/item/{{ it.id }}/amount"
+          hx-post="/shopping/item/{{ it.id }}/amount" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <div class="controls">
+        <div class="field">
+          <label for="shop-amt-{{ it.id }}">Amount</label>
+          <input id="shop-amt-{{ it.id }}" name="amount" type="number" step="any" inputmode="decimal" value="{{ shown_amount }}">
+        </div>
+        <div class="field">
+          <label for="shop-unit-{{ it.id }}">Unit</label>
+          <input id="shop-unit-{{ it.id }}" name="unit" value="{{ shown_unit }}" autocomplete="off">
+        </div>
+      </div>
+      <button class="block" type="submit">Edit amount</button>
+    </form>
+    <form method="post" action="/shopping/item/{{ it.id }}/skip"
+          hx-post="/shopping/item/{{ it.id }}/skip" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <button class="block danger" type="submit">Remove</button>
+    </form>
+  </div>
+{% endcall %}
 {% endmacro %}
 
 {% block content %}
@@ -32,6 +68,7 @@
   </div>
 
   <div id="shop-list">
+  {% if shop_toast %}{{ toast(shop_toast.message, shop_toast.undo, shop_toast.extra_label, shop_toast.extra_action, '#shop-list') }}{% endif %}
   {% if added %}
     <div class="notice good spaced">
       {{ icon('circle-check', 16) }}

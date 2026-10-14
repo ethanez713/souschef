@@ -100,15 +100,20 @@
 
 
 {# One list row: min 48 px, hairline divider. `href` makes it a link, `sheet` a button that opens
-   the <dialog> with that id; `lead` and `trail` take markup, `value` is right-aligned. #}
-{% macro row(title, sub='', lead='', value='', trail='', href='', sheet='', cls='') -%}
+   the <dialog> with that id. `name_sheet` opens that dialog from the name only, so a lead
+   control (the shop tick) stays outside the button. `lead` and `trail` take markup, `value`
+   is right-aligned. #}
+{% macro row(title, sub='', lead='', value='', trail='', href='', sheet='', cls='', name_sheet='') -%}
 {%- set tag = 'a' if href else ('button' if sheet else 'div') -%}
 {%- set side = 'span' if href or sheet else 'div' -%}
+{%- set open_name = name_sheet and not href and not sheet -%}
 <{{ tag }} class="list-row{% if cls %} {{ cls }}{% endif %}"{% if href %} href="{{ href }}"{% elif sheet %} type="button" data-sheet="{{ sheet }}"{% endif %}>
   {%- if lead %}<{{ side }} class="list-row-lead">{{ lead }}</{{ side }}>{% endif -%}
   <span class="list-row-main">
+    {% if open_name %}<button type="button" class="list-row-open" data-sheet="{{ name_sheet }}" aria-haspopup="dialog" aria-controls="{{ name_sheet }}">{% endif %}
     <span class="list-row-title">{{ title }}</span>
     {%- if sub %}<span class="list-row-sub">{{ sub }}</span>{% endif -%}
+    {% if open_name %}</button>{% endif %}
   </span>
   {%- if value %}<span class="list-row-value">{{ value }}</span>{% endif -%}
   {%- if trail %}<{{ side }} class="list-row-trail">{{ trail }}</{{ side }}>{% endif -%}
@@ -134,11 +139,18 @@
 {%- endif %}
 {%- endmacro %}
 
-{% macro toast(message, undo_action='') -%}
+{% macro hx_post(action, target) -%}
+{%- if target %} hx-post="{{ action }}" hx-target="{{ target }}" hx-select="{{ target }}" hx-swap="outerHTML"{% endif -%}
+{%- endmacro %}
+
+{% macro toast(message, undo_action='', extra_label='', extra_action='', hx_target='') -%}
 <div class="toast" role="status" data-toast>
   <span>{{ message }}</span>
+  {%- if extra_action and extra_label %}
+  <form method="post" action="{{ extra_action }}"{{ hx_post(extra_action, hx_target) }}><button type="submit">{{ extra_label }}</button></form>
+  {%- endif %}
   {%- if undo_action %}
-  <form method="post" action="{{ undo_action }}"><button type="submit">Undo</button></form>
+  <form method="post" action="{{ undo_action }}"{{ hx_post(undo_action, hx_target) }}><button type="submit">Undo</button></form>
   {%- endif %}
 </div>
 {%- endmacro %}

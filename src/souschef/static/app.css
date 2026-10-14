@@ -327,8 +327,18 @@ details.plan .daychips { margin-top: var(--sp-2); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .shop-row .list-row-sub { font-size: var(--fs-body-sm); }
-.shop-skip { flex: none; display: flex; align-items: center; }
-.shop-skip button { min-height: 44px; }
+.list-row-open {
+  display: flex; flex-direction: column; align-items: stretch; justify-content: center;
+  gap: 2px; width: 100%; min-width: 0; min-height: 44px;
+  padding: 0; margin: 0; border: 0; border-radius: 0; box-shadow: none;
+  background: none; color: inherit; font: inherit; text-align: left;
+}
+.list-row-open:hover,
+.list-row-open:active { background: none; color: inherit; transform: none; }
+.sheet-need { margin: 0 0 var(--sp-4); color: var(--text-muted); font-size: var(--fs-body-sm); }
+.sheet-actions { display: flex; flex-direction: column; gap: var(--sp-3); }
+.sheet-actions form { margin: 0; }
+.sheet-actions .controls + button { margin-top: var(--sp-2); }
 ul.plain { margin: var(--sp-2) 0 0; padding-left: 1.2em; }
 ul.plain li { margin: var(--sp-1) 0; }
 .btns { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
@@ -488,7 +498,7 @@ details.inline-fix .controls,
 }
 
 @media print {
-  .skip, .topbar, .tabbar, .no-print, .actions, .shop-plain { display: none !important; }
+  .skip, .topbar, .tabbar, .no-print, .actions, .shop-plain, dialog.sheet { display: none !important; }
   body { padding: 0 !important; background: white; color: black; }
   main { max-width: none; padding: 0; }
   .group-head { margin: 8px 0 2px; }

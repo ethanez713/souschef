@@ -129,6 +129,10 @@ class ShoppingListItem(Base):
     # Hidden while its need remains, so a rebuild does not put it back. Dropped
     # once that need is gone: a skip lasts only as long as the need it removed.
     is_skipped: Mapped[bool] = mapped_column(default=False)
+    # Set when the shopper typed the purchase amount. A rebuild leaves
+    # purchase_qty, purchase_unit and purchase_note alone while this is set,
+    # so the hand-set amount is what gets bought.
+    amount_edited: Mapped[bool] = mapped_column(default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     shopping_list: Mapped[ShoppingList] = relationship(back_populates="items")

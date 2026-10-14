@@ -1672,6 +1672,10 @@ def _row_leads(html: str) -> list[str]:
     return parser.leads
 
 
+def _outside_sheets(html: str) -> str:
+    return re.sub(r"<dialog\b[^>]*>.*?</dialog>", "", html, flags=re.S)
+
+
 def _to_get(html: str) -> str:
     match = re.search(r'<p class="meta">(.*?)</p>', html, re.S)
     assert match is not None
@@ -1720,7 +1724,11 @@ def test_shopping_rows_lead_with_the_name_and_ticked_rows_sit_in_the_basket(
     assert _to_get(before) == "2"
     assert "for Row Layout" in before
     assert "for added by you" not in before
-    assert "needs " not in before
+    assert "needs " not in _outside_sheets(before)
+    assert "shop-skip" not in before
+    assert ">Have it<" in before
+    assert ">Edit amount<" in before
+    assert ">Remove<" in before
     assert "to buy" not in before
     assert _basket(before) is None
     assert '<span>Other</span><span class="group-side"><span class="count">1</span>' in before
@@ -1757,6 +1765,163 @@ def test_shopping_rows_lead_with_the_name_and_ticked_rows_sit_in_the_basket(
     stocked_basket = _basket(stocked)
     assert stocked_basket is not None
     assert "paper towels" not in stocked_basket
+
+
+def _plan_sauce(session: Session, user: User) -> None:
+    recipe = save_imported_recipe(
+        session,
+        user.id,
+        RawRecipe(
+            title="Steak sauce",
+            ingredients=["9 ml worcestershire sauce"],
+            servings=1,
+            source_url="https://example.com/have-it-sauce",
+        ),
+        source=RecipeSource.URL,
+    )
+    sauce = ing(session, "worcestershire sauce")
+    line = recipe.ingredients[0]
+    line.ingredient_id = sauce.id
+    line.quantity = 9
+    line.unit = "ml"
+    line.quantity_is_vague = False
+    line.is_ignored = False
+    session.add(
+        MealPlanEntry(
+            user_id=user.id,
+            plan_date=date.today(),
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=1,
+        )
+    )
+    session.commit()
+
+
+def test_have_it_stocks_one_package_and_a_later_one_offers_always_have(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_sauce(seeded_session, web_user)
+    sauce = ing(seeded_session, "worcestershire sauce")
+    page = signed_in.get("/shopping")
+    item_id = _shop_item_id(page.text, "worcestershire sauce")
+    seeded_session.expire_all()
+    row = seeded_session.get(ShoppingListItem, item_id)
+    assert row is not None
+    assert row.needed_qty == pytest.approx(9)
+
+    sheet = re.search(rf'id="shop-item-{item_id}".*?</dialog>', page.text, re.S)
+    assert sheet is not None
+    assert "needs " in sheet.group(0)
+    assert ">Have it<" in sheet.group(0)
+
+    first = signed_in.post(f"/shopping/item/{item_id}/have")
+    assert first.status_code == 303
+    marked = signed_in.get(first.headers["location"])
+    assert "Marked worcestershire sauce as on hand" in marked.text
+    assert "Always have" not in marked.text
+    assert f"/shopping/item/{item_id}/check" not in marked.text
+    assert _row_leads(marked.text) == []
+
+    seeded_session.expire_all()
+    held = seeded_session.scalar(
+        select(PantryItem).where(
+            PantryItem.user_id == web_user.id,
+            PantryItem.ingredient_id == sauce.id,
+        )
+    )
+    assert held is not None
+    assert held.quantity == pytest.approx(296)
+    events = seeded_session.scalars(
+        select(InventoryEvent).where(
+            InventoryEvent.user_id == web_user.id,
+            InventoryEvent.ingredient_id == sauce.id,
+        )
+    ).all()
+    assert len(events) == 1
+    assert events[0].reason == EventReason.MANUAL
+    assert events[0].note == "have it"
+    assert events[0].resulting_quantity == pytest.approx(296)
+
+    events[0].occurred_at = datetime.now(UTC) - timedelta(days=1)
+    record_event(
+        seeded_session,
+        web_user.id,
+        sauce,
+        reason=EventReason.WASTE,
+        delta=-held.quantity,
+        note="used up",
+    )
+    seeded_session.commit()
+    assert signed_in.post("/shopping/generate").status_code == 303
+    again = signed_in.get("/shopping")
+    new_id = _shop_item_id(again.text, "worcestershire sauce")
+    second = signed_in.post(f"/shopping/item/{new_id}/have")
+    assert second.status_code == 303
+    offer = signed_in.get(second.headers["location"])
+    assert "Marked worcestershire sauce as on hand" in offer.text
+    assert "Always have worcestershire sauce" in offer.text
+    action = re.search(r'action="(/shopping/ingredient/\d+/always)"', offer.text)
+    assert action is not None
+
+    assert signed_in.post(action.group(1)).status_code == 303
+    seeded_session.expire_all()
+    assert seeded_session.get(CanonicalIngredient, sauce.id).is_staple is True
+
+
+def test_remove_then_undo_restores_the_shopping_row(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Undo Shop", "https://example.com/undo-shop")
+    page = signed_in.get("/shopping").text
+    item_id = _shop_item_id(page, "spaghetti")
+    assert "shop-skip" not in page
+
+    removed = signed_in.post(f"/shopping/item/{item_id}/skip")
+    assert removed.status_code == 303
+    gone = signed_in.get(removed.headers["location"])
+    assert "Removed spaghetti" in gone.text
+    assert f'action="/shopping/item/{item_id}/unskip"' in gone.text
+    assert "spaghetti" not in _row_leads(gone.text)
+
+    assert signed_in.post(f"/shopping/item/{item_id}/unskip").status_code == 303
+    back = signed_in.get("/shopping").text
+    assert _shop_item_id(back, "spaghetti") == item_id
+    seeded_session.expire_all()
+    restored = seeded_session.get(ShoppingListItem, item_id)
+    assert restored is not None
+    assert restored.is_skipped is False
+
+
+def test_edited_shopping_amount_survives_a_rebuild(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Edit Amount", "https://example.com/edit-amount")
+    page = signed_in.get("/shopping").text
+    item_id = _shop_item_id(page, "spaghetti")
+
+    edited = signed_in.post(
+        f"/shopping/item/{item_id}/amount",
+        data={"amount": "3", "unit": "lb"},
+    )
+    assert edited.status_code == 303
+    assert "Updated spaghetti" in signed_in.get(edited.headers["location"]).text
+
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None
+    assert item.purchase_qty == pytest.approx(3)
+    assert item.purchase_unit == "lb"
+    assert item.amount_edited is True
+
+    assert signed_in.post("/shopping/generate").status_code == 303
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None
+    assert item.purchase_qty == pytest.approx(3)
+    assert item.purchase_unit == "lb"
+    assert item.amount_edited is True
+    assert "3 lb" in signed_in.get("/shopping").text
 
 
 def test_shopping_list_offers_a_copy(
@@ -2329,7 +2494,7 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v6" in worker
+    assert "souschef-shell-v7" in worker
 
 
 def test_pages_follow_the_signed_in_unit_system(
@@ -2380,7 +2545,8 @@ def test_pages_follow_the_signed_in_unit_system(
 
     shopping = signed_in.get("/shopping").text
     assert "1 × 1 lb" in shopping
-    assert "needs 1 lb" not in shopping
+    assert "needs 1 lb" in shopping
+    assert "needs 1 lb" not in _outside_sheets(shopping)
     assert "454 g" not in shopping
 
     web_user.unit_system = "metric"
@@ -2399,7 +2565,8 @@ def test_pages_follow_the_signed_in_unit_system(
 
     shopping = signed_in.get("/shopping").text
     assert "1 × 454 g" in shopping
-    assert "needs 454 g" not in shopping
+    assert "needs 454 g" in shopping
+    assert "needs 454 g" not in _outside_sheets(shopping)
 
 
 def test_pantry_set_level_stores_base_grams_from_the_entry_unit(

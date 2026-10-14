@@ -48,6 +48,7 @@ def test_head_migration_adds_the_later_columns(tmp_path: Path, monkeypatch) -> N
     assert meal["skipped_at"]["nullable"] is True
     assert shop["is_stocked"]["nullable"] is False
     assert shop["is_skipped"]["nullable"] is False
+    assert shop["amount_edited"]["nullable"] is False
 
 
 def test_package_columns_downgrade(tmp_path: Path, monkeypatch) -> None:
@@ -148,6 +149,63 @@ def test_is_ignored_migration_marks_existing_lines_and_downgrades(
     assert stored["2 cups watercress"] in (0, False)
     assert fresh in (0, False)
     assert "is_ignored" not in restored
+
+
+def test_amount_edited_defaults_false_and_drops_on_downgrade(
+    tmp_path: Path, monkeypatch
+) -> None:
+    data = tmp_path / "mig"
+    data.mkdir()
+    monkeypatch.setenv("SOUSCHEF_DATA_DIR", str(data))
+
+    from souschef.config import get_settings
+    from souschef.db import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+    try:
+        config = Config("alembic.ini")
+        command.upgrade(config, "a8c2e5f19b34")
+        engine = create_engine(f"sqlite+pysqlite:///{data / 'souschef.db'}")
+        stamp = _at(1)
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO app_user (id, username, display_name, password_hash, is_admin, "
+                "is_active, session_epoch, created_at, updated_at) "
+                f"VALUES (1, 'jordan', 'Jordan', 'x', 1, 1, 0, '{stamp}', '{stamp}')"
+            ))
+            conn.execute(text(
+                "INSERT INTO shopping_list (id, name, status, created_at, updated_at, user_id) "
+                f"VALUES (1, 'Weekly shop', 'DRAFT', '{stamp}', '{stamp}', 1)"
+            ))
+            conn.execute(text(
+                "INSERT INTO shopping_list_item (id, shopping_list_id, label, needed_qty, "
+                "source, is_checked, sort_order, is_stocked, is_skipped) "
+                "VALUES (1, 1, 'rice', 1, 'RECIPE', 0, 0, 0, 0)"
+            ))
+        command.upgrade(config, "head")
+        with engine.begin() as conn:
+            stored = conn.execute(text(
+                "SELECT amount_edited FROM shopping_list_item WHERE id = 1"
+            )).scalar_one()
+            conn.execute(text(
+                "INSERT INTO shopping_list_item (id, shopping_list_id, label, needed_qty, "
+                "source, is_checked, sort_order) "
+                "VALUES (2, 1, 'eggs', 1, 'RECIPE', 0, 1)"
+            ))
+            fresh = conn.execute(text(
+                "SELECT amount_edited FROM shopping_list_item WHERE id = 2"
+            )).scalar_one()
+        command.downgrade(config, "a8c2e5f19b34")
+        restored = {column["name"] for column in inspect(engine).get_columns("shopping_list_item")}
+        engine.dispose()
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+    assert stored in (0, False)
+    assert fresh in (0, False)
+    assert "amount_edited" not in restored
 
 
 def _at(day: int, hour: int = 12) -> str:

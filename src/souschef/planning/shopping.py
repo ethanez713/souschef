@@ -230,9 +230,10 @@ def _write_generated(item: ShoppingListItem, line: NeedLine, position: int) -> N
     item.label = line.ingredient.name
     item.needed_qty = line.shortfall
     item.needed_unit = line.ingredient.base_unit
-    item.purchase_qty = quantity
-    item.purchase_unit = unit
-    item.purchase_note = note
+    if not item.amount_edited:
+        item.purchase_qty = quantity
+        item.purchase_unit = unit
+        item.purchase_note = note
     item.driven_by = ", ".join(line.driven_by[:4]) or None
     item.aisle = line.ingredient.aisle or DEFAULT_AISLE
     item.sort_order = position

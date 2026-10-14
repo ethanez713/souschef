@@ -108,10 +108,25 @@ def _render_shopping(
     ) > 0
 
     visible = [item for item in active.items if not item.is_skipped]
+    # Checked rows leave their aisle for the basket. The copy still lists every row.
     by_aisle: dict[str, list] = {}
-    for item in sorted(visible, key=lambda i: (i.aisle or "", i.is_checked, i.sort_order)):
+    for item in sorted(
+        (item for item in visible if not item.is_checked),
+        key=lambda item: (item.aisle or "", item.sort_order, item.id),
+    ):
         by_aisle.setdefault(item.aisle or "Other", []).append(item)
+    basket = sorted(
+        (item for item in visible if item.is_checked),
+        key=lambda item: (item.aisle or "", item.sort_order, item.id),
+    )
+    copy_groups: dict[str, list] = {}
+    for item in sorted(
+        visible,
+        key=lambda item: (item.aisle or "", item.is_checked, item.sort_order, item.id),
+    ):
+        copy_groups.setdefault(item.aisle or "Other", []).append(item)
     pending_stock = sum(1 for item in visible if item.is_checked and not item.is_stocked)
+    to_get = sum(1 for item in visible if not item.is_checked and not item.is_stocked)
     unit_choices, package_caption = add_form_units(
         db, add_name, add_unit, user.unit_system or "us"
     )
@@ -123,7 +138,9 @@ def _render_shopping(
         shopping_list=active,
         items=visible,
         by_aisle=by_aisle,
-        copy_text=_shopping_copy(by_aisle, user),
+        basket=basket,
+        to_get=to_get,
+        copy_text=_shopping_copy(copy_groups, user),
         has_plan=has_plan,
         pending_stock=pending_stock,
         unnamed=_group_unnamed(unnamed_recipe_lines(db, user.id, start, end)),

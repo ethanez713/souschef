@@ -1,8 +1,29 @@
 {% extends "base.html" %}
 {% block title %}Shop · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import add_units, package_size, picker, sheet %}
+{% from "macros.html" import add_units, group_header, package_size, picker, row, sheet %}
 {% set active = 'shopping' %}
+
+{# Restock and hand-added lines are not recipe titles, so they get no "for" line. #}
+{% macro shop_row(it, qty) %}
+{% set why = it.driven_by or '' %}
+{% set for_recipes = '' if why in ['added by you', 'running low'] else why %}
+{% set lead %}
+<button type="submit" class="tick" aria-pressed="{{ 'true' if it.is_checked else 'false' }}" aria-label="{{ it.label }}">{{ icon('check', 16) }}</button>
+{% endset %}
+{% set amount %}{% if qty %}<span class="num">{{ qty }}</span>{% endif %}{% endset %}
+<div class="shop-row">
+  <form method="post" action="/shopping/item/{{ it.id }}/check" class="shop-item{{ ' checked' if it.is_checked }}"
+        hx-post="/shopping/item/{{ it.id }}/check" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+    <input type="hidden" name="checked" value="{{ '0' if it.is_checked else '1' }}">
+    {{ row(it.label, sub=('for ' ~ for_recipes) if for_recipes else '', lead=lead, value=amount if qty else '') }}
+  </form>
+  <form method="post" action="/shopping/item/{{ it.id }}/skip" class="shop-skip no-print">
+    <button class="iconbtn" type="submit" aria-label="Remove {{ it.label }}">{{ icon('x', 16) }}</button>
+  </form>
+</div>
+{% endmacro %}
+
 {% block content %}
 <main id="main">
   <div class="page-head">
@@ -22,14 +43,9 @@
   {% endif %}
 
   {% if items %}
-    {% set total = items|length %}
-    {% set left = items|rejectattr('is_checked')|list|length %}
-    <p class="meta">
-      Covers {{ shopping_list.covers_from.strftime('%-d %b') }}–{{ shopping_list.covers_to.strftime('%-d %b') }}
-      · <span class="num">{{ left }}</span> of <span class="num">{{ total }}</span> to get
-    </p>
+    <p class="meta">Shopping · {{ shopping_list.covers_from.strftime('%-d %b') }}–{{ shopping_list.covers_to.strftime('%-d %b') }} · <span class="num">{{ to_get }}</span> to get</p>
 
-    {% if audit_count and left > 0 %}
+    {% if audit_count and to_get > 0 %}
       <a class="notice spaced" href="/audit" style="text-decoration:none;color:inherit">
         {{ icon('triangle-alert', 16) }}
         <div>
@@ -40,36 +56,20 @@
     {% endif %}
 
     {% for aisle, aisle_items in by_aisle.items() %}
-      <h2 class="aisle">{{ aisle }}</h2>
+      {{ group_header(aisle, aisle_items|length) }}
       {% for it in aisle_items %}
-        <div class="shop-row">
-          <form method="post" action="/shopping/item/{{ it.id }}/check" class="shop-item {{ 'checked' if it.is_checked }}"
-                hx-post="/shopping/item/{{ it.id }}/check" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
-            <input type="hidden" name="checked" value="{{ '0' if it.is_checked else '1' }}">
-            <button type="submit" aria-pressed="{{ 'true' if it.is_checked else 'false' }}">
-              <span class="tick">{{ icon('check', 14) }}</span>
-              <span class="stack">
-                <strong>
-                  {% set qty_text = it|shop_qty %}
-                  {% if qty_text %}<span class="num">{{ qty_text }}</span> {% endif %}
-                  {{ it.label }}
-                </strong>
-                <span class="meta">
-                  {%- if it.is_stocked %}Added to pantry · {% endif -%}
-                  {%- set need = it|shop_need -%}
-                  {%- if need %}{{ need }} · {% endif -%}
-                  {%- if it.purchase_note and not it.purchase_note.startswith('needs ') %}{{ it.purchase_note }} · {% endif -%}
-                  for {{ it.driven_by or 'restock' }}
-                </span>
-              </span>
-            </button>
-          </form>
-          <form method="post" action="/shopping/item/{{ it.id }}/skip" class="shop-skip no-print">
-            <button class="iconbtn" type="submit" aria-label="Remove {{ it.label }}">{{ icon('x', 16) }}</button>
-          </form>
-        </div>
+        {{ shop_row(it, it|shop_qty) }}
       {% endfor %}
     {% endfor %}
+
+    {% if basket %}
+      <details class="group basket">
+        <summary>{{ group_header('In basket', basket|length) }}</summary>
+        {% for it in basket %}
+          {{ shop_row(it, it|shop_qty) }}
+        {% endfor %}
+      </details>
+    {% endif %}
 
     {% if pending_stock %}
       <form method="post" action="/shopping/stock" class="actions no-print">
@@ -82,7 +82,7 @@
     <pre id="shop-plain" class="shop-plain" hidden>{{ copy_text }}</pre>
     <div class="actions no-print">
       <button type="button" data-copy-target="shop-plain">Copy list</button>
-      <a class="btn {{ 'primary' if left == 0 and not pending_stock }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
+      <a class="btn {{ 'primary' if to_get == 0 and not pending_stock }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
     </div>
   {% elif has_plan %}
     <p class="empty-line">Nothing to buy — the pantry covers this week’s plan.</p>
@@ -94,7 +94,7 @@
   {% endif %}
 
   {% if unnamed %}
-    <h2 class="aisle">Needs naming</h2>
+    {{ group_header('Needs naming') }}
     {% for group in unnamed %}
       <div class="card tight">
         <a href="/recipes/{{ group.id }}"><strong>{{ group.title }}</strong></a>

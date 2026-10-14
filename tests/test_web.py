@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, date, datetime, timedelta
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
@@ -1611,6 +1612,150 @@ def test_recipe_naming_inputs_share_a_catalog(
     assert "Saved. That line is now paprika." in signed_in.get(saved.headers["location"]).text
 
 
+_VOID_TAGS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "source", "track", "wbr",
+})
+_SHOP_META = re.compile(r"Shopping · \d{1,2} \w{3}–\d{1,2} \w{3} · (\d+) to get")
+
+
+class _RowLeads(HTMLParser):
+    """First non-empty text node inside each shopping row, in document order."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.leads: list[str] = []
+        self._depth = 0
+        self._svg = 0
+        self._done = False
+        self._buf: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        classes = (dict(attrs).get("class") or "").split()
+        if self._depth == 0:
+            if tag == "div" and "shop-row" in classes:
+                self._depth = 1
+                self._svg = 0
+                self._done = False
+                self._buf = []
+            return
+        if tag in _VOID_TAGS:
+            return
+        self._depth += 1
+        if tag == "svg":
+            self._svg += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._depth == 0 or tag in _VOID_TAGS:
+            return
+        if tag == "svg" and self._svg:
+            self._svg -= 1
+        self._depth -= 1
+        if self._depth == 0:
+            self.leads.append(" ".join(self._buf))
+
+    def handle_data(self, data: str) -> None:
+        if not self._depth or self._done or self._svg:
+            return
+        text = " ".join(data.split())
+        if text:
+            self._buf.append(text)
+            self._done = True
+
+
+def _row_leads(html: str) -> list[str]:
+    parser = _RowLeads()
+    parser.feed(html)
+    return parser.leads
+
+
+def _to_get(html: str) -> str:
+    match = re.search(r'<p class="meta">(.*?)</p>', html, re.S)
+    assert match is not None
+    text = " ".join(re.sub(r"<[^>]+>", "", match.group(1)).split())
+    found = _SHOP_META.fullmatch(text)
+    assert found is not None, text
+    return found.group(1)
+
+
+def _basket(html: str) -> str | None:
+    for block in re.findall(r"<details\b[^>]*>.*?</details>", html, flags=re.S):
+        if "In basket" in block:
+            return block
+    return None
+
+
+def test_shopping_rows_lead_with_the_name_and_ticked_rows_sit_in_the_basket(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Row Layout",
+            ingredients=["1 pound spaghetti"],
+            servings=1,
+            source_url="https://example.com/row-layout",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=date.today(),
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=1,
+        )
+    )
+    seeded_session.commit()
+    signed_in.get("/shopping")
+    assert signed_in.post("/shopping/add", data={"name": "paper towels"}).status_code == 303
+
+    before = signed_in.get("/shopping").text
+    assert _row_leads(before) == ["paper towels", "spaghetti"]
+    assert _to_get(before) == "2"
+    assert "for Row Layout" in before
+    assert "for added by you" not in before
+    assert "needs " not in before
+    assert "to buy" not in before
+    assert _basket(before) is None
+    assert '<span>Other</span><span class="group-side"><span class="count">1</span>' in before
+    assert '<span>Pasta</span><span class="group-side"><span class="count">1</span>' in before
+
+    item_id = _shop_item_id(before, "spaghetti")
+    assert signed_in.post(
+        f"/shopping/item/{item_id}/check", data={"checked": "1"}
+    ).status_code == 303
+    after = signed_in.get("/shopping").text
+    basket = _basket(after)
+    assert basket is not None
+    assert " open" not in basket.split(">", 1)[0]
+    assert _row_leads(after) == ["paper towels", "spaghetti"]
+    assert _to_get(after) == "1"
+    assert ">spaghetti<" in basket
+    assert "paper towels" not in basket
+    assert f'action="/shopping/item/{item_id}/check"' in basket
+    assert 'name="checked" value="0"' in basket
+    assert '<span>Pasta</span>' not in after
+    assert 'hx-select="#shop-list"' in after
+    assert 'id="shop-list"' in after
+
+    seeded_session.expire_all()
+    towels = seeded_session.scalar(
+        select(ShoppingListItem).where(ShoppingListItem.label == "paper towels")
+    )
+    assert towels is not None
+    towels.is_stocked = True
+    seeded_session.commit()
+    stocked = signed_in.get("/shopping").text
+    assert _to_get(stocked) == "0"
+    assert _row_leads(stocked) == ["paper towels", "spaghetti"]
+    stocked_basket = _basket(stocked)
+    assert stocked_basket is not None
+    assert "paper towels" not in stocked_basket
+
+
 def test_shopping_list_offers_a_copy(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -2232,7 +2377,7 @@ def test_pages_follow_the_signed_in_unit_system(
 
     shopping = signed_in.get("/shopping").text
     assert "1 × 1 lb" in shopping
-    assert "needs 1 lb" in shopping
+    assert "needs 1 lb" not in shopping
     assert "454 g" not in shopping
 
     web_user.unit_system = "metric"
@@ -2251,7 +2396,7 @@ def test_pages_follow_the_signed_in_unit_system(
 
     shopping = signed_in.get("/shopping").text
     assert "1 × 454 g" in shopping
-    assert "needs 454 g" in shopping
+    assert "needs 454 g" not in shopping
 
 
 def test_pantry_set_level_stores_base_grams_from_the_entry_unit(

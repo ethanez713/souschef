@@ -32,6 +32,7 @@ svg.icon { flex: none; vertical-align: -0.15em; }
 .brand {
   font-family: var(--font-serif); font-size: var(--fs-title-2); font-weight: var(--fw-semibold);
   letter-spacing: var(--tr-title-2); color: var(--text-heading); text-decoration: none;
+  min-height: 44px; display: inline-flex; align-items: center;
 }
 .brand:hover { color: var(--text-heading); }
 
@@ -105,6 +106,7 @@ h3 { font-size: var(--fs-title-3); line-height: var(--lh-title-3); letter-spacin
 .actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-5); }
 .spaced { margin-top: var(--sp-5); }
 .note { color: var(--text-muted); font-size: var(--fs-caption); margin-top: var(--sp-3); }
+.note a { display: inline-flex; align-items: center; min-height: 44px; }
 .empty { color: var(--text-muted); text-align: center; padding: var(--sp-9) var(--sp-4); border: 1px dashed var(--border-default); border-radius: var(--r-card); }
 .empty p { margin-bottom: var(--sp-4); }
 
@@ -519,7 +521,7 @@ details.inline-fix .controls,
 .group-head .count { font-variant-numeric: tabular-nums; }
 .group-head a {
   text-transform: none; letter-spacing: normal; font-size: var(--fs-body-sm); font-weight: var(--fw-medium);
-  min-height: 44px; display: inline-flex; align-items: center;
+  min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: flex-end;
 }
 details.group > summary { min-height: 44px; margin-top: var(--sp-5); }
 details.group > summary .group-head { flex: 1; margin: 0; }

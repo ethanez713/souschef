@@ -78,7 +78,7 @@ class Tab:
 
 async def main(cmds):
     tabs = json.load(urllib.request.urlopen("http://localhost:9222/json"))
-    tab = next(t for t in tabs if t["type"] == "page" and ("localhost:801" in t["url"] or "127.0.0.1:801" in t["url"]))
+    tab = next(t for t in tabs if t["type"] == "page" and ("localhost:801" in t["url"] or "127.0.0.1:801" in t["url"] or ".ts.net" in t["url"]))
     async with websockets.connect(tab["webSocketDebuggerUrl"], max_size=None) as ws:
         t = Tab(ws)
         for d in ("Page", "Runtime", "Log", "Network"): await t.call(d + ".enable")

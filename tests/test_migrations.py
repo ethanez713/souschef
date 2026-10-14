@@ -43,9 +43,40 @@ def test_head_migration_adds_the_later_columns(tmp_path: Path, monkeypatch) -> N
     assert user["unit_system"]["nullable"] is False
     assert user["show_alt_units"]["nullable"] is False
     assert ingredient["count_noun"]["nullable"] is True
+    assert ingredient["package_noun"]["nullable"] is True
+    assert ingredient["package_source"]["nullable"] is True
     assert meal["skipped_at"]["nullable"] is True
     assert shop["is_stocked"]["nullable"] is False
     assert shop["is_skipped"]["nullable"] is False
+
+
+def test_package_columns_downgrade(tmp_path: Path, monkeypatch) -> None:
+    data = tmp_path / "mig"
+    data.mkdir()
+    monkeypatch.setenv("SOUSCHEF_DATA_DIR", str(data))
+
+    from souschef.config import get_settings
+    from souschef.db import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+    try:
+        config = Config("alembic.ini")
+        command.upgrade(config, "head")
+        engine = create_engine(f"sqlite+pysqlite:///{data / 'souschef.db'}")
+        columns = inspect(engine).get_columns("canonical_ingredient")
+        present = {column["name"] for column in columns}
+        command.downgrade(config, "e5b8c2d14f60")
+        columns = inspect(engine).get_columns("canonical_ingredient")
+        restored = {column["name"] for column in columns}
+        engine.dispose()
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+    assert {"package_noun", "package_source"} <= present
+    assert "count_noun" in restored
+    assert not {"package_noun", "package_source"} & restored
 
 
 def _at(day: int, hour: int = 12) -> str:

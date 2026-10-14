@@ -81,6 +81,11 @@ class CanonicalIngredient(Base, TimestampMixin):
     package_qty: Mapped[float | None] = mapped_column(Float)
     package_unit: Mapped[str | None] = mapped_column(String(16))
 
+    # Singular retail container ("can", "bag"). Fresh produce leaves this empty
+    # so the add form leads with the count noun instead.
+    package_noun: Mapped[str | None] = mapped_column(String(40))
+    package_source: Mapped[str | None] = mapped_column(String(200))
+
     # Singular word a counted ingredient is counted in ("clove", "can"); without one
     # the ingredient's own name is pluralised.
     count_noun: Mapped[str | None] = mapped_column(String(40))

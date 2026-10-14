@@ -1,0 +1,60 @@
+{
+  "products": [
+    {
+      "product_quantity": 400.0,
+      "product_quantity_unit": "g",
+      "packaging_shapes_tags": [
+        "en:food-can"
+      ],
+      "packaging_tags": [
+        "en:aluminium-tin"
+      ]
+    },
+    {
+      "product_quantity": 425.242846875,
+      "product_quantity_unit": "g",
+      "packaging_shapes_tags": [
+        "en:can"
+      ],
+      "packaging_tags": null
+    },
+    {
+      "product_quantity": 425.242846875,
+      "product_quantity_unit": "g",
+      "packaging_shapes_tags": [],
+      "packaging_tags": [
+        "en:canned"
+      ]
+    },
+    {
+      "product_quantity": 425.0,
+      "product_quantity_unit": "g",
+      "packaging_shapes_tags": [
+        "en:can"
+      ],
+      "packaging_tags": [
+        "en:can"
+      ]
+    },
+    {
+      "product_quantity": 130.0,
+      "product_quantity_unit": "g",
+      "packaging_shapes_tags": [],
+      "packaging_tags": []
+    },
+    {
+      "product_quantity": 276,
+      "product_quantity_unit": "g",
+      "packaging_shapes_tags": [
+        "en:bowl",
+        "en:box",
+        "en:seal"
+      ],
+      "packaging_tags": [
+        "en:paper-box-recycle",
+        "en:paper-multi-layer-bowl-recycle-if-clean-and-dry",
+        "en:seal-to-throw-away"
+      ]
+    }
+  ]
+}

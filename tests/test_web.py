@@ -189,7 +189,7 @@ def test_pantry_htmx_request_returns_only_the_list(
         "/pantry", params={"q": "olive"}, headers={"HX-Request": "true"}
     )
     assert "olive oil" in response.text
-    assert "Add something" not in response.text
+    assert "Scan receipt" not in response.text
 
 
 def test_editing_a_level_keeps_the_active_search(
@@ -269,8 +269,11 @@ def test_staples_show_as_staples_on_a_recipe(
     )
     seeded_session.commit()
     page = signed_in.get(f"/recipes/{recipe.id}")
-    assert "assumed on hand" in page.text
+    assert "Always have" in page.text
     assert "olive oil" in page.text
+    assert "Wrong match" not in page.text
+    assert "Change match" in page.text
+    assert f'action="/recipes/{recipe.id}/match"' in page.text
 
 
 def test_missing_recipe_is_404(signed_in: TestClient) -> None:
@@ -419,7 +422,7 @@ def test_pantry_shows_a_staple_as_assumed_stocked(
     seeded_session.commit()
 
     page = signed_in.get("/pantry")
-    assert "assumed stocked" in page.text
+    assert "Always have" in page.text
     assert f"/pantry/{oil.id}/confirm" not in page.text
 
 
@@ -701,7 +704,8 @@ def test_recipes_can_be_searched_and_a_shared_url_prefills_the_importer(
 
     shared = signed_in.get("/recipes", params={"import_url": "https://cooking.nytimes.com/recipes/9"})
     assert 'value="https://cooking.nytimes.com/recipes/9"' in shared.text
-    assert "<details class=\"card\" open>" in shared.text
+    assert 'id="import-recipe"' in shared.text
+    assert "data-open" in shared.text
 
 
 def test_shopping_page_points_at_the_pre_shop_check_only_when_it_has_something(
@@ -943,7 +947,7 @@ def test_a_finished_item_is_shown_as_out_rather_than_in_stock(
     assert signed_in.post(f"/pantry/{eggs.id}/level", data={"quantity": "0"}).status_code == 303
 
     page = signed_in.get("/pantry")
-    assert "<h2>Out</h2>" in page.text
+    assert '<span>Out</span>' in page.text
     assert "eggs" in page.text
     assert "High confidence" not in page.text
     assert _pantry_row(seeded_session, web_user, "eggs").quantity == 0
@@ -1154,9 +1158,10 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
     assert line.ingredient_id is None
     # The naming box lists the whole catalog, so "steak" is an option. It must
     # not be the match the line was given.
-    before_catalog = signed_in.get(f"/recipes/{recipe.id}").text.partition(
-        '<datalist id="catalog">'
-    )[0]
+    before = signed_in.get(f"/recipes/{recipe.id}").text
+    assert "Wrong match" not in before
+    assert f'action="/recipes/{recipe.id}/match"' in before
+    before_catalog = before.partition('<datalist id="catalog">')[0]
     assert "steak" not in before_catalog
 
     corrected = signed_in.post(
@@ -1710,6 +1715,50 @@ def test_confidence_pips_follow_certainty_thresholds() -> None:
     assert (lit(1.0), lit(0.6), lit(0.59), lit(0.01), lit(0.0)) == (3, 3, 2, 2, 1)
 
 
+def _amount_text(page: str, name: str) -> str:
+    start = page.index(f'class="list-row-title">{name}<')
+    match = re.search(r'class="num">(.*?)</span>', page[start:start + 800])
+    assert match is not None, name
+    return match.group(1)
+
+
+def test_uncertain_levels_mark_the_amount_and_home_says_check(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    """A level under 0.6, or stock that is probably gone, ends in ? — never those words."""
+    spinach = ing(seeded_session, "spinach")
+    lemon = ing(seeded_session, "lemon")
+    chicken = ing(seeded_session, "chicken breast")
+    record_event(
+        seeded_session, web_user.id, spinach,
+        reason=EventReason.MANUAL, level=130, uncertainty=70,
+    )
+    soon = date.today() + timedelta(days=2)
+    record_event(
+        seeded_session, web_user.id, lemon,
+        reason=EventReason.PURCHASE, delta=1, expires_on=soon,
+    )
+    record_event(
+        seeded_session, web_user.id, chicken,
+        reason=EventReason.PURCHASE, delta=500,
+        expires_on=date.today() - timedelta(days=1),
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/pantry").text
+    assert "probably gone" not in page.casefold()
+    assert _amount_text(page, "spinach").endswith("?")
+    lemon_amount = _amount_text(page, "lemon")
+    assert not lemon_amount.endswith("?")
+    assert _amount_text(page, "chicken breast").endswith("?")
+    assert "use soon" in page
+    assert f"expires {soon.strftime('%-d %b')}" in page
+
+    home = signed_in.get("/").text
+    assert "<span>Check</span>" in home
+    assert "Least certain" not in home
+
+
 def _macros():  # noqa: ANN202
     from souschef.web.common import templates
 
@@ -1760,7 +1809,7 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v5" in worker
+    assert "souschef-shell-v6" in worker
 
 
 def test_pages_follow_the_signed_in_unit_system(
@@ -1881,9 +1930,10 @@ def test_recipe_page_agrees_with_the_list_about_spoiled_stock(
     assert "Missing 2" in signed_in.get("/recipes").text
 
     page = signed_in.get(f"/recipes/{recipe.id}").text
-    assert "probably gone" in page
+    assert "probably gone" not in page.casefold()
+    assert "Wrong match" not in page
     assert "have none" in page
-    assert '<span class="badge good">have</span>' not in page
+    assert 'class="badge good"' not in page
 
 
 def _row_titles(page: str) -> list[str]:

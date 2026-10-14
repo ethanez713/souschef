@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Home · SousChef{% endblock %}
-{% from "icons.html" import icon %}
 {# `with context` so the card's quantity filters see the signed-in user. A bare import does not. #}
-{% from "macros.html" import pantry_card, suggestion_card, day_label, discard_notice with context %}
+{% from "macros.html" import pantry_card, suggestion_card, day_label, discard_notice, group_header, row with context %}
 {% set active = 'home' %}
 {% block content %}
 <main id="main">
@@ -10,72 +9,43 @@
 
   {{ discard_notice(discarded, '', '/') }}
 
-  {% if use_soon %}
-    <div class="notice">
-      {{ icon('triangle-alert', 16) }}
-      <div><strong>Use soon:</strong> {{ use_soon|map(attribute='ingredient.name')|join(', ') }}</div>
-    </div>
-  {% endif %}
-  {% if probably_gone %}
-    <div class="notice">
-      {{ icon('triangle-alert', 16) }}
-      <div><strong>Probably gone:</strong> {{ probably_gone|map(attribute='ingredient.name')|join(', ') }}. <a href="/pantry">Check the pantry</a></div>
-    </div>
-  {% endif %}
-
   {% if past_meals %}
-    <div class="sechead"><h2>Did you cook these?</h2></div>
+    {{ group_header('Did you cook these?') }}
     {% for e in past_meals %}
-      <div class="card tight">
-        <div class="row">
-          <div class="stack">
-            <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
-            <span class="meta">{{ day_label(e.plan_date, today) }}</span>
-          </div>
-          <div class="btns">
-            <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
-            <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
-              <input type="hidden" name="next" value="/">
-              <button class="btn small" type="submit">Skipped</button>
-            </form>
-          </div>
-        </div>
-      </div>
+      {% set title %}<a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>{% endset %}
+      {% set trail %}
+        <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
+        <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
+          <input type="hidden" name="next" value="/">
+          <button class="btn small" type="submit">Skipped</button>
+        </form>
+      {% endset %}
+      {{ row(title, sub=day_label(e.plan_date, today), trail=trail) }}
     {% endfor %}
   {% endif %}
 
   {% if upcoming %}
-    <div class="sechead"><h2>Planned</h2><a href="/plan">Plan</a></div>
+    {{ group_header('Planned', href='/plan', link='Plan') }}
     {% for e in upcoming %}
-      <div class="card tight row {{ 'today' if e.plan_date == today }}">
-        <div class="stack">
-          {% if e.recipe %}
-            <a href="/recipes/{{ e.recipe.id }}"><strong>{{ e.recipe.title }}</strong></a>
-          {% else %}
-            <strong>{{ e.freeform_title }}</strong>
-          {% endif %}
-          <span class="meta">{{ day_label(e.plan_date, today) }}</span>
-        </div>
-        {% if e.recipe %}
-          <a class="btn small {{ 'primary' if e.plan_date == today }}" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>
-        {% endif %}
-      </div>
+      {% set title %}{% if e.recipe %}<a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>{% else %}{{ e.freeform_title }}{% endif %}{% endset %}
+      {% set trail %}{% if e.recipe %}<a class="btn small{{ ' primary' if e.plan_date == today }}" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>{% endif %}{% endset %}
+      {{ row(title, sub=day_label(e.plan_date, today), trail=trail, cls=('today' if e.plan_date == today else '')) }}
     {% endfor %}
   {% endif %}
 
   {% if cook_now %}
-    <div class="sechead"><h2>Cook now</h2><a href="/recipes">All recipes</a></div>
-    <div class="carousel">{% for s in cook_now %}{{ suggestion_card(s) }}{% endfor %}</div>
+    {{ group_header('Ready', href='/recipes', link='All recipes') }}
+    {% for s in cook_now %}{{ suggestion_card(s) }}{% endfor %}
   {% endif %}
 
   {% if nearly %}
-    <div class="sechead"><h2>Missing a few things</h2>{% if not cook_now %}<a href="/recipes">All recipes</a>{% endif %}</div>
-    <div class="carousel">{% for s in nearly %}{{ suggestion_card(s) }}{% endfor %}</div>
+    {{ group_header('Missing 1–3', href='/recipes', link='All recipes') }}
+    {% for s in nearly %}{{ suggestion_card(s) }}{% endfor %}
   {% endif %}
 
   {% if bigger_shop %}
-    <div class="sechead"><h2>Bigger shop</h2>{% if not cook_now and not nearly %}<a href="/recipes">All recipes</a>{% endif %}</div>
-    <div class="carousel">{% for s in bigger_shop %}{{ suggestion_card(s) }}{% endfor %}</div>
+    {{ group_header('Missing 4+', href='/recipes', link='All recipes') }}
+    {% for s in bigger_shop %}{{ suggestion_card(s) }}{% endfor %}
   {% endif %}
 
   {% if not cook_now and not nearly and not bigger_shop %}
@@ -91,10 +61,8 @@
   {% endif %}
 
   {% if stale %}
-    <div class="sechead"><h2>Least certain levels</h2><a href="/pantry">Pantry</a></div>
-    <div class="grid-2">
-      {% for v in stale %}{{ pantry_card(v, freshness, '', '/') }}{% endfor %}
-    </div>
+    {{ group_header('Check', href='/pantry', link='Pantry') }}
+    {% for v in stale %}{{ pantry_card(v, freshness, '', '/') }}{% endfor %}
   {% endif %}
 </main>
 {% endblock %}

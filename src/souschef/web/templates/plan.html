@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Plan · SousChef{% endblock %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import sheet, group_header %}
 {% set active = 'plan' %}
+
+{% macro day_row(day, today, entries) %}
+<div class="list-row plan-day{{ ' today' if day == today }}" id="d-{{ day.isoformat() }}">
+  <span class="list-row-main">
+    <span class="list-row-title">{{ day.strftime('%a %-d %b') }}{% if day == today %} <span class="rel">Today</span>{% elif (day - today).days == 1 %} <span class="rel">Tomorrow</span>{% endif %}</span>
+  </span>
+  <button type="button" class="plan-slot{{ ' add' if not entries }}" data-sheet="day-{{ day.isoformat() }}">{% if entries %}{% for e in entries %}{{ e.recipe.title if e.recipe else e.freeform_title }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}+ Add{% endif %}</button>
+</div>
+{% endmacro %}
 
 {% macro entry_row(e, today) %}
   <div class="entry">
@@ -53,19 +63,19 @@
   {% endif %}
 
   {% if past_days %}
-    <div class="sechead"><h2>Earlier</h2></div>
+    {{ group_header('Earlier') }}
     {% for day in past_days %}
-      <div class="card tight">
-        <div class="daylabel">{{ day.strftime('%a %-d %b') }}</div>
+      {{ day_row(day, today, by_day[day]) }}
+      {% call sheet('day-' ~ day.isoformat(), day.strftime('%a %-d %b')) %}
         {% for e in by_day[day] %}{{ entry_row(e, today) }}{% endfor %}
-      </div>
+      {% endcall %}
     {% endfor %}
   {% endif %}
 
-  <div class="sechead"><h2>Next {{ days|length }} days</h2></div>
+  {{ group_header('Next ' ~ (days|length) ~ ' days') }}
   {% for day in days %}
-    <div class="card tight dayrow {{ 'today' if day == today }}" id="d-{{ day.isoformat() }}">
-      <div class="daylabel">{{ day.strftime('%a %-d %b') }}{% if day == today %}<span class="rel">Today</span>{% elif (day - today).days == 1 %}<span class="rel">Tomorrow</span>{% endif %}</div>
+    {{ day_row(day, today, by_day[day]) }}
+    {% call sheet('day-' ~ day.isoformat(), day.strftime('%a %-d %b')) %}
       {% for e in by_day[day] %}{{ entry_row(e, today) }}{% endfor %}
       <form method="post" action="/plan/day" class="dayadd">
         <input type="hidden" name="plan_date" value="{{ day.isoformat() }}">
@@ -85,7 +95,7 @@
         </select>
         <noscript><button class="small" type="submit">Add</button></noscript>
       </form>
-    </div>
+    {% endcall %}
   {% endfor %}
 
   {% if not recipe_groups %}

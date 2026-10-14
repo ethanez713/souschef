@@ -1,10 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Shop · SousChef{% endblock %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import sheet %}
 {% set active = 'shopping' %}
 {% block content %}
 <main id="main">
-  <h1>Shopping list</h1>
+  <div class="page-head">
+    <h1>Shopping list</h1>
+    <button type="button" class="btn" data-sheet="shop-add">+ Add</button>
+  </div>
 
   <div id="shop-list">
   {% if added %}
@@ -80,16 +84,16 @@
       <a class="btn {{ 'primary' if left == 0 and not pending_stock }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
     </div>
   {% elif has_plan %}
-    <div class="empty"><p>Nothing to buy — the pantry covers this week’s plan.</p></div>
+    <p class="empty-line">Nothing to buy — the pantry covers this week’s plan.</p>
   {% else %}
-    <div class="empty">
+    <div class="empty-line">
       <p>No list yet. It is built from your meal plan.</p>
       <a class="btn primary" href="/plan">Plan some meals</a>
     </div>
   {% endif %}
 
   {% if unnamed %}
-    <h2 class="aisle">Not identified — name these on the recipe</h2>
+    <h2 class="aisle">Needs naming</h2>
     {% for group in unnamed %}
       <div class="card tight">
         <a href="/recipes/{{ group.id }}"><strong>{{ group.title }}</strong></a>
@@ -100,9 +104,10 @@
     {% endfor %}
   {% endif %}
 
-  <details class="card no-print" {{ 'open' if add_error or package_word }}>
-    <summary>Add an item</summary>
-    <form method="post" action="/shopping/add" style="margin-top:var(--sp-4)">
+  </div>
+
+  {% call sheet('shop-add', 'Add an item', open=add_error or package_word) %}
+    <form method="post" action="/shopping/add" class="no-print">
       <div class="field">
         <label for="shop-name">Name</label>
         <input id="shop-name" name="name" value="{{ add_name or '' }}" required {% if add_error and not package_word %}autofocus{% endif %}>
@@ -131,7 +136,6 @@
       </div>
       {% endif %}
     </form>
-  </details>
-  </div>
+  {% endcall %}
 </main>
 {% endblock %}

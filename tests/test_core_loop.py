@@ -610,7 +610,7 @@ def test_shopping_page_names_unidentified_recipe_lines(
 
     page = signed_in.get("/shopping")
 
-    assert "Not identified — name these on the recipe" in page.text
+    assert "Needs naming" in page.text
     assert f'href="/recipes/{recipe.id}"' in page.text
     assert "1 cup xyzzybroth" in page.text
     assert "for garnish" not in page.text

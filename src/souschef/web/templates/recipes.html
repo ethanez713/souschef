@@ -1,20 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Recipes · SousChef{% endblock %}
+{% from "macros.html" import sheet %}
 {% set active = 'recipes' %}
 {% block content %}
 <main id="main">
   <h1>Recipes</h1>
 
-  <form method="get" action="/recipes" class="field" role="search">
-    <input name="q" value="{{ query }}" placeholder="Search recipes" inputmode="search" aria-label="Search recipes"
-           autocomplete="off"
-           hx-get="/recipes" hx-trigger="input changed delay:200ms, search"
-           hx-target="#recipe-list" hx-swap="innerHTML" hx-push-url="true">
-  </form>
+  <div class="toolbar">
+    <form method="get" action="/recipes" class="field" role="search">
+      <input name="q" value="{{ query }}" placeholder="Search recipes" inputmode="search" aria-label="Search recipes"
+             autocomplete="off"
+             hx-get="/recipes" hx-trigger="input changed delay:200ms, search"
+             hx-target="#recipe-list" hx-swap="innerHTML" hx-push-url="true">
+    </form>
+    <button type="button" class="btn" data-sheet="import-recipe">Import</button>
+  </div>
 
-  <details class="card" {{ 'open' if import_open }}>
-    <summary>Import a recipe</summary>
-    <form method="post" action="/recipes/import" style="margin-top:var(--sp-4)">
+  {% call sheet('import-recipe', 'Import a recipe', open=import_open) %}
+    <form method="post" action="/recipes/import">
       <div class="field">
         <label for="url">Recipe URL</label>
         <input id="url" name="url" type="url" value="{{ import_url }}" placeholder="https://…" required>
@@ -25,7 +28,7 @@
       Most recipe pages work; a few sites block automated imports. NYT Cooking also needs your session cookie saved in <a href="/settings">Settings</a>.
       From your phone browser, share a recipe page to SousChef to land here.
     </p>
-  </details>
+  {% endcall %}
 
   <div id="recipe-list">
     {% include "recipes_list.html" %}

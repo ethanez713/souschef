@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import plan_form %}
+{% from "macros.html" import plan_form, row, sheet, group_header %}
 {% set active = 'recipes' %}
 {% block title %}{{ recipe.title }} · SousChef{% endblock %}
 {% block content %}
@@ -41,73 +41,65 @@
     <div class="notice spaced">
       {{ icon('triangle-alert', 16) }}
       <div>
-        {{ unmatched }} ingredient {{ 'line' if unmatched == 1 else 'lines' }} couldn't be identified.
-        Name {{ 'it' if unmatched == 1 else 'them' }} in the list —
-        {{ 'it is' if unmatched == 1 else 'they are' }} ignored when checking your pantry until you do.
+        {{ unmatched }} {{ 'line needs' if unmatched == 1 else 'lines need' }} naming.
+        Open {{ 'it' if unmatched == 1 else 'them' }} in the list —
+        ignored when checking the pantry until you do.
       </div>
     </div>
   {% endif %}
 
   <div class="recipe-body">
   <section>
-  <h2>Ingredients</h2>
-  {% for row in rows %}
-    {% set r = row.req %}
+  {{ group_header('Ingredients') }}
+  {% for line_row in rows %}
+    {% set r = line_row.req %}
     {% if r %}
       {% set v = pantry.get(r.ingredient.id) %}
       {% set have = v.quantity if v else 0 %}
       {% set is_gone = r.ingredient.id in gone %}
       {% set ok = not is_gone and (r.is_staple or (r.quantity > 0 and have >= r.quantity) or (r.quantity == 0 and have > 0)) %}
-      <div class="card tight">
-        <div class="row">
-          <div class="stack">
-            <span>{{ r.raw_text }}</span>
-            <span class="meta">
-              {{ r.ingredient.name }}
-              {%- if r.is_staple %} · assumed on hand
-              {%- elif r.is_vague %} · amount unspecified
-              {%- else %} · need <span class="num">{% if row.line and row.line.quantity is not none %}{{ row.line.quantity|quantity(r.ingredient, row.line.unit or none) }}{% else %}{{ r.quantity|quantity(r.ingredient) }}{% endif %}</span>,
-                {% if have > 0 %}have <span class="num">{{ have|stock(r.ingredient) }}</span>{% if is_gone %}, probably gone{% endif %}{% else %}have none{% endif %}{% endif %}
-            </span>
+      {% set chip %}
+        {%- if r.is_optional and not ok -%}
+          <span class="badge">optional</span>
+        {%- elif ok -%}
+          <span class="badge good">Have it</span>
+        {%- else -%}
+          <span class="badge warn">Missing</span>
+        {%- endif -%}
+      {% endset %}
+      {% set sub -%}
+        {%- if r.is_staple -%}
+          Always have
+        {%- elif r.is_vague -%}
+          amount unspecified
+        {%- else -%}
+          need <span class="num">{% if line_row.line and line_row.line.quantity is not none %}{{ line_row.line.quantity|quantity(r.ingredient, line_row.line.unit or none) }}{% else %}{{ r.quantity|quantity(r.ingredient) }}{% endif %}</span> · {% if have > 0 and not is_gone %}have <span class="num">{{ have|stock(r.ingredient) }}</span>{% else %}have none{% endif %}
+        {%- endif -%}
+      {%- endset %}
+      {{ row(r.raw_text, sub=sub, trail=chip, sheet='match-' ~ loop.index, cls='ingredient-row') }}
+      {% call sheet('match-' ~ loop.index, 'Change match') %}
+        <form method="post" action="/recipes/{{ recipe.id }}/match">
+          <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
+          <div class="field">
+            <label for="fix{{ loop.index }}">This is actually</label>
+            <input id="fix{{ loop.index }}" name="name" list="catalog" required placeholder="{{ r.ingredient.name }}">
           </div>
-          {% if r.is_staple %}
-            <span class="badge">staple</span>
-          {% elif r.is_optional and not ok %}
-            <span class="badge">optional</span>
-          {% else %}
-            <span class="badge {{ 'good' if ok else 'warn' }}">{{ 'have' if ok else 'buy' }}</span>
-          {% endif %}
-        </div>
-        <details class="inline-fix">
-          <summary>Wrong match</summary>
-          <form method="post" action="/recipes/{{ recipe.id }}/match" class="controls">
-            <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
-            <div class="field">
-              <label for="fix{{ loop.index }}">This is actually</label>
-              <input id="fix{{ loop.index }}" name="name" list="catalog" required placeholder="{{ r.ingredient.name }}">
-            </div>
-            <button class="small" type="submit">Save</button>
-          </form>
-        </details>
-      </div>
+          <button type="submit">Save</button>
+        </form>
+      {% endcall %}
     {% else %}
-      <div class="card tight">
-        <div class="row">
-          <div class="stack">
-            <span>{{ row.raw }}</span>
-            <span class="meta">Couldn't identify this line</span>
-          </div>
-          <span class="badge warn">unidentified</span>
-        </div>
-        <form method="post" action="/recipes/{{ recipe.id }}/match" class="controls" style="margin-top:var(--sp-3)">
-          <input type="hidden" name="raw_text" value="{{ row.raw }}">
+      {% set chip %}<span class="badge warn">Needs naming</span>{% endset %}
+      {{ row(line_row.raw, trail=chip, sheet='match-' ~ loop.index, cls='ingredient-row') }}
+      {% call sheet('match-' ~ loop.index, 'Needs naming') %}
+        <form method="post" action="/recipes/{{ recipe.id }}/match">
+          <input type="hidden" name="raw_text" value="{{ line_row.raw }}">
           <div class="field">
             <label for="name{{ loop.index }}">This is</label>
             <input id="name{{ loop.index }}" name="name" list="catalog" required placeholder="the ingredient">
           </div>
-          <button class="small" type="submit">Save</button>
+          <button type="submit">Save</button>
         </form>
-      </div>
+      {% endcall %}
     {% endif %}
   {% endfor %}
   <datalist id="catalog">

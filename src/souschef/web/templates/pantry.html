@@ -1,24 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Pantry · SousChef{% endblock %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import sheet %}
 {% set active = 'pantry' %}
 {% block content %}
 <main id="main">
   <div class="page-head">
     <h1>Pantry</h1>
-    <a class="btn" href="/receipts">{{ icon('camera', 16) }}Scan receipt</a>
+    <a class="head-action" href="/receipts">{{ icon('camera', 16) }}Scan receipt</a>
   </div>
 
-  <form method="get" action="/pantry" class="field" role="search">
-    <input name="q" value="{{ query }}" placeholder="Search pantry" inputmode="search" aria-label="Search pantry"
-           autocomplete="off"
-           hx-get="/pantry" hx-trigger="input changed delay:200ms, search"
-           hx-target="#pantry-list" hx-swap="innerHTML" hx-push-url="true">
-  </form>
+  <div class="toolbar">
+    <form method="get" action="/pantry" class="field" role="search">
+      <input name="q" value="{{ query }}" placeholder="Search pantry" inputmode="search" aria-label="Search pantry"
+             autocomplete="off"
+             hx-get="/pantry" hx-trigger="input changed delay:200ms, search"
+             hx-target="#pantry-list" hx-swap="innerHTML" hx-push-url="true">
+    </form>
+    <button type="button" class="btn" data-sheet="pantry-add">+ Add</button>
+  </div>
 
-  <details class="card" {% if add_open %}open{% endif %}>
-    <summary>Add something</summary>
-    <form method="post" action="/pantry/add" style="margin-top:var(--sp-4)">
+  {% call sheet('pantry-add', 'Add something', open=add_open) %}
+    <form method="post" action="/pantry/add">
       <input type="hidden" name="q" value="{{ query }}">
       {% if add_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>{% endif %}
       <div class="field">
@@ -49,7 +52,7 @@
       </div>
       {% endif %}
     </form>
-  </details>
+  {% endcall %}
 
   <div id="pantry-list" class="pantry-grid">
     {% include "pantry_list.html" %}

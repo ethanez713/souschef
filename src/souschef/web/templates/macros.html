@@ -35,49 +35,42 @@
 {{ 'Today' if d == today else ('Tomorrow' if (d - today).days == 1 else ('Yesterday' if (today - d).days == 1 else d.strftime('%a %-d %b'))) }}
 {%- endmacro %}
 
-{# One recipe suggestion as a carousel/list card, tinted and badged by its surface. #}
+{# One recipe suggestion as a hairline row: title and a readiness chip. #}
 {% macro suggestion_card(s) %}
-{% set surface = s.surface|string %}
-<a class="card {{ 'tint-jade' if surface == 'cook_now' else ('tint-orange' if surface == 'nearly_there' else 'tint-grey') }}" href="/recipes/{{ s.recipe.id }}">
-  <div class="stack">
-    <h3>{{ s.recipe.title }}</h3>
-    <span class="meta">{{ s.reason }}</span>
-  </div>
-  {% if surface == 'cook_now' %}<span class="badge good">Ready</span>
-  {% else %}<span class="badge warn">{{ s.missing_count }} to buy</span>{% endif %}
-</a>
+{% set gaps = s.missing_count + s.unidentified %}
+{% set chip %}<span class="badge {{ 'good' if gaps == 0 else 'warn' }}">{{ 'Ready' if gaps == 0 else 'Missing ' ~ gaps }}</span>{% endset %}
+{{ row(s.recipe.title, trail=chip, href='/recipes/' ~ s.recipe.id) }}
 {% endmacro %}
 
-{# A tracked pantry item: level, trust, confirm and edit. `next` makes the forms return there instead of swapping the pantry list. #}
+{# A tracked pantry item: level, trust, confirm and edit. `next` makes the forms return there instead of swapping the pantry list.
+   A trailing ? means the level is uncertain (certainty under 0.6) or the stock is probably gone; the words are not shown. #}
 {% macro pantry_card(v, freshness, query='', next='') %}
-<div class="card tight item">
+{% set status = freshness.get(v.ingredient.id) %}
+{% set mark = v.certainty < 0.6 or status == 'probably gone' %}
+<div class="item">
   <input class="edit-toggle" type="checkbox" id="edit{{ v.ingredient.id }}" aria-label="Set {{ v.ingredient.name }} level">
-  <div class="row">
-    <div class="stack">
-      <strong>{{ v.ingredient.name }}</strong>
-      <span class="meta">
-        <span class="num">{{ v.quantity|stock(v.ingredient) }}</span>
-        {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
-        {%- if v.ingredient.id in freshness %} · <strong>{{ freshness[v.ingredient.id] }}</strong>{% endif %}
-      </span>
-    </div>
-    <div class="trail">
-      {{ confidence_pips(v.certainty) }}
-      <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline"
-            {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/confirm" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
-        <input type="hidden" name="q" value="{{ query }}">
-    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-        <button class="iconbtn bare" type="submit" aria-label="Confirm {{ v.ingredient.name }} level is right" title="Confirm this level is right">{{ icon('check', 18) }}</button>
-      </form>
-      <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
-      <form method="post" action="/pantry/{{ v.ingredient.id }}/discard" class="inline"
-            {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/discard" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
-        <input type="hidden" name="q" value="{{ query }}">
-        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-        <button class="iconbtn bare discard" type="submit" aria-label="Threw out {{ v.ingredient.name }}" title="Threw this out">{{ icon('x', 18) }}</button>
-      </form>
-    </div>
-  </div>
+  {% set sub -%}
+    <span class="num">{{ v.quantity|stock(v.ingredient) }}{% if mark %}?{% endif %}</span>
+    {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
+    {%- if status == 'use soon' %} · use soon{% endif %}
+  {%- endset %}
+  {% set trail %}
+    {{ confidence_pips(v.certainty) }}
+    <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline"
+          {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/confirm" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
+      <input type="hidden" name="q" value="{{ query }}">
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button class="iconbtn bare" type="submit" aria-label="Still right, {{ v.ingredient.name }}" title="Still right">{{ icon('check', 18) }}</button>
+    </form>
+    <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
+    <form method="post" action="/pantry/{{ v.ingredient.id }}/discard" class="inline"
+          {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/discard" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
+      <input type="hidden" name="q" value="{{ query }}">
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button class="iconbtn bare discard" type="submit" aria-label="Threw out {{ v.ingredient.name }}" title="Threw out">{{ icon('x', 18) }}</button>
+    </form>
+  {% endset %}
+  {{ row(v.ingredient.name, sub=sub, trail=trail) }}
   <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
         {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/level" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
     <input type="hidden" name="q" value="{{ query }}">
@@ -112,33 +105,37 @@
 
 {# One list row: min 48 px, hairline divider. `href` makes it a link, `sheet` a button that opens
    the <dialog> with that id; `lead` and `trail` take markup, `value` is right-aligned. #}
-{% macro row(title, sub='', lead='', value='', trail='', href='', sheet='') -%}
+{% macro row(title, sub='', lead='', value='', trail='', href='', sheet='', cls='') -%}
 {%- set tag = 'a' if href else ('button' if sheet else 'div') -%}
-<{{ tag }} class="list-row"{% if href %} href="{{ href }}"{% elif sheet %} type="button" data-sheet="{{ sheet }}"{% endif %}>
-  {%- if lead %}<span class="list-row-lead">{{ lead }}</span>{% endif -%}
+{%- set side = 'span' if href or sheet else 'div' -%}
+<{{ tag }} class="list-row{% if cls %} {{ cls }}{% endif %}"{% if href %} href="{{ href }}"{% elif sheet %} type="button" data-sheet="{{ sheet }}"{% endif %}>
+  {%- if lead %}<{{ side }} class="list-row-lead">{{ lead }}</{{ side }}>{% endif -%}
   <span class="list-row-main">
     <span class="list-row-title">{{ title }}</span>
     {%- if sub %}<span class="list-row-sub">{{ sub }}</span>{% endif -%}
   </span>
   {%- if value %}<span class="list-row-value">{{ value }}</span>{% endif -%}
-  {%- if trail %}<span class="list-row-trail">{{ trail }}</span>{% endif -%}
+  {%- if trail %}<{{ side }} class="list-row-trail">{{ trail }}</{{ side }}>{% endif -%}
 </{{ tag }}>
 {%- endmacro %}
 
-{% macro group_header(label, count=none) -%}
-<h2 class="group-head"><span>{{ label }}</span>{% if count is not none %}<span class="count">{{ count }}</span>{% endif %}</h2>
+{% macro group_header(label, count=none, link='', href='') -%}
+<h2 class="group-head"><span>{{ label }}</span>{% if count is not none or href %}<span class="group-side">{% if count is not none %}<span class="count">{{ count }}</span>{% endif %}{% if href %}<a href="{{ href }}">{{ link }}</a>{% endif %}</span>{% endif %}</h2>
 {%- endmacro %}
 
 {# A bottom sheet. Open it with any element carrying data-sheet="<id>"; the body is the
-   htmx content slot (#<id>-body) as well as the call block. #}
-{% macro sheet(id, title) -%}
-<dialog class="sheet" id="{{ id }}" aria-labelledby="{{ id }}-title">
+   htmx content slot (#<id>-body) as well as the call block. `open` shows it on load. #}
+{% macro sheet(id, title, open=false) -%}
+<dialog class="sheet" id="{{ id }}" aria-labelledby="{{ id }}-title"{% if open %} data-open{% endif %}>
   <div class="sheet-head">
     <h2 id="{{ id }}-title">{{ title }}</h2>
     <button type="button" class="iconbtn bare" data-sheet-close aria-label="Close">{{ icon('x', 18) }}</button>
   </div>
   <div class="sheet-body" id="{{ id }}-body">{{ caller() if caller else '' }}</div>
 </dialog>
+{%- if open %}
+<script>document.getElementById("{{ id }}").showModal()</script>
+{%- endif %}
 {%- endmacro %}
 
 {% macro toast(message, undo_action='') -%}

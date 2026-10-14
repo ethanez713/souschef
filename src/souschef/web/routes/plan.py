@@ -29,9 +29,9 @@ router = APIRouter()
 
 
 _RECIPE_GROUPS = (
-    (Surface.COOK_NOW, "Ready to cook"),
-    (Surface.NEARLY_THERE, "Missing a few things"),
-    (Surface.REACH, "Other recipes"),
+    (Surface.COOK_NOW, "Ready"),
+    (Surface.NEARLY_THERE, "Missing 1–3"),
+    (Surface.REACH, "Missing 4+"),
 )
 
 

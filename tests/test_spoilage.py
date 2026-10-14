@@ -123,8 +123,14 @@ def test_home_and_pantry_name_what_is_probably_gone(
     _item(seeded_session, web_user.id, ingredient).last_confirmed_at = three_weeks_ago
     seeded_session.commit()
 
-    assert "Probably gone:</strong> chicken breast" in signed_in.get("/").text
-    assert "<strong>probably gone</strong>" in signed_in.get("/pantry").text
+    pantry = signed_in.get("/pantry").text
+    home = signed_in.get("/").text
+    assert "probably gone" not in pantry.casefold()
+    assert "probably gone" not in home.casefold()
+    assert "Use soon:" not in home
+    amount = pantry.split('class="list-row-title">chicken breast<', 1)[1]
+    assert 'class="num">' in amount
+    assert amount.split('class="num">', 1)[1].split("</span>", 1)[0].endswith("?")
 
 
 def test_home_levels_use_the_pantry_card_and_return_home(

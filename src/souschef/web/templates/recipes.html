@@ -1,9 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Recipes · SousChef{% endblock %}
-{% from "macros.html" import sheet %}
+{% from "macros.html" import sheet, toast %}
 {% set active = 'recipes' %}
 {% block content %}
 <main id="main">
+  {% if archived %}
+    {{ toast("Archived " ~ archived.title, "/recipes/" ~ archived.id ~ "/restore") }}
+  {% elif toast_message %}
+    {{ toast(toast_message) }}
+  {% endif %}
   <h1>Recipes</h1>
 
   <div class="toolbar">
@@ -28,6 +33,9 @@
       Most recipe pages work; a few sites block automated imports. NYT Cooking also needs your session cookie saved in <a href="/settings">Settings</a>.
       From your phone browser, share a recipe page to SousChef to land here.
     </p>
+    <div class="actions">
+      <a class="btn" href="/recipes/new">Add a recipe</a>
+    </div>
     <details>
       <summary>Paste recipe</summary>
       <form method="post" action="/recipes/paste">

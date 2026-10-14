@@ -12,16 +12,24 @@ from sqlalchemy.orm import Session
 
 from souschef.core.inventory import pantry_view
 from souschef.core.matching import IngredientMatcher, MatchMethod
-from souschef.core.recipes import recipe_requirements, save_imported_recipe
+from souschef.core.recipes import (
+    create_manual_recipe,
+    edit_recipe,
+    find_saved_recipe,
+    recipe_requirements,
+    save_imported_recipe,
+)
 from souschef.core.units import UnitConversionError, dimension_of
 from souschef.db import get_db
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
+from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.ingest.recipes.paste import parse_pasted_recipe
 from souschef.models import CanonicalIngredient, Recipe, RecipeSource, User
 from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.planning.suggest import by_surface, probably_gone_ids, suggest
 from souschef.web import auth
 from souschef.web.common import (
+    MAX_SERVINGS,
     PLAN_DAYS,
     _horizon,
     _is_htmx,
@@ -32,6 +40,11 @@ from souschef.web.common import (
 )
 
 router = APIRouter()
+
+_MAX_TITLE = 300
+_MAX_URL = 1000
+_MAX_LINE = 500
+_MAX_MINUTES = 10_000
 
 
 def _base_unit_for_named_line(unit: str) -> str:
@@ -53,11 +66,169 @@ def _base_unit_for_named_line(unit: str) -> str:
     return {"mass": "g", "volume": "ml"}.get(dim, "count")
 
 
+def _field_lines(text: str) -> list[str]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    return [line.strip() for line in normalized.split("\n") if line.strip()]
+
+
+def _steps_text(instructions: str | None) -> str:
+    if not instructions:
+        return ""
+    steps = []
+    for part in instructions.split("\n\n"):
+        cleaned = " ".join(part.split())
+        if cleaned:
+            steps.append(cleaned)
+    return "\n".join(steps)
+
+
+def _whole_number(value: str) -> int | None:
+    text = value.strip()
+    if not text.isascii() or not text.isdecimal():
+        return None
+    return int(text)
+
+
+class _PostedRecipe:
+    def __init__(
+        self,
+        title: str,
+        servings: int,
+        total_minutes: int | None,
+        source_url: str | None,
+        ingredient_lines: list[str],
+        instructions: str | None,
+    ) -> None:
+        self.title = title
+        self.servings = servings
+        self.total_minutes = total_minutes
+        self.source_url = source_url
+        self.ingredient_lines = ingredient_lines
+        self.instructions = instructions
+
+
+def _parse_recipe_form(
+    title: str,
+    servings: str,
+    minutes: str,
+    source_url: str,
+    ingredients: str,
+    method: str,
+) -> tuple[_PostedRecipe | None, str]:
+    clean_title = title.strip()
+    if not clean_title:
+        return None, "Enter a title."
+    if len(clean_title) > _MAX_TITLE:
+        return None, "Title is too long."
+
+    count = _whole_number(servings)
+    if count is None or not 1 <= count <= MAX_SERVINGS:
+        return None, f"Servings is a whole number from 1 to {MAX_SERVINGS}."
+
+    total_minutes = None
+    if minutes.strip():
+        total_minutes = _whole_number(minutes)
+        if total_minutes is None or not 1 <= total_minutes <= _MAX_MINUTES:
+            return None, "Minutes is a whole number, or leave it blank."
+
+    url = source_url.strip()
+    if url:
+        if len(url) > _MAX_URL:
+            return None, "Source URL is too long."
+        if any(ch.isspace() for ch in url) or not url.lower().startswith(("http://", "https://")):
+            return None, "Source URL starts with http:// or https://."
+
+    lines = _field_lines(ingredients)
+    if not lines:
+        return None, "Enter the ingredients, one per line."
+    if any(len(line) > _MAX_LINE for line in lines):
+        return None, "An ingredient line is too long."
+
+    steps = _field_lines(method)
+    return _PostedRecipe(
+        clean_title,
+        count,
+        total_minutes,
+        url or None,
+        lines,
+        "\n\n".join(steps) or None,
+    ), ""
+
+
+def _render_recipe_form(
+    request: Request,
+    *,
+    heading: str,
+    action: str,
+    cancel: str,
+    title: str = "",
+    servings: str = "4",
+    minutes: str = "",
+    source_url: str = "",
+    ingredients: str = "",
+    method: str = "",
+    error: str = "",
+    status_code: int = 200,
+) -> HTMLResponse:
+    return _render(
+        request,
+        "recipe_form.html",
+        status_code=status_code,
+        heading=heading,
+        action=action,
+        cancel=cancel,
+        title=title,
+        servings=servings,
+        minutes=minutes,
+        source_url=source_url,
+        ingredients=ingredients,
+        method=method,
+        error=error,
+    )
+
+
+def _form_fields(recipe: Recipe) -> dict[str, str]:
+    return {
+        "title": recipe.title,
+        "servings": str(recipe.servings or 4),
+        "minutes": "" if recipe.total_minutes is None else str(recipe.total_minutes),
+        "source_url": recipe.source_url or "",
+        "ingredients": "\n".join(line.raw_text for line in recipe.ingredients),
+        "method": _steps_text(recipe.instructions),
+    }
+
+
+def _save_import(
+    db: Session,
+    user: User,
+    raw: RawRecipe,
+    source: RecipeSource,
+    external_id: str | None,
+) -> Recipe:
+    """Persist an import and rebuild the shop list when it replaced a recipe's lines."""
+    replacing = (
+        find_saved_recipe(
+            db,
+            user.id,
+            source=source,
+            external_id=external_id,
+            source_url=raw.source_url,
+        )
+        is not None
+    )
+    recipe = save_imported_recipe(db, user.id, raw, source=source, external_id=external_id)
+    if replacing:
+        _sync_shopping(db, user.id)
+    return recipe
+
+
 @router.get("/recipes", response_class=HTMLResponse)
 def recipes_page(
     request: Request,
     q: str = "",
     import_url: str = "",
+    archived: int = 0,
+    toast: str = "",
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -65,6 +236,13 @@ def recipes_page(
     needle = q.strip().casefold()
     if needle:
         suggestions = [s for s in suggestions if _recipe_matches(s.recipe, needle)]
+    archived_recipe = db.get(Recipe, archived) if archived else None
+    if (
+        archived_recipe is None
+        or archived_recipe.user_id != user.id
+        or not archived_recipe.is_archived
+    ):
+        archived_recipe = None
     template = "recipes_list.html" if _is_htmx(request) else "recipes.html"
     return _render(
         request,
@@ -76,6 +254,8 @@ def recipes_page(
         import_open=bool(
             import_url or request.query_params.get("import") or (not suggestions and not needle)
         ),
+        archived=archived_recipe,
+        toast_message="" if archived_recipe is not None or toast != "Restored" else "Restored",
     )
 
 
@@ -122,6 +302,7 @@ def _recipe_page(
     notice: str = "",
     match_error: str = "",
     saved: str = "",
+    toast_message: str = "",
     status_code: int = 200,
 ) -> HTMLResponse:
     requirements = recipe_requirements(db, recipe)
@@ -145,8 +326,19 @@ def _recipe_page(
         notice=notice,
         match_error=match_error,
         saved=saved,
+        toast_message=toast_message,
         today=today,
         days=[today + timedelta(days=offset) for offset in range(PLAN_DAYS)],
+    )
+
+
+@router.get("/recipes/new", response_class=HTMLResponse)
+def new_recipe_form(
+    request: Request,
+    _user: User = Depends(auth.current_user),
+) -> HTMLResponse:
+    return _render_recipe_form(
+        request, heading="Add a recipe", action="/recipes", cancel="/recipes"
     )
 
 
@@ -157,6 +349,7 @@ def recipe_detail(
     cooked: int = 0,
     notice: str = "",
     saved: str = "",
+    toast: str = "",
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -169,7 +362,49 @@ def recipe_detail(
         cooked=bool(cooked),
         notice=notice,
         saved=saved.strip()[:80],
+        toast_message="Saved" if toast == "Saved" else "",
     )
+
+
+@router.post("/recipes")
+def create_recipe_from_form(
+    request: Request,
+    title: str = Form(""),
+    servings: str = Form(""),
+    minutes: str = Form(""),
+    source_url: str = Form(""),
+    ingredients: str = Form(""),
+    method: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    parsed, error = _parse_recipe_form(title, servings, minutes, source_url, ingredients, method)
+    if parsed is None:
+        return _render_recipe_form(
+            request,
+            heading="Add a recipe",
+            action="/recipes",
+            cancel="/recipes",
+            title=title,
+            servings=servings,
+            minutes=minutes,
+            source_url=source_url,
+            ingredients=ingredients,
+            method=method,
+            error=error,
+            status_code=400,
+        )
+    recipe = create_manual_recipe(
+        db,
+        user.id,
+        title=parsed.title,
+        servings=parsed.servings,
+        total_minutes=parsed.total_minutes,
+        source_url=parsed.source_url,
+        ingredient_lines=parsed.ingredient_lines,
+        instructions=parsed.instructions,
+    )
+    return RedirectResponse(f"/recipes/{recipe.id}?toast=Saved", status_code=303)
 
 
 @router.post("/recipes/import")
@@ -184,9 +419,7 @@ def import_recipe(
     except ImportError_ as exc:
         return _render(request, "import_result.html", error=str(exc), url=url)
 
-    recipe = save_imported_recipe(
-        db, user.id, result.recipe, source=result.source, external_id=result.external_id
-    )
+    recipe = _save_import(db, user, result.recipe, result.source, result.external_id)
     location = f"/recipes/{recipe.id}"
     if result.notice:
         location += "?notice=" + quote(result.notice)
@@ -198,6 +431,7 @@ def paste_recipe(
     request: Request,
     text: str = Form(""),
     save: str = Form(""),
+    edit: str = Form(""),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -211,11 +445,24 @@ def paste_recipe(
             ),
             text=text,
         )
+    if edit == "1" and save != "1":
+        return _render_recipe_form(
+            request,
+            heading="Add a recipe",
+            action="/recipes",
+            cancel="/recipes?import=1",
+            title=raw.title,
+            servings=str(raw.servings or 4),
+            minutes="" if raw.total_minutes is None else str(raw.total_minutes),
+            source_url=raw.source_url or "",
+            ingredients="\n".join(raw.ingredients),
+            method=_steps_text(raw.instructions),
+        )
     if save != "1":
         return _render(request, "import_result.html", recipe=raw, text=text)
     # Pasted text is not a site import. MANUAL is that source; the column is a string.
-    recipe = save_imported_recipe(db, user.id, raw, source=RecipeSource.MANUAL)
-    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
+    recipe = _save_import(db, user, raw, RecipeSource.MANUAL, None)
+    return RedirectResponse(f"/recipes/{recipe.id}?toast=Saved", status_code=303)
 
 
 @router.post("/recipes/{recipe_id}/match")
@@ -285,6 +532,91 @@ def correct_recipe_match(
     db.flush()
     _sync_shopping(db, user.id)
     return RedirectResponse(f"/recipes/{recipe.id}?saved={quote(clean)}", status_code=303)
+
+
+@router.get("/recipes/{recipe_id}/edit", response_class=HTMLResponse)
+def edit_recipe_form(
+    request: Request,
+    recipe_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    return _render_recipe_form(
+        request,
+        heading="Edit recipe",
+        action=f"/recipes/{recipe.id}",
+        cancel=f"/recipes/{recipe.id}",
+        **_form_fields(recipe),
+    )
+
+
+@router.post("/recipes/{recipe_id}")
+def save_recipe_edit(
+    request: Request,
+    recipe_id: int,
+    title: str = Form(""),
+    servings: str = Form(""),
+    minutes: str = Form(""),
+    source_url: str = Form(""),
+    ingredients: str = Form(""),
+    method: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    parsed, error = _parse_recipe_form(title, servings, minutes, source_url, ingredients, method)
+    if parsed is None:
+        return _render_recipe_form(
+            request,
+            heading="Edit recipe",
+            action=f"/recipes/{recipe.id}",
+            cancel=f"/recipes/{recipe.id}",
+            title=title,
+            servings=servings,
+            minutes=minutes,
+            source_url=source_url,
+            ingredients=ingredients,
+            method=method,
+            error=error,
+            status_code=400,
+        )
+    servings_changed = recipe.servings != parsed.servings
+    lines_changed = edit_recipe(
+        db,
+        recipe,
+        title=parsed.title,
+        servings=parsed.servings,
+        total_minutes=parsed.total_minutes,
+        source_url=parsed.source_url,
+        ingredient_lines=parsed.ingredient_lines,
+        instructions=parsed.instructions,
+    )
+    if lines_changed or servings_changed:
+        _sync_shopping(db, user.id)
+    return RedirectResponse(f"/recipes/{recipe.id}?toast=Saved", status_code=303)
+
+
+@router.post("/recipes/{recipe_id}/archive")
+def archive_recipe(
+    recipe_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    recipe.is_archived = True
+    return RedirectResponse(f"/recipes?archived={recipe.id}", status_code=303)
+
+
+@router.post("/recipes/{recipe_id}/restore")
+def restore_recipe(
+    recipe_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    recipe.is_archived = False
+    return RedirectResponse("/recipes?toast=Restored", status_code=303)
 
 
 @router.get("/share")

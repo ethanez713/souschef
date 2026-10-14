@@ -12,8 +12,10 @@ GET /receipts/{receipt_id}
 GET /receipts/{receipt_id}/apply
 GET /receipts/{receipt_id}/image
 GET /recipes
+GET /recipes/new
 GET /recipes/{recipe_id}
 GET /recipes/{recipe_id}/cook
+GET /recipes/{recipe_id}/edit
 GET /settings
 GET /settings/{rest:path}
 GET /share
@@ -33,10 +35,14 @@ POST /plan/{entry_id}/skip
 POST /receipts/upload
 POST /receipts/{receipt_id}/apply
 POST /receipts/{receipt_id}/line/{line_id}
+POST /recipes
 POST /recipes/import
 POST /recipes/paste
+POST /recipes/{recipe_id}
+POST /recipes/{recipe_id}/archive
 POST /recipes/{recipe_id}/cooked
 POST /recipes/{recipe_id}/match
+POST /recipes/{recipe_id}/restore
 POST /settings/nyt-cookie
 POST /settings/nyt-cookie/delete
 POST /settings/staples

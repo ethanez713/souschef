@@ -866,7 +866,7 @@ def test_a_refusal_blames_the_cookie_only_for_nyt(monkeypatch: pytest.MonkeyPatc
         "souschef.ingest.recipes.importers.httpx.get", lambda *args, **kwargs: Response()
     )
     _allow_network(monkeypatch)
-    with pytest.raises(ImportError_, match="isn't a web browser"):
+    with pytest.raises(ImportError_, match="That site blocks automated imports"):
         fetch_html("https://www.seriouseats.com/recipe")
 
 

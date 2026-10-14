@@ -23,6 +23,7 @@ from souschef.core.units import entry_unit, to_base
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
+    Cook,
     EventReason,
     IngredientAlias,
     InventoryEvent,
@@ -33,6 +34,7 @@ from souschef.models import (
     ReceiptLine,
     ReceiptStatus,
     Recipe,
+    RecipeIngredient,
     RecipeSource,
     ShoppingListItem,
     StoredCredential,
@@ -747,6 +749,7 @@ def test_pasted_recipe_is_reviewed_then_saved_with_its_ingredients(
     assert "Skillet Chili" in review.text
     assert "1 lb ground beef" in review.text
     assert "Save recipe" in review.text
+    assert 'name="edit"' in review.text
     assert seeded_session.scalar(select(Recipe).where(Recipe.title == "Skillet Chili")) is None
 
     saved = signed_in.post("/recipes/paste", data={"text": text, "save": "1"})
@@ -2628,3 +2631,261 @@ def test_picker_focuses_the_search_field_inside_the_tap_handler() -> None:
 def test_picker_ranks_a_later_word_match_above_fuzzy_hits(signed_in: TestClient) -> None:
     rows = re.findall(r'data-name="([^"]*)"', signed_in.get("/pick/ingredient?q=paste").text)
     assert {"tomato paste", "miso paste"} <= set(rows[:3])
+
+
+def test_the_form_creates_a_recipe(signed_in: TestClient, seeded_session: Session) -> None:
+    blank = signed_in.post(
+        "/recipes",
+        data={"title": "  ", "servings": "2", "ingredients": "1 pound spaghetti"},
+    )
+    assert blank.status_code == 400
+    assert "Enter a title." in blank.text
+
+    page = signed_in.get("/recipes").text
+    assert 'href="/recipes/new"' in page
+    assert "Add a recipe" in page
+    assert "Paste recipe" in page
+    form = signed_in.get("/recipes/new")
+    assert form.status_code == 200
+    assert "Add a recipe" in form.text
+    for name in ("title", "servings", "minutes", "source_url", "ingredients", "method"):
+        assert f'name="{name}"' in form.text
+
+    created = signed_in.post(
+        "/recipes",
+        data={
+            "title": "Weeknight noodles",
+            "servings": "2",
+            "minutes": "25",
+            "source_url": "https://example.com/noodles",
+            "ingredients": "1 pound spaghetti\n2 tablespoons olive oil",
+            "method": "Boil the water.\nToss.",
+        },
+    )
+    assert created.status_code == 303
+    seeded_session.expire_all()
+    recipe = seeded_session.scalar(select(Recipe).where(Recipe.title == "Weeknight noodles"))
+    assert recipe is not None
+    assert recipe.source == RecipeSource.MANUAL
+    assert recipe.external_id is None
+    assert recipe.servings == 2
+    assert recipe.total_minutes == 25
+    assert recipe.source_url == "https://example.com/noodles"
+    assert recipe.instructions == "Boil the water.\n\nToss."
+    assert [line.raw_text for line in recipe.ingredients] == [
+        "1 pound spaghetti",
+        "2 tablespoons olive oil",
+    ]
+    assert all(line.ingredient_id is not None for line in recipe.ingredients)
+
+    detail = signed_in.get(created.headers["location"])
+    assert detail.status_code == 200
+    assert "Weeknight noodles" in detail.text
+    assert 'class="toast"' in detail.text
+    assert f'href="/recipes/{recipe.id}/edit"' in detail.text
+
+
+def test_editing_one_line_rematches_only_that_line(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    onion = ing(seeded_session, "yellow onion")
+    spaghetti = ing(seeded_session, "spaghetti")
+    recipe = Recipe(
+        user_id=web_user.id,
+        title="Onion stew",
+        servings=4,
+        source=RecipeSource.MANUAL,
+        instructions="Simmer.",
+    )
+    seeded_session.add(recipe)
+    seeded_session.flush()
+    first = RecipeIngredient(
+        recipe_id=recipe.id,
+        position=0,
+        raw_text="2 onions",
+        ingredient_id=spaghetti.id,
+        match_confidence=0.42,
+        quantity=2,
+        unit="count",
+    )
+    second = RecipeIngredient(
+        recipe_id=recipe.id,
+        position=1,
+        raw_text="2 onions",
+        ingredient_id=onion.id,
+        match_confidence=0.17,
+        quantity=2,
+        unit="count",
+    )
+    seeded_session.add_all([
+        first,
+        second,
+        RecipeIngredient(
+            recipe_id=recipe.id,
+            position=2,
+            raw_text="1 carrot",
+            match_confidence=0.05,
+        ),
+    ])
+    seeded_session.commit()
+    first_id, second_id = first.id, second.id
+
+    saved = signed_in.post(
+        f"/recipes/{recipe.id}",
+        data={
+            "title": "Onion stew",
+            "servings": "4",
+            "minutes": "",
+            "ingredients": "2 onions\n2 onions\n1 lb chicken breast",
+            "method": "Simmer.",
+        },
+    )
+    assert saved.status_code == 303
+
+    seeded_session.expire_all()
+    lines = list(seeded_session.get(Recipe, recipe.id).ingredients)
+    assert [line.raw_text for line in lines] == [
+        "2 onions",
+        "2 onions",
+        "1 lb chicken breast",
+    ]
+    kept = {line.id: line for line in lines}
+    assert kept[first_id].ingredient_id == spaghetti.id
+    assert kept[first_id].match_confidence == pytest.approx(0.42)
+    assert kept[second_id].ingredient_id == onion.id
+    assert kept[second_id].match_confidence == pytest.approx(0.17)
+    changed = next(line for line in lines if line.id not in {first_id, second_id})
+    assert changed.ingredient is not None
+    assert changed.ingredient.name == "chicken breast"
+
+
+def test_editing_a_planned_recipe_updates_the_shopping_list(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    created = signed_in.post(
+        "/recipes",
+        data={
+            "title": "Planned stew",
+            "servings": "4",
+            "ingredients": "1 pound spaghetti\n2 onions",
+            "method": "Simmer.",
+        },
+    )
+    assert created.status_code == 303
+    seeded_session.expire_all()
+    recipe = seeded_session.scalar(select(Recipe).where(Recipe.title == "Planned stew"))
+    assert recipe is not None
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=date.today(),
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=4,
+        )
+    )
+    seeded_session.commit()
+
+    before = signed_in.get("/shopping").text
+    assert "spaghetti" in before
+    assert "yellow onion" in before
+    assert "chicken breast" not in before
+
+    edited = signed_in.post(
+        f"/recipes/{recipe.id}",
+        data={
+            "title": "Planned stew",
+            "servings": "4",
+            "ingredients": "1 pound spaghetti\n1 lb chicken breast",
+            "method": "Simmer.",
+        },
+    )
+    assert edited.status_code == 303
+    after = signed_in.get("/shopping").text
+    assert "spaghetti" in after
+    assert "chicken breast" in after
+    assert "yellow onion" not in after
+
+
+def test_archive_hides_the_recipe_and_undo_restores_it(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    from souschef.planning.suggest import suggest
+
+    recipe = Recipe(
+        user_id=web_user.id,
+        title="Archive Me Stew",
+        servings=2,
+        source=RecipeSource.MANUAL,
+        last_cooked_at=datetime(2024, 6, 1, tzinfo=UTC),
+    )
+    seeded_session.add(recipe)
+    seeded_session.flush()
+    entry = MealPlanEntry(
+        user_id=web_user.id,
+        plan_date=date.today(),
+        slot=MealSlot.DINNER,
+        recipe_id=recipe.id,
+        servings=2,
+    )
+    cook = Cook(
+        user_id=web_user.id,
+        recipe_id=recipe.id,
+        servings=2,
+        cooked_at=datetime.now(UTC),
+    )
+    seeded_session.add_all([entry, cook])
+    seeded_session.commit()
+    assert recipe.title in signed_in.get("/recipes").text
+    assert recipe.title in _row_titles(signed_in.get("/pick/recipe").text)
+
+    archived = signed_in.post(f"/recipes/{recipe.id}/archive")
+    assert archived.status_code == 303
+    page = signed_in.get(archived.headers["location"])
+    assert page.status_code == 200
+    assert 'class="toast"' in page.text
+    assert "Undo" in page.text
+    assert f'action="/recipes/{recipe.id}/restore"' in page.text
+    list_html = page.text.split('id="recipe-list"', 1)[1]
+    assert recipe.title not in list_html
+    assert recipe.title not in _row_titles(signed_in.get("/pick/recipe").text)
+    assert recipe.title not in signed_in.get("/pick/recipe", params={"q": "Archive Me"}).text
+
+    seeded_session.expire_all()
+    assert all(item.recipe.id != recipe.id for item in suggest(seeded_session, web_user.id))
+    assert seeded_session.get(MealPlanEntry, entry.id) is not None
+    assert seeded_session.get(Cook, cook.id) is not None
+    assert seeded_session.get(Recipe, recipe.id).is_archived is True
+    plan = signed_in.get("/plan").text
+    assert f'value="r:{recipe.id}"' not in plan
+    assert recipe.title in plan
+
+    restored = signed_in.post(f"/recipes/{recipe.id}/restore")
+    assert restored.status_code == 303
+    seeded_session.expire_all()
+    assert seeded_session.get(Recipe, recipe.id).is_archived is False
+    assert recipe.title in signed_in.get("/recipes").text
+    assert any(item.recipe.id == recipe.id for item in suggest(seeded_session, web_user.id))
+
+
+def test_a_blocked_import_offers_the_paste_box(
+    monkeypatch: pytest.MonkeyPatch, signed_in: TestClient
+) -> None:
+    from souschef.config import get_settings
+    from souschef.ingest.recipes import importers
+
+    class Response:
+        status_code = 403
+        content = b""
+        text = ""
+        url = "https://example.com/blocked"
+
+    monkeypatch.setattr(importers.httpx, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(get_settings(), "no_external", False)
+    page = signed_in.post("/recipes/import", data={"url": "https://example.com/blocked"})
+    assert page.status_code == 200
+    assert "That site blocks automated imports." in page.text
+    assert "Paste the recipe text instead" in page.text
+    assert 'name="text"' in page.text
+    assert 'action="/recipes/paste"' in page.text
+    assert "<details" not in page.text

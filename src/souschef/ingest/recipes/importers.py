@@ -138,10 +138,7 @@ def fetch_html(url: str, *, cookie: str | None = None) -> tuple[str, str]:
                 "NYT refused the request (403). Your saved session cookie may have "
                 "expired — re-enter it in Settings."
             )
-        raise ImportError_(
-            "The site refused the request (403). Some recipe sites block anything "
-            "that isn't a web browser."
-        )
+        raise ImportError_("That site blocks automated imports.")
     if response.status_code == 429:
         log.warning("429 from %s", url)
         raise ImportError_(

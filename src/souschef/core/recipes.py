@@ -195,6 +195,91 @@ def recipe_requirements(
     return result
 
 
+def find_saved_recipe(
+    session: Session,
+    user_id: int,
+    *,
+    source: RecipeSource,
+    external_id: str | None = None,
+    source_url: str | None = None,
+) -> Recipe | None:
+    """The row a re-import of this source would update, scoped to one kitchen."""
+    if external_id:
+        found = session.scalar(
+            select(Recipe).where(
+                Recipe.user_id == user_id,
+                Recipe.source == source,
+                Recipe.external_id == external_id,
+            )
+        )
+        if found is not None:
+            return found
+    if source_url:
+        return session.scalar(
+            select(Recipe).where(
+                Recipe.user_id == user_id, Recipe.source_url == source_url
+            )
+        )
+    return None
+
+
+def _matched_lines(
+    session: Session,
+    texts: list[str],
+    title: str,
+    *,
+    learn_aliases: bool,
+) -> list[RecipeIngredient]:
+    """Parse and match lines the way an import does. The caller inserts them."""
+    from souschef.planning.suggest import is_ignorable
+
+    matcher = IngredientMatcher(session)
+    parsed_lines = parse_all(texts, matcher)
+    unmatched = [p.raw_text for p in parsed_lines if not (p.match and p.match.is_match)]
+    if unmatched:
+        # A gap in the catalog, not a transient failure: these lines are
+        # invisible to pantry checks until the ingredient exists or is aliased.
+        log.warning(
+            "Recipe %r: %d of %d ingredient lines did not match the catalog: %s",
+            title, len(unmatched), len(parsed_lines), "; ".join(unmatched[:5]),
+        )
+
+    lines: list[RecipeIngredient] = []
+    for position, parsed in enumerate(parsed_lines):
+        match = parsed.match
+        lines.append(
+            RecipeIngredient(
+                position=position,
+                raw_text=parsed.raw_text,
+                ingredient_id=match.ingredient_id if match and match.is_match else None,
+                match_confidence=match.confidence if match else 0.0,
+                quantity=parsed.quantity,
+                unit=parsed.unit,
+                preparation=parsed.preparation,
+                is_optional=parsed.is_optional,
+                is_ignored=is_ignorable(parsed.raw_text),
+                quantity_is_vague=parsed.quantity_is_vague,
+            )
+        )
+        # Feed strong matches back into the alias table so the vocabulary grows
+        # with use. Weak matches are left alone -- learning a guess would make
+        # the matcher confidently wrong later.
+        if learn_aliases and match and match.is_auto and parsed.name:
+            matcher.learn(parsed.name, match.ingredient_id, source=AliasSource.RECIPE)
+    return lines
+
+
+def _reload_ingredients(session: Session, recipe: Recipe) -> None:
+    """Read back lines written by id.
+
+    Inserts that bypass the relationship leave the loaded collection empty, and
+    a shop-list rebuild in this same session would then treat the meal as
+    ingredient-free.
+    """
+    session.flush()
+    session.refresh(recipe, attribute_names=["ingredients"])
+
+
 def save_imported_recipe(
     session: Session,
     user_id: int,
@@ -211,21 +296,13 @@ def save_imported_recipe(
     owner: unscoped, a second user importing a recipe someone else already has
     would silently edit the first user's copy instead of getting their own.
     """
-    existing = None
-    if external_id:
-        existing = session.scalar(
-            select(Recipe).where(
-                Recipe.user_id == user_id,
-                Recipe.source == source,
-                Recipe.external_id == external_id,
-            )
-        )
-    if existing is None and raw.source_url:
-        existing = session.scalar(
-            select(Recipe).where(
-                Recipe.user_id == user_id, Recipe.source_url == raw.source_url
-            )
-        )
+    existing = find_saved_recipe(
+        session,
+        user_id,
+        source=source,
+        external_id=external_id,
+        source_url=raw.source_url,
+    )
 
     recipe = existing or Recipe(user_id=user_id)
     recipe.title = unescape_text(raw.title) or raw.title
@@ -242,56 +319,96 @@ def save_imported_recipe(
     if existing is None:
         session.add(recipe)
     else:
-        # Re-import replaces the ingredient lines wholesale. Deleting through
-        # the relationship and re-adding below leaves the loaded collection
-        # stale, so it is expired after the rebuild -- see the flush at the end.
+        # Re-import replaces the ingredient lines wholesale.
         recipe.ingredients.clear()
     session.flush()
 
-    from souschef.planning.suggest import is_ignorable
-
-    matcher = IngredientMatcher(session)
-    parsed_lines = parse_all(
-        [unescape_text(item) or item for item in raw.ingredients], matcher
-    )
-
-    unmatched = [p.raw_text for p in parsed_lines if not (p.match and p.match.is_match)]
-    if unmatched:
-        # A gap in the catalog, not a transient failure: these lines are
-        # invisible to pantry checks until the ingredient exists or is aliased.
-        log.warning(
-            "Recipe %r: %d of %d ingredient lines did not match the catalog: %s",
-            raw.title, len(unmatched), len(parsed_lines), "; ".join(unmatched[:5]),
-        )
-
-    for position, parsed in enumerate(parsed_lines):
-        match = parsed.match
-        session.add(
-            RecipeIngredient(
-                recipe_id=recipe.id,
-                position=position,
-                raw_text=parsed.raw_text,
-                ingredient_id=match.ingredient_id if match and match.is_match else None,
-                match_confidence=match.confidence if match else 0.0,
-                quantity=parsed.quantity,
-                unit=parsed.unit,
-                preparation=parsed.preparation,
-                is_optional=parsed.is_optional,
-                is_ignored=is_ignorable(parsed.raw_text),
-                quantity_is_vague=parsed.quantity_is_vague,
-            )
-        )
-
-        # Feed strong matches back into the alias table so the vocabulary grows
-        # with use. Weak matches are left alone -- learning a guess would make
-        # the matcher confidently wrong later.
-        if learn_aliases and match and match.is_auto and parsed.name:
-            matcher.learn(parsed.name, match.ingredient_id, source=AliasSource.RECIPE)
-
-    session.flush()
-    # The new lines were added by id rather than through the relationship, so
-    # the loaded collection is stale. Expiring it forces a reload on next
-    # access; without this a re-imported recipe reads back as having no
-    # ingredients, which scores as "you have everything" and is silently wrong.
-    session.expire(recipe, ["ingredients"])
+    texts = [unescape_text(item) or item for item in raw.ingredients]
+    for line in _matched_lines(session, texts, recipe.title, learn_aliases=learn_aliases):
+        line.recipe_id = recipe.id
+        session.add(line)
+    _reload_ingredients(session, recipe)
     return recipe
+
+
+def create_manual_recipe(
+    session: Session,
+    user_id: int,
+    *,
+    title: str,
+    servings: int,
+    total_minutes: int | None,
+    source_url: str | None,
+    ingredient_lines: list[str],
+    instructions: str | None,
+) -> Recipe:
+    """Save a recipe typed into the form. Always a new row, matched like an import."""
+    recipe = Recipe(
+        user_id=user_id,
+        title=title,
+        source=RecipeSource.MANUAL,
+        source_url=source_url,
+        servings=servings,
+        total_minutes=total_minutes,
+        instructions=instructions,
+    )
+    session.add(recipe)
+    session.flush()
+    for line in _matched_lines(session, ingredient_lines, title, learn_aliases=True):
+        line.recipe_id = recipe.id
+        session.add(line)
+    _reload_ingredients(session, recipe)
+    return recipe
+
+
+def edit_recipe(
+    session: Session,
+    recipe: Recipe,
+    *,
+    title: str,
+    servings: int,
+    total_minutes: int | None,
+    source_url: str | None,
+    ingredient_lines: list[str],
+    instructions: str | None,
+) -> bool:
+    """Apply a form edit. Unchanged lines keep the match they already have.
+
+    Raw text is compared as a multiset: two copies of one line each keep their
+    own ingredient and confidence, and rewriting one of them re-matches only
+    that copy. Returns true when a line was added or dropped.
+    """
+    recipe.title = title
+    recipe.servings = servings
+    recipe.total_minutes = total_minutes
+    recipe.source_url = source_url
+    recipe.instructions = instructions
+
+    pools: dict[str, list[RecipeIngredient]] = {}
+    for line in list(recipe.ingredients):
+        pools.setdefault(line.raw_text, []).append(line)
+
+    fresh: list[tuple[int, str]] = []
+    for position, text in enumerate(ingredient_lines):
+        pool = pools.get(text)
+        if pool:
+            line = pool.pop(0)
+            line.position = position
+        else:
+            fresh.append((position, text))
+
+    removed = [line for pool in pools.values() for line in pool]
+    for line in removed:
+        recipe.ingredients.remove(line)
+
+    if fresh:
+        created = _matched_lines(
+            session, [text for _, text in fresh], recipe.title, learn_aliases=True
+        )
+        for (position, _), line in zip(fresh, created, strict=True):
+            line.position = position
+            line.recipe_id = recipe.id
+            recipe.ingredients.append(line)
+
+    _reload_ingredients(session, recipe)
+    return bool(fresh or removed)

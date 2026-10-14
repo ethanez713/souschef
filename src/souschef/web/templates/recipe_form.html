@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "icons.html" import icon %}
+{% set active = 'recipes' %}
+{% block title %}{{ heading }} · SousChef{% endblock %}
+{% block content %}
+<main id="main">
+  <h1>{{ heading }}</h1>
+  {% if error %}
+    <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
+  {% endif %}
+  <form method="post" action="{{ action }}">
+    <div class="field">
+      <label for="title">Title</label>
+      <input id="title" name="title" required maxlength="300" value="{{ title }}">
+    </div>
+    <div class="field">
+      <label for="servings">Servings</label>
+      <input id="servings" class="num" name="servings" type="number" inputmode="numeric" min="1" max="50" required value="{{ servings }}">
+    </div>
+    <div class="field">
+      <label for="minutes">Minutes</label>
+      <input id="minutes" class="num" name="minutes" type="number" inputmode="numeric" min="1" value="{{ minutes }}">
+    </div>
+    <div class="field">
+      <label for="source_url">Source URL (optional)</label>
+      <input id="source_url" name="source_url" type="url" inputmode="url" value="{{ source_url }}" placeholder="https://…">
+    </div>
+    <div class="field">
+      <label for="ingredients">Ingredients</label>
+      <textarea id="ingredients" name="ingredients" rows="8" required>{{ ingredients }}</textarea>
+      <p class="note">One ingredient per line.</p>
+    </div>
+    <div class="field">
+      <label for="method">Method</label>
+      <textarea id="method" name="method" rows="8">{{ method }}</textarea>
+      <p class="note">One step per line.</p>
+    </div>
+    <div class="actions">
+      <button class="primary" type="submit">Save</button>
+      <a class="btn" href="{{ cancel }}">Cancel</a>
+    </div>
+  </form>
+</main>
+{% endblock %}

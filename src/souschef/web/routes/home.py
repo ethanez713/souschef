@@ -83,7 +83,9 @@ def dashboard(
         discarded=_discard_notice(db, user, wasted),
         pantry_count=len(pantry),
         recipe_count=db.scalar(
-            select(func.count()).select_from(Recipe).where(Recipe.user_id == user.id)
+            select(func.count())
+            .select_from(Recipe)
+            .where(Recipe.user_id == user.id, Recipe.is_archived.is_(False))
         )
         or 0,
     )

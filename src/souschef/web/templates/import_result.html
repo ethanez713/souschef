@@ -27,24 +27,25 @@
   {% endif %}
   <form method="post" action="/recipes/paste">
     <textarea name="text" hidden>{{ text }}</textarea>
-    <input type="hidden" name="save" value="1">
     <div class="actions">
-      <button class="primary" type="submit">Save recipe</button>
+      <button class="primary" type="submit" name="save" value="1">Save recipe</button>
+      <button type="submit" name="edit" value="1">Edit</button>
       <a class="btn" href="/recipes?import=1">Back to recipes</a>
     </div>
   </form>
   {% else %}
   <h1>Import failed</h1>
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
-  {% if text is defined %}
-  <form method="post" action="/recipes/paste" class="card">
+  <form method="post" action="/recipes/paste">
     <div class="field">
-      <label for="recipe-text">Paste the recipe text</label>
-      <textarea id="recipe-text" name="text" rows="8" required>{{ text }}</textarea>
+      <label for="recipe-text">
+        {%- if text is defined %}Paste the recipe text{% else %}Paste the recipe text instead{% endif -%}
+      </label>
+      <textarea id="recipe-text" name="text" rows="8" required>{{ text if text is defined else '' }}</textarea>
     </div>
     <button class="primary" type="submit">Paste recipe</button>
   </form>
-  {% else %}
+  {% if text is not defined %}
   <form method="post" action="/recipes/import" class="card">
     <div class="field">
       <label for="url">Recipe URL</label>

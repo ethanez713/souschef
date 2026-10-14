@@ -702,3 +702,134 @@ def format_entry_amount(value: float, ingredient: object, system: str) -> str:
     """``entry_amount`` as a number an ``<input type="number">`` can round-trip."""
     amount = entry_amount(value, ingredient, system)
     return f"{amount:.6f}".rstrip("0").rstrip(".") or "0"
+
+
+def count_noun_measure(unit: str | None, count_noun: str | None) -> str | None:
+    """``count`` when ``unit`` names this ingredient and is not already a unit.
+
+    Package words stay packages: "can" and "head" convert through the package
+    size instead of counting as one.
+    """
+    noun = (count_noun or "").strip().lower()
+    word = (unit or "").strip().lower().rstrip(".")
+    if not noun or word != noun:
+        return None
+    try:
+        parse_input_unit(word)
+    except InputUnitError:
+        return "count"
+    return None
+
+
+@dataclass(frozen=True)
+class UnitChip:
+    value: str
+    selected: bool
+
+
+def _chip_dimension(base_unit: str) -> str | None:
+    try:
+        return dimension_of(base_unit)
+    except UnitConversionError:
+        return None
+
+
+def _base_chip(base_unit: str, count_noun: str) -> str:
+    dim = _chip_dimension(base_unit)
+    if dim == Dimension.COUNT:
+        return count_noun or "count"
+    if dim == Dimension.VOLUME:
+        return "ml"
+    if dim == Dimension.MASS:
+        return "g"
+    return count_noun or base_unit or "count"
+
+
+def _dimension_chips(base_unit: str, count_noun: str) -> list[str]:
+    dim = _chip_dimension(base_unit)
+    if dim == Dimension.MASS:
+        return ["g", "oz", "lb"]
+    if dim == Dimension.VOLUME:
+        return ["ml", "cup", "qt"]
+    if dim == Dimension.COUNT:
+        return [count_noun or "count"]
+    return [count_noun or base_unit or "count"]
+
+
+def add_unit_choices(ingredient: object, selected: str = "") -> list[UnitChip]:
+    """Add-form chips. Preselect the package noun, else the count noun, else the base unit.
+
+    The rest of the row is the count noun and that dimension's units: g, oz, lb
+    or ml, cup, qt. A counted ingredient's row is its count noun.
+    """
+    package_noun = (getattr(ingredient, "package_noun", None) or "").strip()
+    count_noun = (getattr(ingredient, "count_noun", None) or "").strip()
+    base = (getattr(ingredient, "base_unit", None) or "").strip() or "count"
+    preferred = package_noun or count_noun or _base_chip(base, count_noun)
+    ordered: list[str] = []
+    for word in (preferred, count_noun, *_dimension_chips(base, count_noun)):
+        if word and word not in ordered:
+            ordered.append(word)
+    if not ordered:
+        return []
+    posted = selected.strip()
+    chosen = preferred
+    if posted:
+        match = next((word for word in ordered if word.casefold() == posted.casefold()), None)
+        if match is None:
+            ordered.append(posted)
+            chosen = posted
+        else:
+            chosen = match
+    return [UnitChip(word, word == chosen) for word in ordered]
+
+
+def _is_pack_word(word: str) -> bool:
+    try:
+        parsed = parse_input_unit(word)
+    except InputUnitError:
+        return False
+    return parsed[1] is not None
+
+
+def package_caption_word(
+    package_noun: str | None,
+    count_noun: str | None,
+    *,
+    has_package: bool,
+) -> str:
+    noun = (package_noun or "").strip()
+    if noun:
+        return noun
+    count = (count_noun or "").strip()
+    if count and _is_pack_word(count):
+        return count
+    if has_package:
+        return "package"
+    return ""
+
+
+def package_caption(ingredient: object, system: str) -> str:
+    """``1 can = 15 oz`` under the add-form chips, or empty when there is no package."""
+    qty = getattr(ingredient, "package_qty", None)
+    unit = getattr(ingredient, "package_unit", None)
+    if not qty or not unit:
+        return ""
+    word = package_caption_word(
+        getattr(ingredient, "package_noun", None),
+        getattr(ingredient, "count_noun", None),
+        has_package=True,
+    )
+    if not word:
+        return ""
+    try:
+        size = format_quantity(
+            float(qty),
+            str(unit),
+            system=system or "us",
+            noun=getattr(ingredient, "count_noun", None),
+            name=getattr(ingredient, "name", "") or "",
+        )
+    except (UnitConversionError, ValueError):
+        return ""
+    return f"1 {word} = {size}"

@@ -151,10 +151,10 @@
 <div class="sticky-bar">{{ caller() }}</div>
 {%- endmacro %}
 
-{% macro picker(name, label, kind, value='') -%}
+{% macro picker(name, label, kind, value='', submit='') -%}
 {%- set current = value|string if value else '' -%}
 {%- set sheet_id = 'picker-' ~ kind ~ '-' ~ name -%}
-<div class="picker" data-picker-sheet="{{ sheet_id }}">
+<div class="picker" data-picker-sheet="{{ sheet_id }}"{% if submit %} data-picker-submit="{{ submit }}"{% endif %}>
   <input type="hidden" name="{{ name }}" value="{{ current }}">
   <button type="button" class="block picker-trigger" data-sheet="{{ sheet_id }}" data-picker-open
           {% if not current %}data-empty{% endif %}
@@ -175,4 +175,43 @@
 </div>
 <div class="picker-results" id="{{ sheet_id }}-results"></div>
 {% endcall %}
+{%- endmacro %}
+
+{# Unit radios for an add sheet. With no choices yet, a text field keeps a plain POST working. #}
+{% macro add_units(choices, unit_id, unit_value, placeholder) -%}
+<div class="field" data-unit-slot data-unit-id="{{ unit_id }}" data-unit-placeholder="{{ placeholder }}">
+  <label{% if not choices %} for="{{ unit_id }}"{% endif %}>Unit</label>
+  {% if choices %}
+  <div class="daychips" role="radiogroup" aria-label="Unit" data-unit-chips>
+    {% for chip in choices %}
+    <label>
+      <input type="radio" name="unit" value="{{ chip.value }}"{% if chip.selected %} checked{% endif %}>
+      <span>{{ chip.value }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  {% else %}
+  <input id="{{ unit_id }}" name="unit" placeholder="{{ placeholder }}" value="{{ unit_value }}">
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro package_size(qty_id, unit_id, word, caption, qty, unit, placeholder, asking) -%}
+<p class="meta add-package" data-package-caption{% if not caption %} hidden{% endif %}>
+  <span class="num" data-package-text>{{ caption }}</span>
+  <span aria-hidden="true">·</span>
+  <button type="button" class="link" data-package-change>Change</button>
+</p>
+<div data-package-fields{% if not asking %} hidden{% endif %}>
+  <div class="controls">
+    <div class="field">
+      <label for="{{ qty_id }}" data-package-label>How much is one {{ word or 'package' }}?</label>
+      <input id="{{ qty_id }}" name="package_qty" type="number" step="any" inputmode="decimal" {% if asking %}required {% endif %}value="{{ qty or '' }}"{% if asking %} autofocus{% endif %}>
+    </div>
+    <div class="field">
+      <label for="{{ unit_id }}">Unit</label>
+      <input id="{{ unit_id }}" name="package_unit" placeholder="{{ placeholder }}" value="{{ unit or '' }}"{% if asking %} required{% endif %}>
+    </div>
+  </div>
+</div>
 {%- endmacro %}

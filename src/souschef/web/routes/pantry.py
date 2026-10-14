@@ -25,6 +25,7 @@ from souschef.core.units import (
     InputUnitError,
     NeedsPackage,
     UnitConversionError,
+    count_noun_measure,
     entry_unit,
     parse_input_unit,
     parse_package_answer,
@@ -42,6 +43,7 @@ from souschef.web.common import (
     _on_hand,
     _render,
     _safe_next,
+    add_form_units,
 )
 
 router = APIRouter()
@@ -129,6 +131,9 @@ def _pantry_page(
         else:
             out.append(view)
 
+    unit_choices, package_caption = add_form_units(
+        db, add_name, add_unit, user.unit_system or "us"
+    )
     # A live-search keystroke swaps in only the list; a full navigation renders
     # the page around it.
     template = "pantry_list.html" if _is_htmx(request) else "pantry.html"
@@ -148,6 +153,8 @@ def _pantry_page(
         package_word=package_word,
         package_qty=package_qty,
         package_unit=package_unit,
+        unit_choices=unit_choices,
+        package_caption=package_caption,
         level_error=level_error,
         discarded=_discard_notice(db, user, wasted),
     )
@@ -291,35 +298,43 @@ def add_to_pantry(
     if quantity <= 0:
         return show("Amount has to be more than zero.")
 
-    try:
-        _measure, pack = parse_input_unit(unit)
-    except InputUnitError as exc:
-        return show(str(exc))
-
     match = IngredientMatcher(db).match(clean_name)
     ingredient: CanonicalIngredient | None = None
     if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
         ingredient = db.get(CanonicalIngredient, match.ingredient_id)
 
-    # A package word with no size is a question, not a row. Nothing is written
-    # until the follow-up says how big one of them is.
-    if pack and pack != "dozen" and not _has_package(ingredient):
+    typed = unit
+    count_noun = ingredient.count_noun if ingredient is not None else None
+    if count_noun_measure(unit, count_noun):
+        typed = "count"
+        pack = None
+    else:
         try:
-            answer = parse_package_answer(package_qty, package_unit)
+            pack = parse_input_unit(unit)[1]
         except InputUnitError as exc:
-            return show(str(exc), word=pack)
-        if answer is None:
-            return show(word=pack)
+            return show(str(exc))
+
+    # A package word with no size is a question, not a row. Nothing is written
+    # until the follow-up says how big one of them is. A size sent with the add
+    # (the first answer, or Change) is stored on the ingredient first, then the
+    # amount converts through it.
+    try:
+        answer = parse_package_answer(package_qty, package_unit)
+    except InputUnitError as exc:
+        return show(str(exc), word=pack or "package")
+    if answer is not None:
         try:
             ingredient = save_package_size(db, ingredient, clean_name, answer[0], answer[1])
         except (UnitConversionError, InputUnitError) as exc:
             db.rollback()
-            return show(str(exc), word=pack)
+            return show(str(exc), word=pack or "package")
+    elif pack and pack != "dozen" and not _has_package(ingredient):
+        return show(word=pack)
 
     try:
         resolved = resolve_entry(
             quantity,
-            unit,
+            typed,
             package_qty=ingredient.package_qty if ingredient is not None else None,
             package_unit=ingredient.package_unit if ingredient is not None else None,
         )

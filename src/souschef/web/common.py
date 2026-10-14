@@ -12,15 +12,19 @@ from jinja2 import pass_context
 from sqlalchemy.orm import Session
 
 from souschef import logconfig
+from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.units import (
     NeedsPackage,
+    UnitChip,
     UnitConversionError,
+    add_unit_choices,
     base_unit_for,
     dimension_of,
     entry_label,
     format_entry_amount,
     format_quantity,
     normalize_unit,
+    package_caption,
     parse_input_unit,
 )
 from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, Recipe, User
@@ -338,6 +342,29 @@ def _discard_notice(db: Session, user: User, event_id: int) -> dict | None:
         return None
     ingredient = db.get(CanonicalIngredient, event.ingredient_id)
     return {"event_id": event.id, "name": ingredient.name if ingredient else "item"}
+
+
+def ingredient_for_add(db: Session, name: str) -> CanonicalIngredient | None:
+    """The catalog row an add form would reuse, or None for a new name."""
+    clean = name.strip()
+    if not clean:
+        return None
+    match = IngredientMatcher(db).match(clean)
+    if match.method not in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
+        return None
+    if match.ingredient_id is None:
+        return None
+    return db.get(CanonicalIngredient, match.ingredient_id)
+
+
+def add_form_units(
+    db: Session, name: str, posted_unit: str, system: str
+) -> tuple[list[UnitChip], str]:
+    """Unit chips and the package caption for an add sheet that already names an ingredient."""
+    ingredient = ingredient_for_add(db, name)
+    if ingredient is None:
+        return [], ""
+    return add_unit_choices(ingredient, posted_unit), package_caption(ingredient, system or "us")
 
 
 def _adhoc_units(unit: str) -> tuple[str, str | None]:

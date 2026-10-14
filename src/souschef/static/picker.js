@@ -23,15 +23,6 @@
     if (!root) return;
     var pickedId = choice.getAttribute("data-id") || "";
     var pickedName = choice.getAttribute("data-name") || "";
-    var hidden = root.querySelector('input[type="hidden"]');
-    if (hidden) {
-      hidden.value = pickedId || pickedName;
-      hidden.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    var shown = root.querySelector("[data-picker-value]");
-    if (shown) shown.textContent = pickedName;
-    var trigger = root.querySelector("[data-picker-open]");
-    if (trigger && pickedName) trigger.removeAttribute("data-empty");
     CHOICE_FIELDS.forEach(function (key) {
       var attr = "data-" + key;
       if (choice.hasAttribute(attr)) root.setAttribute(attr, choice.getAttribute(attr));
@@ -39,6 +30,16 @@
     });
     if (choice.hasAttribute("data-new")) root.setAttribute("data-new", "1");
     else root.removeAttribute("data-new");
+    var hidden = root.querySelector('input[type="hidden"]');
+    if (hidden) {
+      var useName = root.getAttribute("data-picker-submit") === "name";
+      hidden.value = useName ? pickedName : (pickedId || pickedName);
+      hidden.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    var shown = root.querySelector("[data-picker-value]");
+    if (shown) shown.textContent = pickedName;
+    var trigger = root.querySelector("[data-picker-open]");
+    if (trigger && pickedName) trigger.removeAttribute("data-empty");
     dialog.close();
   }
 

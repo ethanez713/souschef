@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Pantry · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import sheet %}
+{% from "macros.html" import add_units, package_size, picker, sheet %}
 {% set active = 'pantry' %}
 {% block content %}
 <main id="main">
@@ -21,36 +21,19 @@
   </div>
 
   {% call sheet('pantry-add', 'Add something', open=add_open) %}
-    <form method="post" action="/pantry/add">
+    <form method="post" action="/pantry/add" data-add-form data-unit-system="{{ user.unit_system or 'us' }}">
       <input type="hidden" name="q" value="{{ query }}">
       {% if add_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>{% endif %}
-      <div class="field">
-        <label for="n">Ingredient</label>
-        <input id="n" name="name" placeholder="spinach" value="{{ add_name or '' }}" required {% if add_open and not package_word %}autofocus{% endif %}>
-      </div>
+      {{ picker('name', 'Ingredient', 'ingredient', add_name or '', submit='name') }}
       <div class="controls">
         <div class="field">
           <label for="q2">Amount</label>
-          <input id="q2" name="quantity" type="number" step="any" inputmode="decimal" required value="{{ add_quantity or '' }}">
-        </div>
-        <div class="field">
-          <label for="u">Unit</label>
-          <input id="u" name="unit" placeholder="{{ 'lb / cups / jar' if user.unit_system == 'us' else 'g / ml / jar' }}" value="{{ add_unit or '' }}">
+          <input id="q2" name="quantity" type="number" step="any" inputmode="decimal" required value="{{ add_quantity or '1' }}"{% if add_open and not package_word %} autofocus{% endif %}>
         </div>
         <button class="primary" type="submit">Add</button>
       </div>
-      {% if package_word %}
-      <div class="controls">
-        <div class="field">
-          <label for="pkg-qty">How much is one {{ package_word }}?</label>
-          <input id="pkg-qty" name="package_qty" type="number" step="any" inputmode="decimal" required value="{{ package_qty or '' }}" autofocus>
-        </div>
-        <div class="field">
-          <label for="pkg-unit">Unit</label>
-          <input id="pkg-unit" name="package_unit" placeholder="{{ 'oz / lb / cups' if user.unit_system == 'us' else 'g / ml' }}" value="{{ package_unit or '' }}" required>
-        </div>
-      </div>
-      {% endif %}
+      {{ add_units(unit_choices, 'u', add_unit or '', 'lb / cups / jar' if user.unit_system == 'us' else 'g / ml / jar') }}
+      {{ package_size('pkg-qty', 'pkg-unit', package_word, package_caption, package_qty, package_unit, 'oz / lb / cups' if user.unit_system == 'us' else 'g / ml', package_word) }}
     </form>
   {% endcall %}
 

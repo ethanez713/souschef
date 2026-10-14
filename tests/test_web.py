@@ -913,6 +913,128 @@ def test_shopping_add_keeps_a_known_package_and_asks_for_an_unknown_one(
     assert created.base_unit == "g"
 
 
+def _checked_unit(html: str) -> str | None:
+    for value, attrs in re.findall(
+        r'<input type="radio" name="unit" value="([^"]*)"([^>]*)>', html
+    ):
+        if "checked" in attrs:
+            return value
+    return None
+
+
+def _unit_values(html: str) -> list[str]:
+    return re.findall(r'<input type="radio" name="unit" value="([^"]*)"', html)
+
+
+def _pantry_add_sheet(client: TestClient, name: str) -> str:
+    response = client.post("/pantry/add", data={"name": name, "quantity": "0"})
+    assert response.status_code == 400
+    return response.text
+
+
+def _shop_add_sheet(client: TestClient, name: str) -> str:
+    response = client.post("/shopping/add", data={"name": name, "amount": "0"})
+    assert response.status_code == 400
+    return response.text
+
+
+def test_add_sheet_preselects_can_for_canned_tomatoes_and_clove_for_garlic(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    pantry = signed_in.get("/pantry").text
+    assert 'data-picker-submit="name"' in pantry
+    assert 'hx-get="/pick/ingredient"' in pantry
+    assert re.search(r'name="quantity"[^>]*value="1"', pantry)
+    shop = signed_in.get("/shopping").text
+    assert 'hx-get="/pick/ingredient"' in shop
+    assert re.search(r'name="amount"[^>]*value="1"', shop)
+
+    tomatoes = _pantry_add_sheet(signed_in, "canned tomatoes")
+    assert _checked_unit(tomatoes) == "can"
+    garlic = _pantry_add_sheet(signed_in, "garlic")
+    assert _checked_unit(garlic) == "clove"
+    assert "1 package = 12 cloves" in garlic
+
+    assert _checked_unit(_shop_add_sheet(signed_in, "canned tomatoes")) == "can"
+    assert _checked_unit(_shop_add_sheet(signed_in, "garlic")) == "clove"
+
+    spinach = _pantry_add_sheet(signed_in, "spinach")
+    assert _unit_values(spinach) == ["g", "oz", "lb"]
+    assert _checked_unit(spinach) == "g"
+    assert "1 package = 5 oz" in spinach
+
+    beans = ing(seeded_session, "black beans")
+    beans.package_noun = "tin"
+    seeded_session.commit()
+    tinned = _pantry_add_sheet(signed_in, "black beans")
+    assert _checked_unit(tinned) == "tin"
+    assert "can" in _unit_values(tinned)
+
+
+def test_two_cans_store_twice_the_package_in_base_units(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    tomatoes = ing(seeded_session, "canned diced tomatoes")
+    response = signed_in.post(
+        "/pantry/add",
+        data={"name": "canned tomatoes", "quantity": "2", "unit": "can"},
+    )
+    assert response.status_code == 303
+    row = _pantry_row(seeded_session, web_user, "canned diced tomatoes")
+    assert row is not None
+    expected = to_base(
+        2 * tomatoes.package_qty, tomatoes.package_unit, physical_of(tomatoes)
+    )
+    assert row.quantity == pytest.approx(expected)
+
+    cloves = signed_in.post(
+        "/pantry/add", data={"name": "garlic", "quantity": "2", "unit": "clove"}
+    )
+    assert cloves.status_code == 303
+    garlic = _pantry_row(seeded_session, web_user, "garlic")
+    assert garlic is not None
+    assert garlic.quantity == pytest.approx(2)
+
+
+def test_change_saves_a_new_package_size(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    saved = signed_in.post(
+        "/pantry/add",
+        data={
+            "name": "spinach",
+            "quantity": "1",
+            "unit": "bag",
+            "package_qty": "10",
+            "package_unit": "oz",
+        },
+    )
+    assert saved.status_code == 303
+    seeded_session.expire_all()
+    updated = ing(seeded_session, "spinach")
+    assert updated.package_qty == pytest.approx(10)
+    assert updated.package_unit == "oz"
+    row = _pantry_row(seeded_session, web_user, "spinach")
+    assert row is not None
+    assert row.quantity == pytest.approx(to_base(10, "oz", physical_of(updated)))
+
+    shop = signed_in.post(
+        "/shopping/add",
+        data={
+            "name": "spinach",
+            "amount": "1",
+            "unit": "bag",
+            "package_qty": "8",
+            "package_unit": "oz",
+        },
+    )
+    assert shop.status_code == 303
+    seeded_session.expire_all()
+    changed = ing(seeded_session, "spinach")
+    assert changed.package_qty == pytest.approx(8)
+    assert changed.package_unit == "oz"
+
+
 def test_a_negative_pantry_amount_is_refused(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:

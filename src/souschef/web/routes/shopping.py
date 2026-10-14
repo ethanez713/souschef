@@ -26,6 +26,7 @@ from souschef.web.common import (
     _horizon,
     _render,
     _sync_shopping,
+    add_form_units,
     purchase_qty_text,
 )
 
@@ -102,6 +103,9 @@ def _render_shopping(
     for item in sorted(visible, key=lambda i: (i.aisle or "", i.is_checked, i.sort_order)):
         by_aisle.setdefault(item.aisle or "Other", []).append(item)
     pending_stock = sum(1 for item in visible if item.is_checked and not item.is_stocked)
+    unit_choices, package_caption = add_form_units(
+        db, add_name, add_unit, user.unit_system or "us"
+    )
 
     return _render(
         request,
@@ -122,6 +126,8 @@ def _render_shopping(
         package_word=package_word,
         package_qty=package_qty,
         package_unit=package_unit,
+        unit_choices=unit_choices,
+        package_caption=package_caption,
         audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
     )
 

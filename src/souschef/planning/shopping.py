@@ -37,6 +37,7 @@ from souschef.core.units import (
     InputUnitError,
     NeedsPackage,
     UnitConversionError,
+    count_noun_measure,
     dimension_of,
     parse_input_unit,
     parse_package_answer,
@@ -604,10 +605,13 @@ def _manual_purchase(
     CanonicalIngredient | None, float | None, str | None, str | None, float, str | None
 ]:
     typed = (unit or "").strip()
+    noun = ingredient.count_noun if ingredient is not None else None
+    if count_noun_measure(typed, noun):
+        typed = "count"
     if not typed:
         return _amount_only(ingredient, amount)
 
-    _measure, pack = parse_input_unit(typed)
+    pack = parse_input_unit(typed)[1]
     # A blank amount beside a real measure still means one of the usual package.
     # The unit box is not how that line is counted. An unknown word still errors,
     # because parse_input_unit already ran.
@@ -615,32 +619,26 @@ def _manual_purchase(
         return _amount_only(ingredient, None)
 
     count = amount if amount is not None else 1.0
-    package_known = ingredient.package_qty if ingredient is not None else None
-    package_known_unit = ingredient.package_unit if ingredient is not None else None
     try:
-        resolved = resolve_entry(
-            count,
-            typed,
-            package_qty=package_known,
-            package_unit=package_known_unit,
-        )
-    except NeedsPackage as exc:
-        try:
-            answer = parse_package_answer(package_qty or "", package_unit or "")
-        except InputUnitError as err:
-            raise NeedsPackage(exc.word, str(err)) from err
-        if answer is None:
-            raise
+        answer = parse_package_answer(package_qty or "", package_unit or "")
+    except InputUnitError as err:
+        raise NeedsPackage(pack or "package", str(err)) from err
+    known = bool(ingredient is not None and ingredient.package_qty and ingredient.package_unit)
+    if answer is None and pack and pack != "dozen" and not known:
+        raise NeedsPackage(pack)
+    if answer is not None:
         try:
             ingredient = save_package_size(session, ingredient, name, answer[0], answer[1])
         except (UnitConversionError, InputUnitError) as err:
-            raise NeedsPackage(exc.word, str(err)) from err
-        resolved = resolve_entry(
-            count,
-            typed,
-            package_qty=ingredient.package_qty,
-            package_unit=ingredient.package_unit,
-        )
+            raise NeedsPackage(pack or "package", str(err)) from err
+    package_known = ingredient.package_qty if ingredient is not None else None
+    package_known_unit = ingredient.package_unit if ingredient is not None else None
+    resolved = resolve_entry(
+        count,
+        typed,
+        package_qty=package_known,
+        package_unit=package_known_unit,
+    )
 
     if resolved.packages is not None:
         base = ingredient.base_unit if ingredient is not None else None

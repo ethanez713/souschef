@@ -60,6 +60,7 @@ from souschef.models.planning import ItemSource
 from souschef.planning.suggest import nonoptional_unmatched
 
 DEFAULT_AISLE = "Other"
+NEEDS_NAMING_AISLE = "Needs naming"
 
 # A purchase counted in packages, not a unit of measure. The package size stays
 # on the ingredient so a later render can follow the viewer's unit system.
@@ -70,6 +71,12 @@ PACKAGE_COUNT_UNIT = "x"
 def is_package_count(unit: str | None) -> bool:
     text = (unit or "").strip()
     return text == PACKAGE_COUNT_UNIT or text.startswith(f"{PACKAGE_COUNT_UNIT} ")
+
+
+@dataclass
+class _UnnamedNeed:
+    label: str
+    driven_by: list[str]
 
 
 @dataclass
@@ -243,6 +250,41 @@ def _write_generated(item: ShoppingListItem, line: NeedLine, position: int) -> N
         item.source = line.source
 
 
+def _write_unnamed(item: ShoppingListItem, line: _UnnamedNeed, position: int) -> None:
+    item.ingredient_id = None
+    item.label = line.label
+    item.needed_qty = 0.0
+    item.needed_unit = None
+    if not item.amount_edited:
+        item.purchase_qty = None
+        item.purchase_unit = None
+        item.purchase_note = None
+    item.driven_by = ", ".join(line.driven_by[:4]) or None
+    item.aisle = NEEDS_NAMING_AISLE
+    item.sort_order = position
+    if item.source != ItemSource.MANUAL:
+        item.source = ItemSource.RECIPE
+
+
+def _unnamed_needs(
+    session: Session, user_id: int, covers_from: date, covers_to: date
+) -> list[_UnnamedNeed]:
+    """One row per distinct casefolded raw line, in plan order.
+
+    The same source as ``unnamed_recipe_lines``: planned, not cooked, not
+    skipped, and ``nonoptional_unmatched`` already drops ignored lines.
+    """
+    grouped: dict[str, _UnnamedNeed] = {}
+    for _recipe_id, title, text in unnamed_recipe_lines(session, user_id, covers_from, covers_to):
+        key = text.casefold()
+        row = grouped.get(key)
+        if row is None:
+            grouped[key] = _UnnamedNeed(label=text, driven_by=[title])
+        elif title not in row.driven_by:
+            row.driven_by.append(title)
+    return list(grouped.values())
+
+
 def build_shopping_list(
     session: Session,
     user_id: int,
@@ -256,7 +298,8 @@ def build_shopping_list(
 
     Rows update in place, keyed by ingredient or by casefolded label when the
     line has none, so a row's id and its checked, stocked and skipped marks
-    survive a rebuild.
+    survive a rebuild. A planned line the matcher could not name is one of
+    those label rows, grouped under Needs naming.
     """
     entries = session.scalars(
         select(MealPlanEntry)
@@ -326,6 +369,27 @@ def build_shopping_list(
             chosen[key] = existing
         _write_generated(existing, line, position)
 
+    for position, unnamed in enumerate(_unnamed_needs(session, user_id, covers_from, covers_to)):
+        key = _item_key(None, unnamed.label)
+        generated.add(key)
+        existing = chosen.get(key)
+        # A hand-added line with this text stays manual. It is not a recipe
+        # row, and a rebuild must not move it or clear the amount they typed.
+        if existing is not None and existing.source == ItemSource.MANUAL:
+            continue
+        if existing is None:
+            existing = ShoppingListItem(
+                ingredient_id=None,
+                label=unnamed.label,
+                source=ItemSource.RECIPE,
+                is_checked=False,
+                is_stocked=False,
+                is_skipped=False,
+            )
+            shopping_list.items.append(existing)
+            chosen[key] = existing
+        _write_unnamed(existing, unnamed, position)
+
     # A tick still in the basket outlives the meal that put it there. A stocked
     # line has already been written to the ledger, and a skip only lasts while
     # its need is still generated — leaving either behind would make the next
@@ -335,7 +399,12 @@ def build_shopping_list(
             continue
         if item.source == ItemSource.MANUAL:
             continue
-        if item.is_checked and not item.is_stocked and not item.is_skipped:
+        if (
+            item.is_checked
+            and not item.is_stocked
+            and not item.is_skipped
+            and item.aisle != NEEDS_NAMING_AISLE
+        ):
             continue
         shopping_list.items.remove(item)
 
@@ -431,15 +500,28 @@ def _ingredient_for_stock(session: Session, item: ShoppingListItem) -> Canonical
     return _create_adhoc(session, item.label, item.purchase_unit)
 
 
+def stockable(item: ShoppingListItem) -> bool:
+    """Whether Add to pantry applies to this ticked row.
+
+    An unnamed recipe line has no ingredient, so ticking it changes nothing in
+    the pantry. A hand-added line with no catalog match still stocks: that is
+    what creates the ingredient.
+    """
+    return item.ingredient_id is not None or item.source == ItemSource.MANUAL
+
+
 def stock_ticked_items(session: Session, user_id: int, shopping_list: ShoppingList) -> list[str]:
     """Write one low-confidence purchase per ticked line that is not already stocked.
 
-    The amount is the package on the line. The line is marked stocked so a second
-    tap, or the rebuild that follows, cannot buy it again.
+    Unnamed recipe lines are skipped. The amount is the package on the line.
+    The line is marked stocked so a second tap, or the rebuild that follows,
+    cannot buy it again.
     """
     added: list[str] = []
     for item in list(shopping_list.items):
         if item.is_skipped or not item.is_checked or item.is_stocked:
+            continue
+        if not stockable(item):
             continue
         ingredient = _ingredient_for_stock(session, item)
         if ingredient is None or ingredient.is_staple:

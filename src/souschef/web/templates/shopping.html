@@ -21,6 +21,7 @@
   {% set shown_amount = '{:g}'.format(it.purchase_qty) if it.purchase_qty is not none else '' %}
   {% set shown_unit = it.purchase_unit or '' %}
 {% endif %}
+{% set needs_name = it.ingredient_id is none and it.source.value == 'recipe' %}
 <div class="shop-row">
   <form method="post" action="/shopping/item/{{ it.id }}/check" class="shop-item{{ ' checked' if it.is_checked }}"
         hx-post="/shopping/item/{{ it.id }}/check" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
@@ -28,12 +29,22 @@
     {{ row(it.label, sub=('for ' ~ for_recipes) if for_recipes else '', lead=lead, value=amount if qty else '', name_sheet='shop-item-' ~ it.id) }}
   </form>
 </div>
-{% call sheet('shop-item-' ~ it.id, it.label, open=(amount_for == it.id)) %}
+{% call sheet('shop-item-' ~ it.id, it.label, open=(amount_for == it.id or name_for == it.id)) %}
   {% if need or note %}<p class="sheet-need">{% if need %}{{ need }}{% endif %}{% if need and note %} · {% endif %}{% if note %}{{ note }}{% endif %}</p>{% endif %}
   {% if amount_error and amount_for == it.id %}
     <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ amount_error }}</div></div>
   {% endif %}
+  {% if name_error and name_for == it.id %}
+    <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ name_error }}</div></div>
+  {% endif %}
   <div class="sheet-actions">
+    {% if needs_name %}
+    <form method="post" action="/shopping/item/{{ it.id }}/name"
+          hx-post="/shopping/item/{{ it.id }}/name" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      {{ picker('name', 'Ingredient', 'ingredient', '', submit='name', dialog='picker-name-' ~ it.id) }}
+      <button class="block primary" type="submit">Name it</button>
+    </form>
+    {% else %}
     <form method="post" action="/shopping/item/{{ it.id }}/have"
           hx-post="/shopping/item/{{ it.id }}/have" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
       <button class="block primary" type="submit">Have it</button>
@@ -52,6 +63,7 @@
       </div>
       <button class="block" type="submit">Edit amount</button>
     </form>
+    {% endif %}
     <form method="post" action="/shopping/item/{{ it.id }}/skip"
           hx-post="/shopping/item/{{ it.id }}/skip" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
       <button class="block danger" type="submit">Remove</button>
@@ -128,18 +140,6 @@
       <p>No list yet. It is built from your meal plan.</p>
       <a class="btn primary" href="/plan">Plan some meals</a>
     </div>
-  {% endif %}
-
-  {% if unnamed %}
-    {{ group_header('Needs naming') }}
-    {% for group in unnamed %}
-      <div class="card tight">
-        <a href="/recipes/{{ group.id }}"><strong>{{ group.title }}</strong></a>
-        <ul class="plain">
-          {% for line in group.lines %}<li>{{ line }}</li>{% endfor %}
-        </ul>
-      </div>
-    {% endfor %}
   {% endif %}
 
   </div>

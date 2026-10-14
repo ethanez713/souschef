@@ -19,26 +19,32 @@ from souschef.models import (
     EventReason,
     InventoryEvent,
     MealPlanEntry,
+    Recipe,
+    RecipeIngredient,
     ShoppingList,
     ShoppingListItem,
     User,
 )
+from souschef.models.planning import ItemSource
 from souschef.planning.shopping import (
+    NEEDS_NAMING_AISLE,
     ShoppingError,
     add_manual_item,
     live_list,
     requirements_for_audit,
     stock_ticked_items,
-    unnamed_recipe_lines,
+    stockable,
 )
 from souschef.web import auth
 from souschef.web.common import (
     _horizon,
+    _kitchen_unit_message,
     _render,
     _sync_shopping,
     add_form_units,
     purchase_qty_text,
 )
+from souschef.web.routes.recipes import NameMatchError, assign_named_match
 
 router = APIRouter()
 
@@ -59,17 +65,25 @@ def _shopping_copy(by_aisle: dict[str, list], user: User) -> str:
     return "\n\n".join(blocks)
 
 
-def _group_unnamed(lines: list[tuple[int, str, str]]) -> list[dict]:
-    groups: list[dict] = []
-    by_id: dict[int, dict] = {}
-    for recipe_id, title, text in lines:
-        group = by_id.get(recipe_id)
-        if group is None:
-            group = {"id": recipe_id, "title": title, "lines": []}
-            by_id[recipe_id] = group
-            groups.append(group)
-        group["lines"].append(text)
-    return groups
+def _aisle_sort_key(item: ShoppingListItem, *, checked_last: bool = False) -> tuple:
+    aisle = item.aisle or "Other"
+    # Needs naming is the group you deal with before walking the aisles.
+    return (
+        aisle != NEEDS_NAMING_AISLE,
+        aisle,
+        bool(item.is_checked) if checked_last else False,
+        item.sort_order,
+        item.id,
+    )
+
+
+def _group_aisles(
+    items: list[ShoppingListItem], *, checked_last: bool = False
+) -> dict[str, list[ShoppingListItem]]:
+    grouped: dict[str, list[ShoppingListItem]] = {}
+    for item in sorted(items, key=lambda row: _aisle_sort_key(row, checked_last=checked_last)):
+        grouped.setdefault(item.aisle or "Other", []).append(item)
+    return grouped
 
 
 _NOT_ON_LIST = "That item is no longer on the list"
@@ -138,6 +152,9 @@ def _toast_from_query(request: Request, db: Session, listing: ShoppingList | Non
     staple = params.get("staple", "")
     if staple:
         return _toast(f"Always have {staple}")
+    named = params.get("named", "")
+    if named:
+        return _toast(f"Named as {named}")
     return None
 
 
@@ -197,6 +214,8 @@ def _render_shopping(
     amount_for: int = 0,
     amount_value: str = "",
     amount_unit: str = "",
+    name_error: str = "",
+    name_for: int = 0,
     status_code: int = 200,
 ) -> HTMLResponse:
     start, end = _horizon()
@@ -218,24 +237,17 @@ def _render_shopping(
     ) > 0
 
     visible = [item for item in active.items if not item.is_skipped]
-    # Checked rows leave their aisle for the basket. The copy still lists every row.
-    by_aisle: dict[str, list] = {}
-    for item in sorted(
-        (item for item in visible if not item.is_checked),
-        key=lambda item: (item.aisle or "", item.sort_order, item.id),
-    ):
-        by_aisle.setdefault(item.aisle or "Other", []).append(item)
+    # Checked rows leave their aisle for the basket. The copy still lists every row,
+    # including ones that still need a name.
+    by_aisle = _group_aisles([item for item in visible if not item.is_checked])
     basket = sorted(
         (item for item in visible if item.is_checked),
-        key=lambda item: (item.aisle or "", item.sort_order, item.id),
+        key=_aisle_sort_key,
     )
-    copy_groups: dict[str, list] = {}
-    for item in sorted(
-        visible,
-        key=lambda item: (item.aisle or "", item.is_checked, item.sort_order, item.id),
-    ):
-        copy_groups.setdefault(item.aisle or "Other", []).append(item)
-    pending_stock = sum(1 for item in visible if item.is_checked and not item.is_stocked)
+    copy_groups = _group_aisles(visible, checked_last=True)
+    pending_stock = sum(
+        1 for item in visible if item.is_checked and not item.is_stocked and stockable(item)
+    )
     to_get = sum(1 for item in visible if not item.is_checked and not item.is_stocked)
     unit_choices, package_caption = add_form_units(
         db, add_name, add_unit, user.unit_system or "us"
@@ -253,7 +265,6 @@ def _render_shopping(
         copy_text=_shopping_copy(copy_groups, user),
         has_plan=has_plan,
         pending_stock=pending_stock,
-        unnamed=_group_unnamed(unnamed_recipe_lines(db, user.id, start, end)),
         added=request.query_params.getlist("added"),
         add_error=add_error,
         add_name=add_name,
@@ -270,6 +281,8 @@ def _render_shopping(
         amount_for=amount_for,
         amount_value=amount_value,
         amount_unit=amount_unit,
+        name_error=name_error,
+        name_for=name_for,
     )
 
 
@@ -500,6 +513,80 @@ def unskip_shopping_item(
     db.flush()
     _sync_shopping(db, user.id)
     return RedirectResponse("/shopping", status_code=303)
+
+
+def _unnamed_recipe_lines(db: Session, user_id: int, raw_text: str) -> list[RecipeIngredient]:
+    """Every still-unnamed line of this kitchen whose text matches the row."""
+    return list(
+        db.scalars(
+            select(RecipeIngredient)
+            .join(Recipe)
+            .where(
+                Recipe.user_id == user_id,
+                RecipeIngredient.ingredient_id.is_(None),
+                func.lower(RecipeIngredient.raw_text) == raw_text.casefold(),
+            )
+            .order_by(Recipe.id, RecipeIngredient.position)
+        )
+    )
+
+
+@router.post("/shopping/item/{item_id}/name")
+def name_shopping_item(
+    request: Request,
+    item_id: int,
+    name: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    item = _item_on_list(db, live_list(db, user.id), item_id)
+    if item is None:
+        return _missing_item(request)
+    if item.ingredient_id is not None or item.source != ItemSource.RECIPE:
+        return _render_shopping(
+            request,
+            db,
+            user,
+            add_error="Only an unnamed recipe line can be named from here.",
+            status_code=400,
+        )
+    lines = _unnamed_recipe_lines(db, user.id, item.label)
+    if not lines:
+        return _render_shopping(
+            request,
+            db,
+            user,
+            name_error="That line is no longer on a recipe.",
+            name_for=item.id,
+            status_code=400,
+        )
+    try:
+        ingredient = assign_named_match(db, item.label, name, lines)
+    except NameMatchError as exc:
+        return _render_shopping(
+            request,
+            db,
+            user,
+            name_error=str(exc),
+            name_for=item.id,
+            status_code=400,
+        )
+    except UnitConversionError as exc:
+        return _render_shopping(
+            request,
+            db,
+            user,
+            name_error=_kitchen_unit_message(exc, lines[0].unit or ""),
+            name_for=item.id,
+            status_code=400,
+        )
+    was_ticked = item.is_checked
+    rebuilt = _sync_shopping(db, user.id)
+    if was_ticked:
+        for row in rebuilt.items:
+            if row.ingredient_id == ingredient.id and not row.is_skipped:
+                row.is_checked = True
+    return _shop_redirect(named=ingredient.name)
 
 
 @router.post("/shopping/ingredient/{ingredient_id}/always")

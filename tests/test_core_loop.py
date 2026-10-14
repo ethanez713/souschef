@@ -26,6 +26,7 @@ from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
+    IngredientAlias,
     InventoryEvent,
     MealPlanEntry,
     MealSlot,
@@ -37,6 +38,7 @@ from souschef.models import (
     RecipeIngredient,
     RecipeSource,
     ShoppingListItem,
+    User,
 )
 from souschef.models.planning import ItemSource
 from souschef.planning.shopping import (
@@ -481,6 +483,148 @@ def test_unnamed_section_lists_non_optional_lines_once(
     assert lines == [(recipe.id, "Mystery stew", "1 cup xyzzybroth")]
 
 
+def test_unnamed_lines_reconcile_as_one_row_and_keep_its_id(
+    seeded_session: Session, owner: int
+) -> None:
+    flour = ing(seeded_session, "all-purpose flour")
+    today, end = _week()
+    first = _recipe(
+        seeded_session,
+        owner,
+        "Mystery stew",
+        [
+            ("200 g all-purpose flour", flour, False),
+            ("1 cup xyzzybroth", None, False),
+            ("parsley, for garnish", None, True),
+        ],
+    )
+    second = _recipe(
+        seeded_session,
+        owner,
+        "Second stew",
+        [("1 Cup Xyzzybroth", None, False)],
+    )
+    _plan(seeded_session, owner, first, today)
+    _plan(seeded_session, owner, second, today + timedelta(days=1))
+
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    rows = [item for item in listing.items if item.aisle == "Needs naming"]
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.ingredient_id is None
+    assert row.label == "1 cup xyzzybroth"
+    assert row.source == ItemSource.RECIPE
+    assert row.driven_by == "Mystery stew, Second stew"
+    assert row.id is not None
+    kept = row.id
+    row.is_checked = True
+    seeded_session.flush()
+
+    again = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    third = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    kept_row = next(item for item in third.items if item.id == kept)
+    assert next(item.id for item in again.items if item.aisle == "Needs naming") == kept
+    assert kept_row.id == kept
+    assert kept_row.is_checked
+    assert kept_row.label == "1 cup xyzzybroth"
+    assert [item.label for item in third.items if item.aisle == "Needs naming"] == [
+        "1 cup xyzzybroth"
+    ]
+
+
+def test_a_hand_added_row_with_the_same_label_stays_manual(
+    seeded_session: Session, owner: int
+) -> None:
+    today, end = _week()
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    added = add_manual_item(seeded_session, listing, "1 cup xyzzybroth", amount=2, unit="count")
+    recipe = _recipe(seeded_session, owner, "Mystery stew", [("1 cup xyzzybroth", None, False)])
+    _plan(seeded_session, owner, recipe, today)
+
+    rebuilt = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    rows = [item for item in rebuilt.items if item.label.casefold() == "1 cup xyzzybroth"]
+
+    assert len(rows) == 1
+    assert rows[0].id == added.id
+    assert rows[0].source == ItemSource.MANUAL
+    assert rows[0].aisle == "Other"
+    assert rows[0].driven_by == "added by you"
+    assert rows[0].purchase_qty == 2
+
+
+def test_a_matched_line_drops_its_unnamed_row_even_when_ticked(
+    seeded_session: Session, owner: int
+) -> None:
+    beef = ing(seeded_session, "ground beef")
+    today, end = _week()
+    recipe = _recipe(seeded_session, owner, "Mystery stew", [("1 cup xyzzybroth", None, False)])
+    _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    row = next(item for item in listing.items if item.label == "1 cup xyzzybroth")
+    line = recipe.ingredients[0]
+    line.ingredient_id = beef.id
+    line.quantity = 200
+    line.unit = "g"
+    line.match_confidence = 1.0
+    seeded_session.flush()
+
+    rebuilt = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    assert row.id not in {item.id for item in rebuilt.items}
+    assert any(item.ingredient_id == beef.id and item.aisle == "Meat" for item in rebuilt.items)
+
+    recipe.ingredients[0].ingredient_id = None
+    seeded_session.flush()
+    restored = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    ticked = next(item for item in restored.items if item.aisle == "Needs naming")
+    ticked.is_checked = True
+    seeded_session.flush()
+    recipe.ingredients[0].ingredient_id = beef.id
+    recipe.ingredients[0].quantity = 200
+    recipe.ingredients[0].unit = "g"
+    seeded_session.flush()
+
+    kept = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    assert ticked.id not in {item.id for item in kept.items}
+    assert any(item.ingredient_id == beef.id for item in kept.items)
+
+
+def test_stocking_skips_an_unnamed_recipe_row(seeded_session: Session, owner: int) -> None:
+    flour = ing(seeded_session, "all-purpose flour")
+    today, end = _week()
+    recipe = _recipe(
+        seeded_session,
+        owner,
+        "Mystery stew",
+        [("200 g all-purpose flour", flour, False), ("1 cup xyzzybroth", None, False)],
+    )
+    _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    unnamed = next(item for item in listing.items if item.aisle == "Needs naming")
+    flour_row = next(item for item in listing.items if item.ingredient_id == flour.id)
+    unnamed.is_checked = True
+    flour_row.is_checked = True
+    seeded_session.flush()
+
+    added = stock_ticked_items(seeded_session, owner, listing)
+
+    assert added == ["all-purpose flour"]
+    assert flour_row.is_stocked
+    assert unnamed.is_checked
+    assert not unnamed.is_stocked
+    assert (
+        seeded_session.scalar(
+            select(CanonicalIngredient).where(
+                func.lower(CanonicalIngredient.name) == "1 cup xyzzybroth"
+            )
+        )
+        is None
+    )
+
+
 def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
     seeded_session: Session, owner: int
 ) -> None:
@@ -725,12 +869,14 @@ def test_manual_lines_and_skips_survive_the_page_rebuild(
 def test_shopping_page_names_unidentified_recipe_lines(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
+    flour = ing(seeded_session, "all-purpose flour")
     pasta = ing(seeded_session, "spaghetti")
     recipe = _recipe(
         seeded_session,
         web_user.id,
         "Mystery stew",
         [
+            ("200 g all-purpose flour", flour, False),
             ("200 g spaghetti", pasta, False),
             ("1 cup xyzzybroth", None, False),
             ("parsley, for garnish", None, True),
@@ -740,11 +886,179 @@ def test_shopping_page_names_unidentified_recipe_lines(
     seeded_session.commit()
 
     page = signed_in.get("/shopping")
+    item_id = _item_id(page.text, "1 cup xyzzybroth")
+    plain = re.search(r'id="shop-plain"[^>]*>(.*?)</pre>', page.text, re.S)
 
-    assert "Needs naming" in page.text
-    assert f'href="/recipes/{recipe.id}"' in page.text
+    assert page.text.index(">Needs naming<") < page.text.index(">Baking<")
+    assert "for Mystery stew" in page.text
     assert "1 cup xyzzybroth" in page.text
     assert "for garnish" not in page.text
+    assert f'href="/recipes/{recipe.id}"' not in page.text
+    assert f'action="/shopping/item/{item_id}/name"' in page.text
+    assert ">Name it<" in page.text
+    assert f'action="/shopping/item/{item_id}/have"' not in page.text
+    assert f'id="picker-name-{item_id}"' in page.text
+    assert '· <span class="num">3</span> to get' in page.text
+    assert plain is not None
+    assert "Needs naming\n- 1 cup xyzzybroth" in plain.group(1)
+
+
+def _event_count(session: Session, user_id: int) -> int:
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(InventoryEvent)
+            .where(InventoryEvent.user_id == user_id)
+        )
+        or 0
+    )
+
+
+def test_ticking_an_unnamed_row_does_not_change_the_pantry(
+    signed_in: TestClient, seeded_session: Session, web_user
+) -> None:
+    flour = ing(seeded_session, "all-purpose flour")
+    recipe = _recipe(
+        seeded_session,
+        web_user.id,
+        "Mystery stew",
+        [("200 g all-purpose flour", flour, False), ("1 cup xyzzybroth", None, False)],
+    )
+    _plan(seeded_session, web_user.id, recipe, date.today())
+    seeded_session.commit()
+    page = signed_in.get("/shopping")
+    item_id = _item_id(page.text, "1 cup xyzzybroth")
+    flour_id = _item_id(page.text, "all-purpose flour")
+    before = _event_count(seeded_session, web_user.id)
+
+    assert signed_in.post(
+        f"/shopping/item/{item_id}/check", data={"checked": "1"}
+    ).status_code == 303
+    ticked = signed_in.get("/shopping")
+    assert "Add 1 ticked" not in ticked.text
+    assert "In basket" in ticked.text
+    assert signed_in.post("/shopping/stock").status_code == 303
+    seeded_session.expire_all()
+    row = seeded_session.get(ShoppingListItem, item_id)
+    assert row is not None
+    assert row.is_checked
+    assert not row.is_stocked
+    assert _event_count(seeded_session, web_user.id) == before
+
+    assert signed_in.post(
+        f"/shopping/item/{flour_id}/check", data={"checked": "1"}
+    ).status_code == 303
+    both = signed_in.get("/shopping")
+    assert "Add 1 ticked item to pantry" in both.text
+    assert "Add 2 ticked" not in both.text
+
+
+def test_naming_a_ticked_unnamed_row_ticks_the_named_row(
+    signed_in: TestClient, seeded_session: Session, web_user
+) -> None:
+    recipe = _recipe(
+        seeded_session, web_user.id, "Mystery stew", [("1 cup xyzzybroth", None, False)]
+    )
+    recipe.ingredients[0].quantity = 1
+    recipe.ingredients[0].unit = "cup"
+    recipe.ingredients[0].quantity_is_vague = False
+    _plan(seeded_session, web_user.id, recipe, date.today())
+    seeded_session.commit()
+    item_id = _item_id(signed_in.get("/shopping").text, "1 cup xyzzybroth")
+    signed_in.post(f"/shopping/item/{item_id}/check", data={"checked": "1"})
+
+    signed_in.post(f"/shopping/item/{item_id}/name", data={"name": "ground beef"})
+
+    seeded_session.expire_all()
+    beef = ing(seeded_session, "ground beef")
+    rows = list(
+        seeded_session.scalars(
+            select(ShoppingListItem).where(ShoppingListItem.ingredient_id == beef.id)
+        )
+    )
+    assert [row.is_checked for row in rows] == [True]
+    assert seeded_session.get(ShoppingListItem, item_id) is None
+
+
+def test_naming_an_unnamed_row_matches_every_copy_of_the_line(
+    signed_in: TestClient, seeded_session: Session, web_user
+) -> None:
+    beef = ing(seeded_session, "ground beef")
+    pasta = ing(seeded_session, "spaghetti")
+    flour = ing(seeded_session, "all-purpose flour")
+    planned = _recipe(
+        seeded_session,
+        web_user.id,
+        "Mystery stew",
+        [("200 g all-purpose flour", flour, False), ("1 cup xyzzybroth", None, False)],
+    )
+    for line in planned.ingredients:
+        if line.ingredient_id is None:
+            line.quantity = 1
+            line.unit = "cup"
+            line.quantity_is_vague = False
+    other = _recipe(
+        seeded_session,
+        web_user.id,
+        "Later stew",
+        [("1 cup xyzzybroth", None, False), ("1 cup xyzzybroth", pasta, False)],
+    )
+    already = next(line for line in other.ingredients if line.ingredient_id == pasta.id)
+    already.match_confidence = 0.4
+    cased = _recipe(
+        seeded_session, web_user.id, "Cased stew", [("1 Cup Xyzzybroth", None, False)]
+    )
+    stranger = User(
+        username="naming-intruder",
+        display_name="naming-intruder",
+        password_hash="not-a-usable-hash",
+    )
+    seeded_session.add(stranger)
+    seeded_session.flush()
+    theirs = _recipe(
+        seeded_session, stranger.id, "Not mine", [("1 cup xyzzybroth", None, False)]
+    )
+    _plan(seeded_session, web_user.id, planned, date.today())
+    seeded_session.commit()
+    page = signed_in.get("/shopping")
+    item_id = _item_id(page.text, "1 cup xyzzybroth")
+
+    named = signed_in.post(f"/shopping/item/{item_id}/name", data={"name": "ground beef"})
+
+    assert named.status_code == 303
+    followed = signed_in.get(named.headers["location"])
+    assert "Named as ground beef" in followed.text
+    assert ">Needs naming<" not in followed.text
+    assert "ground beef" in followed.text
+    assert "1 cup xyzzybroth" not in followed.text
+    seeded_session.expire_all()
+    assert seeded_session.get(ShoppingListItem, item_id) is None
+
+    def named_lines(recipe_id: int) -> list[RecipeIngredient]:
+        recipe = seeded_session.get(Recipe, recipe_id)
+        assert recipe is not None
+        return list(recipe.ingredients)
+
+    for line in named_lines(planned.id):
+        if line.raw_text.casefold() == "1 cup xyzzybroth":
+            assert line.ingredient_id == beef.id
+            assert line.match_confidence == 1.0
+    later = named_lines(other.id)
+    still_pasta = next(line for line in later if line.id == already.id)
+    assert still_pasta.ingredient_id == pasta.id
+    assert still_pasta.match_confidence == pytest.approx(0.4)
+    newly = next(line for line in later if line.id != already.id)
+    assert newly.ingredient_id == beef.id
+    assert newly.match_confidence == 1.0
+    cased_line = named_lines(cased.id)[0]
+    assert cased_line.ingredient_id == beef.id
+    assert cased_line.match_confidence == 1.0
+    assert named_lines(theirs.id)[0].ingredient_id is None
+    learned = seeded_session.scalars(
+        select(IngredientAlias).where(IngredientAlias.ingredient_id == beef.id)
+    ).all()
+    assert any(alias.raw_text.casefold() == "xyzzybroth" for alias in learned)
+    assert not any("cup" in alias.raw_text.casefold() for alias in learned)
 
 
 def test_receipt_review_unticks_what_the_list_already_added(

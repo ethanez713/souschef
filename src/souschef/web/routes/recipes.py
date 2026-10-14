@@ -24,7 +24,7 @@ from souschef.db import get_db
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.ingest.recipes.paste import parse_pasted_recipe
-from souschef.models import CanonicalIngredient, Recipe, RecipeSource, User
+from souschef.models import CanonicalIngredient, Recipe, RecipeIngredient, RecipeSource, User
 from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.planning.suggest import by_surface, probably_gone_ids, suggest
 from souschef.web import auth
@@ -40,6 +40,11 @@ from souschef.web.common import (
 )
 
 router = APIRouter()
+
+
+class NameMatchError(ValueError):
+    """The cook's name could not be applied to the recipe line."""
+
 
 _MAX_TITLE = 300
 _MAX_URL = 1000
@@ -465,34 +470,21 @@ def paste_recipe(
     return RedirectResponse(f"/recipes/{recipe.id}?toast=Saved", status_code=303)
 
 
-@router.post("/recipes/{recipe_id}/match")
-def correct_recipe_match(
-    request: Request,
-    recipe_id: int,
-    raw_text: str = Form(...),
-    name: str = Form(...),
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    """Point a recipe line at the food the cook named, and remember it.
+def assign_named_match(
+    db: Session,
+    raw_text: str,
+    name: str,
+    lines: list[RecipeIngredient],
+) -> CanonicalIngredient:
+    """Point these lines at the food the cook named, and remember the alias.
 
     Exact catalog hits are reused. Anything else is stored under the name they
     typed — a fuzzy guess is how mirin became steak. The alias is the parsed
     ingredient name, not the whole line, so "2 tbsp mirin" does not become the key.
     """
-    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
     clean = name.strip()
     if not clean:
-        return _recipe_page(
-            request,
-            db,
-            user,
-            recipe,
-            match_error="Enter the ingredient this line actually is.",
-            status_code=400,
-        )
-
-    lines = [line for line in recipe.ingredients if line.raw_text == raw_text]
+        raise NameMatchError("Enter the ingredient this line actually is.")
     if not lines:
         raise HTTPException(status_code=404, detail="No such line")
 
@@ -500,26 +492,16 @@ def correct_recipe_match(
 
     matcher = IngredientMatcher(db)
     match = matcher.match(clean)
-    try:
-        if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
-            ingredient = db.get(CanonicalIngredient, match.ingredient_id)
-        else:
-            ingredient = CanonicalIngredient(
-                name=clean,
-                category=IngredientCategory.OTHER,
-                base_unit=_base_unit_for_named_line(lines[0].unit or ""),
-            )
-            db.add(ingredient)
-            db.flush()
-    except UnitConversionError as exc:
-        return _recipe_page(
-            request,
-            db,
-            user,
-            recipe,
-            match_error=_kitchen_unit_message(exc, lines[0].unit or ""),
-            status_code=400,
+    if match.method in (MatchMethod.NAME_EXACT, MatchMethod.ALIAS_EXACT):
+        ingredient = db.get(CanonicalIngredient, match.ingredient_id)
+    else:
+        ingredient = CanonicalIngredient(
+            name=clean,
+            category=IngredientCategory.OTHER,
+            base_unit=_base_unit_for_named_line(lines[0].unit or ""),
         )
+        db.add(ingredient)
+        db.flush()
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
 
@@ -530,8 +512,44 @@ def correct_recipe_match(
         line.ingredient_id = ingredient.id
         line.match_confidence = 1.0
     db.flush()
+    return ingredient
+
+
+@router.post("/recipes/{recipe_id}/match")
+def correct_recipe_match(
+    request: Request,
+    recipe_id: int,
+    raw_text: str = Form(...),
+    name: str = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    lines = [line for line in recipe.ingredients if line.raw_text == raw_text]
+    try:
+        assign_named_match(db, raw_text, name, lines)
+    except NameMatchError as exc:
+        return _recipe_page(
+            request,
+            db,
+            user,
+            recipe,
+            match_error=str(exc),
+            status_code=400,
+        )
+    except UnitConversionError as exc:
+        return _recipe_page(
+            request,
+            db,
+            user,
+            recipe,
+            match_error=_kitchen_unit_message(exc, lines[0].unit or ""),
+            status_code=400,
+        )
     _sync_shopping(db, user.id)
-    return RedirectResponse(f"/recipes/{recipe.id}?saved={quote(clean)}", status_code=303)
+    return RedirectResponse(
+        f"/recipes/{recipe.id}?saved={quote(name.strip())}", status_code=303
+    )
 
 
 @router.get("/recipes/{recipe_id}/edit", response_class=HTMLResponse)

@@ -55,6 +55,7 @@ POST /shopping/ingredient/{ingredient_id}/always
 POST /shopping/item/{item_id}/amount
 POST /shopping/item/{item_id}/check
 POST /shopping/item/{item_id}/have
+POST /shopping/item/{item_id}/name
 POST /shopping/item/{item_id}/skip
 POST /shopping/item/{item_id}/unskip
 POST /shopping/stock

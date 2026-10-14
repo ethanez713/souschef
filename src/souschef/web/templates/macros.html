@@ -159,9 +159,9 @@
 <div class="sticky-bar">{{ caller() }}</div>
 {%- endmacro %}
 
-{% macro picker(name, label, kind, value='', submit='') -%}
+{% macro picker(name, label, kind, value='', submit='', dialog='') -%}
 {%- set current = value|string if value else '' -%}
-{%- set sheet_id = 'picker-' ~ kind ~ '-' ~ name -%}
+{%- set sheet_id = dialog or ('picker-' ~ kind ~ '-' ~ name) -%}
 <div class="picker" data-picker-sheet="{{ sheet_id }}"{% if submit %} data-picker-submit="{{ submit }}"{% endif %}>
   <input type="hidden" name="{{ name }}" value="{{ current }}">
   <button type="button" class="block picker-trigger" data-sheet="{{ sheet_id }}" data-picker-open

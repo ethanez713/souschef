@@ -79,6 +79,77 @@ def test_package_columns_downgrade(tmp_path: Path, monkeypatch) -> None:
     assert not {"package_noun", "package_source"} & restored
 
 
+def test_is_ignored_migration_marks_existing_lines_and_downgrades(
+    tmp_path: Path, monkeypatch
+) -> None:
+    data = tmp_path / "mig"
+    data.mkdir()
+    monkeypatch.setenv("SOUSCHEF_DATA_DIR", str(data))
+
+    from souschef.config import get_settings
+    from souschef.db import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+    try:
+        config = Config("alembic.ini")
+        command.upgrade(config, "f6c9d0a41e72")
+        engine = create_engine(f"sqlite+pysqlite:///{data / 'souschef.db'}")
+        stamp = _at(1)
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO app_user (id, username, display_name, password_hash, is_admin, "
+                "is_active, session_epoch, created_at, updated_at) "
+                f"VALUES (1, 'jordan', 'Jordan', 'x', 1, 1, 0, '{stamp}', '{stamp}')"
+            ))
+            conn.execute(text(
+                "INSERT INTO recipe (id, title, source, servings, times_cooked, is_favorite, "
+                "is_archived, created_at, updated_at, user_id) "
+                f"VALUES (1, 'Old', 'MANUAL', 2, 0, 0, 0, '{stamp}', '{stamp}', 1)"
+            ))
+            rows = [
+                (1, "2 Tbsp water ($0.00)"),
+                (2, "Rice, for serving"),
+                (3, "1 cup chicken stock"),
+                (4, "2 cups watercress"),
+            ]
+            for position, raw in rows:
+                conn.execute(text(
+                    "INSERT INTO recipe_ingredient (id, recipe_id, position, raw_text, "
+                    "match_confidence, is_optional, quantity_is_vague) "
+                    f"VALUES ({position}, 1, {position}, :raw, 0, 0, 0)"
+                ), {"raw": raw})
+        command.upgrade(config, "head")
+        with engine.begin() as conn:
+            stored = {
+                row.raw_text: row.is_ignored
+                for row in conn.execute(text(
+                    "SELECT raw_text, is_ignored FROM recipe_ingredient"
+                )).mappings()
+            }
+            conn.execute(text(
+                "INSERT INTO recipe_ingredient (id, recipe_id, position, raw_text, "
+                "match_confidence, is_optional, quantity_is_vague) "
+                "VALUES (5, 1, 5, '1 egg', 0, 0, 0)"
+            ))
+            fresh = conn.execute(text(
+                "SELECT is_ignored FROM recipe_ingredient WHERE id = 5"
+            )).scalar_one()
+        command.downgrade(config, "f6c9d0a41e72")
+        restored = {column["name"] for column in inspect(engine).get_columns("recipe_ingredient")}
+        engine.dispose()
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+    assert stored["2 Tbsp water ($0.00)"] in (1, True)
+    assert stored["Rice, for serving"] in (1, True)
+    assert stored["1 cup chicken stock"] in (0, False)
+    assert stored["2 cups watercress"] in (0, False)
+    assert fresh in (0, False)
+    assert "is_ignored" not in restored
+
+
 def _at(day: int, hour: int = 12) -> str:
     return f"2026-09-{day:02d} {hour:02d}:00:00.000000"
 

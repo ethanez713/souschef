@@ -117,7 +117,7 @@ def nonoptional_unmatched(recipe: Recipe, requirements: RequirementSet) -> list[
     """Unmatched lines the recipe actually needs.
 
     ``RequirementSet.unmatched`` is every unresolved line, garnish included.
-    Optional extras stay out of readiness and the shopping list.
+    Optional extras and ignored lines stay out of readiness and the shopping list.
     """
     pool = list(requirements.unmatched)
     kept: list[str] = []
@@ -125,7 +125,7 @@ def nonoptional_unmatched(recipe: Recipe, requirements: RequirementSet) -> list[
         if line.raw_text not in pool:
             continue
         pool.remove(line.raw_text)
-        if line.ingredient_id is not None or line.is_optional:
+        if line.ingredient_id is not None or line.is_optional or line.is_ignored:
             continue
         kept.append(line.raw_text)
     kept.extend(pool)

@@ -9,6 +9,8 @@ to be careful about the things that don't convert:
 * unconvertible units (a "cup" of something with no density) are reported as
   unknown rather than guessed at
 * unmatched lines are surfaced, never silently dropped
+* ignored lines (plain water, "to serve", or a cook's Ignore) are omitted from
+  both the totals and the unmatched list
 
 Reporting these instead of hiding them is what keeps a recipe from quietly
 looking cookable when it isn't.
@@ -151,6 +153,8 @@ def recipe_requirements(
     result = RequirementSet()
 
     for line in recipe.ingredients:
+        if line.is_ignored:
+            continue
         if line.ingredient_id is None:
             result.unmatched.append(line.raw_text)
             continue
@@ -244,6 +248,8 @@ def save_imported_recipe(
         recipe.ingredients.clear()
     session.flush()
 
+    from souschef.planning.suggest import is_ignorable
+
     matcher = IngredientMatcher(session)
     parsed_lines = parse_all(
         [unescape_text(item) or item for item in raw.ingredients], matcher
@@ -271,6 +277,7 @@ def save_imported_recipe(
                 unit=parsed.unit,
                 preparation=parsed.preparation,
                 is_optional=parsed.is_optional,
+                is_ignored=is_ignorable(parsed.raw_text),
                 quantity_is_vague=parsed.quantity_is_vague,
             )
         )

@@ -96,6 +96,9 @@ def _recipe_rows(recipe: Recipe, requirements) -> tuple[list[dict], int]:  # noq
     rows: list[dict] = []
     unmatched = 0
     for line in recipe.ingredients:
+        if line.is_ignored:
+            rows.append({"req": None, "raw": line.raw_text, "line": line})
+            continue
         bucket = pools.get(line.raw_text)
         if bucket:
             rows.append({"req": bucket.pop(0), "raw": line.raw_text, "line": line})

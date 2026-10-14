@@ -1281,7 +1281,7 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
         web_user.id,
         RawRecipe(
             title="Mirin Dish",
-            ingredients=["2 Tbsp mirin"],
+            ingredients=["2 Tbsp zzqx"],
             servings=2,
             source_url="https://example.com/mirin",
         ),
@@ -1300,14 +1300,14 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
 
     corrected = signed_in.post(
         f"/recipes/{recipe.id}/match",
-        data={"raw_text": line.raw_text, "name": "mirin"},
+        data={"raw_text": line.raw_text, "name": "zzqx"},
     )
     assert corrected.status_code == 303
     seeded_session.expire_all()
     saved = seeded_session.get(Recipe, recipe.id)
-    assert saved.ingredients[0].ingredient.name == "mirin"
+    assert saved.ingredients[0].ingredient.name == "zzqx"
     learned = seeded_session.scalars(select(IngredientAlias)).all()
-    assert any(alias.raw_text.casefold() == "mirin" for alias in learned)
+    assert any(alias.raw_text.casefold() == "zzqx" for alias in learned)
     assert not any("tbsp" in alias.raw_text.casefold() for alias in learned)
 
     signed_in.post(

@@ -23,10 +23,16 @@ from souschef.models import (
     RecipeIngredient,
     RecipeSource,
 )
-from souschef.planning.shopping import build_shopping_list, to_purchase_quantity
-from souschef.planning.suggest import Surface, score_recipe, suggest
+from souschef.planning.shopping import (
+    build_shopping_list,
+    collect_requirements,
+    to_purchase_quantity,
+    unnamed_recipe_lines,
+)
+from souschef.planning.suggest import Surface, is_ignorable, score_recipe, suggest
 
 FIXTURE = Path(__file__).parent / "fixtures" / "recipe_jsonld.html"
+UNMATCHED_LINES = Path(__file__).parent / "fixtures" / "unmatched_lines.txt"
 
 
 @pytest.fixture
@@ -766,6 +772,79 @@ def test_a_refusal_blames_the_cookie_only_for_nyt(monkeypatch: pytest.MonkeyPatc
     _allow_network(monkeypatch)
     with pytest.raises(ImportError_, match="isn't a web browser"):
         fetch_html("https://www.seriouseats.com/recipe")
+
+
+def test_unmatched_fixture_leaves_at_most_four_lines_needing_naming(
+    seeded_session: Session, web_user, signed_in
+) -> None:
+    """Prices, notes and "or" alternatives match; water and "to serve" are ignored."""
+    lines = UNMATCHED_LINES.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 16
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(title="Fixture stew", ingredients=lines, servings=4),
+        source=RecipeSource.MANUAL,
+    )
+    for line in recipe.ingredients:
+        assert line.is_ignored is is_ignorable(line.raw_text)
+
+    needs = [
+        line for line in recipe.ingredients if not line.is_ignored and line.ingredient_id is None
+    ]
+    assert len(needs) <= 4
+    by_raw = {line.raw_text: line for line in recipe.ingredients}
+    assert by_raw[lines[1]].ingredient.name == "ground beef"
+    assert by_raw[lines[3]].ingredient.name == "table salt"
+    assert by_raw[lines[6]].ingredient.name == "beef stock"
+    assert by_raw[lines[8]].ingredient.name == "marjoram"
+    assert by_raw[lines[9]].ingredient.name == "kidney beans"
+    assert by_raw[lines[13]].ingredient.name == "Chinese cooking wine"
+    assert by_raw[lines[14]].ingredient.name == "oyster sauce"
+    assert by_raw[lines[15]].ingredient.name == "white pepper"
+
+    requirements = recipe_requirements(seeded_session, recipe)
+    ignored = {line.raw_text for line in recipe.ingredients if line.is_ignored}
+    assert not ignored & set(requirements.unmatched)
+    assert not ignored & {req.raw_text for req in requirements.requirements}
+    assert len(requirements.unmatched) == len(needs)
+
+    today = date.today()
+    entry = MealPlanEntry(
+        user_id=web_user.id,
+        plan_date=today,
+        slot=MealSlot.DINNER,
+        recipe_id=recipe.id,
+        servings=4,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    bought = {
+        line.ingredient.name
+        for line in collect_requirements(seeded_session, [entry]).values()
+    }
+    assert "ground beef" in bought
+    assert "kidney beans" in bought
+    assert "oyster sauce" in bought
+    assert "Chinese cooking wine" in bought
+    assert "sour cream" not in bought
+    assert "white rice" not in bought
+    unnamed = unnamed_recipe_lines(seeded_session, web_user.id, today, today)
+    assert len(unnamed) <= 4
+    assert not any(text in ignored for _recipe_id, _title, text in unnamed)
+
+    page = signed_in.get(f"/recipes/{recipe.id}")
+    assert page.status_code == 200
+    assert page.text.count('<span class="badge warn">Needs naming</span>') == len(needs)
+    for line in recipe.ingredients:
+        assert line.raw_text in page.text
+    shop = signed_in.get("/shopping")
+    assert shop.status_code == 200
+    for text in ignored:
+        assert text not in shop.text
+    for line in needs:
+        assert line.raw_text in shop.text
 
 
 def test_rate_limiting_says_so(monkeypatch: pytest.MonkeyPatch) -> None:

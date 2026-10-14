@@ -166,14 +166,11 @@ def test_unmatchable_text_returns_no_match(matcher: IngredientMatcher) -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        "2 Tbsp mirin",
         "1 Tbsp sake",
         "ground coffee",
         "ginger snaps",
         "deviled egg",
         "1 cup bean sprouts",
-        "1 tbsp Oyster Sauce",
-        "1 tbsp Chinese Cooking Wine",
         "2-3 fresh green chilies",
     ],
 )

@@ -444,7 +444,8 @@
         "salt",
         "fine salt",
         "iodized salt",
-        "sea salt"
+        "sea salt",
+        "cooking salt"
       ]
     },
     {
@@ -480,6 +481,21 @@
         "ground black pepper",
         "freshly ground black pepper",
         "peppercorns"
+      ]
+    },
+    {
+      "name": "white pepper",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.46,
+      "package_qty": 113,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "ground white pepper"
       ]
     },
     {
@@ -642,6 +658,21 @@
       "shelf_life_days": 1095,
       "aliases": [],
       "is_staple": true
+    },
+    {
+      "name": "marjoram",
+      "category": "spice",
+      "aisle": "Spices",
+      "tracking_mode": "bulk",
+      "base_unit": "g",
+      "density_g_per_ml": 0.2,
+      "package_qty": 21,
+      "package_unit": "g",
+      "shelf_life_days": 1095,
+      "is_staple": true,
+      "aliases": [
+        "dried marjoram"
+      ]
     },
     {
       "name": "bay leaves",
@@ -1457,6 +1488,7 @@
       "aliases": [
         "hamburger",
         "minced beef",
+        "beef mince",
         "ground chuck",
         "80/20 ground beef"
       ]
@@ -1730,7 +1762,9 @@
       "package_qty": 454,
       "package_unit": "g",
       "shelf_life_days": 21,
-      "aliases": []
+      "aliases": [
+        "soured cream"
+      ]
     },
     {
       "name": "greek yogurt",
@@ -2082,6 +2116,24 @@
       "package_source": "Open Food Facts, median of 5 US products, 2026-10"
     },
     {
+      "name": "kidney beans",
+      "category": "legume",
+      "aisle": "Canned Goods",
+      "tracking_mode": "discrete",
+      "base_unit": "count",
+      "grams_per_count": 425.0,
+      "package_qty": 1,
+      "package_unit": "count",
+      "shelf_life_days": 1095,
+      "aliases": [
+        "red kidney beans",
+        "canned kidney beans"
+      ],
+      "count_noun": "can",
+      "package_noun": "can",
+      "package_source": "Open Food Facts container vote; size kept from catalog"
+    },
+    {
       "name": "chickpeas",
       "category": "legume",
       "aisle": "Canned Goods",
@@ -2174,7 +2226,9 @@
       "package_unit": "ml",
       "shelf_life_days": 365,
       "aliases": [
-        "beef broth"
+        "beef broth",
+        "beef stock cube",
+        "bouillon cube"
       ]
     },
     {
@@ -2226,6 +2280,32 @@
       "shelf_life_days": 1095,
       "aliases": [
         "nam pla"
+      ]
+    },
+    {
+      "name": "oyster sauce",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 1.2,
+      "package_qty": 500,
+      "package_unit": "ml",
+      "shelf_life_days": 1095,
+      "aliases": []
+    },
+    {
+      "name": "Chinese cooking wine",
+      "category": "condiment",
+      "aisle": "International",
+      "tracking_mode": "bulk",
+      "base_unit": "ml",
+      "density_g_per_ml": 0.99,
+      "package_qty": 750,
+      "package_unit": "ml",
+      "shelf_life_days": 730,
+      "aliases": [
+        "mirin"
       ]
     },
     {

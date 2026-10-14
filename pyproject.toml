@@ -47,6 +47,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 # Fast tests are the default. Anything touching OCR models, the network, or real
 # image corpora is marked and excluded from the default run.
 addopts = "-m 'not slow' --strict-markers"

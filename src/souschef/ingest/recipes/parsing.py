@@ -20,6 +20,7 @@ eventually onto a shopping list.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -40,6 +41,17 @@ _METRIC_UNITS = frozenset({
     "ml", "milliliter", "milliliters", "millilitre", "millilitres",
     "l", "liter", "liters", "litre", "litres",
 })
+
+# A parenthetical price or "Note 3" is an editor's aside, not part of the food.
+# The note form has to go first: "(Note 1)" nested inside another parenthesis
+# otherwise ends that parenthesis early, and the "or" beside it is never tried.
+_PRICE_ASIDE = re.compile(r"\(\s*\$\s*\d+(?:\.\d+)?\s*\)")
+_NOTE_ASIDE = re.compile(
+    r"\(\(\s*note\s+\d+\s*\)\)|\(\s*note\s+\d+\s*\)",
+    re.IGNORECASE,
+)
+_TRAILING_OPTIONAL = re.compile(r",\s*optional\s*$", re.IGNORECASE)
+_ASIDE_SPACE = re.compile(r"[ \t]{2,}")
 
 
 @dataclass
@@ -139,6 +151,14 @@ def _choose_amount(amounts: object) -> tuple[float | None, str | None]:
     return None, None
 
 
+def prepare_for_match(text: str) -> str:
+    """Drop prices, note asides and a trailing ", optional" before matching."""
+    cleaned = _NOTE_ASIDE.sub(" ", text)
+    cleaned = _PRICE_ASIDE.sub(" ", cleaned)
+    cleaned = _TRAILING_OPTIONAL.sub("", cleaned)
+    return _ASIDE_SPACE.sub(" ", cleaned).strip()
+
+
 def parse_line(text: str) -> ParsedIngredient:
     """Parse one ingredient line into structured fields.
 
@@ -189,13 +209,17 @@ def parse_line(text: str) -> ParsedIngredient:
 
 def parse_and_match(text: str, matcher: IngredientMatcher) -> ParsedIngredient:
     """Parse a line and resolve it to a canonical ingredient."""
-    parsed = parse_line(text)
+    raw = text.strip()
+    prepared = prepare_for_match(raw)
+    parsed = parse_line(raw)
 
-    # The whole line carries "or" alternatives the isolated name drops. Use the
-    # name only when it matches more confidently than the line does.
-    result = matcher.match(text)
-    if parsed.name and parsed.name.strip() != text.strip():
-        from_name = matcher.match(parsed.name)
+    # The whole line carries "or" alternatives the isolated name drops. The
+    # matcher tries each side, first one that resolves wins. The parsed name is
+    # the fallback when it matches more confidently than the line does.
+    result = matcher.match(prepared)
+    prepared_name = prepare_for_match(parsed.name) if parsed.name else ""
+    if prepared_name and prepared_name != prepared:
+        from_name = matcher.match(prepared_name)
         if from_name.confidence > result.confidence:
             result = from_name
 

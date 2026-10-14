@@ -119,6 +119,9 @@ class RecipeIngredient(Base):
     # "Salt and pepper to taste" -- has no meaningful quantity and must never
     # block a recipe from being cookable or land on a shopping list.
     is_optional: Mapped[bool] = mapped_column(default=False)
+    # Plain water and "to serve" lines, or a line the cook marked Ignore.
+    # Readiness, the shopping list and "needs naming" all skip these.
+    is_ignored: Mapped[bool] = mapped_column(default=False, server_default="0")
     quantity_is_vague: Mapped[bool] = mapped_column(default=False)
 
     recipe: Mapped[Recipe] = relationship(back_populates="ingredients")

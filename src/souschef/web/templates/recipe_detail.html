@@ -53,7 +53,9 @@
   {{ group_header('Ingredients') }}
   {% for line_row in rows %}
     {% set r = line_row.req %}
-    {% if r %}
+    {% if line_row.line and line_row.line.is_ignored %}
+      {{ row(line_row.raw, cls='ingredient-row') }}
+    {% elif r %}
       {% set v = pantry.get(r.ingredient.id) %}
       {% set have = v.quantity if v else 0 %}
       {% set is_gone = r.ingredient.id in gone %}

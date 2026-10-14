@@ -130,7 +130,8 @@ def test_home_and_pantry_name_what_is_probably_gone(
     assert "Use soon:" not in home
     amount = pantry.split('class="list-row-title">chicken breast<', 1)[1]
     assert 'class="num">' in amount
-    assert amount.split('class="num">', 1)[1].split("</span>", 1)[0].endswith("?")
+    assert not amount.split('class="num">', 1)[1].split("</span>", 1)[0].endswith("?")
+    assert 'class="conf low"' in amount[:1400]
 
 
 def test_home_levels_use_the_pantry_card_and_return_home(

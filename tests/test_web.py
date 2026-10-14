@@ -1838,15 +1838,22 @@ def test_cooking_remembers_the_servings_on_the_recipe_and_the_entry(
     assert f'name="proposed_{pasta.id}" value="300.0"' in page
 
 
-def test_confidence_pips_follow_certainty_thresholds() -> None:
+def test_confidence_mark_follows_certainty_thresholds() -> None:
     from souschef.web.common import templates
 
     macros = templates.env.get_template("macros.html").module
 
-    def lit(certainty: float) -> int:
-        return str(macros.confidence_pips(certainty)).count('class="on"')
+    def tier(certainty: float, gone: bool = False) -> str:
+        html = str(macros.confidence_mark(certainty, gone))
+        if 'class="conf low"' in html:
+            return "low?"
+        if 'class="conf med"' in html:
+            return "med~"
+        return "" if "conf" not in html else "unknown"
 
-    assert (lit(1.0), lit(0.6), lit(0.59), lit(0.01), lit(0.0)) == (3, 3, 2, 2, 1)
+    assert tier(1.0) == tier(0.6) == ""
+    assert tier(0.59) == tier(0.01) == "med~"
+    assert tier(0.0) == tier(1.0, gone=True) == "low?"
 
 
 def _amount_text(page: str, name: str) -> str:
@@ -1856,10 +1863,16 @@ def _amount_text(page: str, name: str) -> str:
     return match.group(1)
 
 
-def test_uncertain_levels_mark_the_amount_and_home_says_check(
+def _mark(page: str, name: str) -> str | None:
+    start = page.index(f'class="list-row-title">{name}<')
+    match = re.search(r'class="conf (low|med)"', page[start:start + 1400])
+    return match.group(1) if match else None
+
+
+def test_uncertain_levels_get_a_confidence_bubble_and_home_says_check(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
-    """A level under 0.6, or stock that is probably gone, ends in ? — never those words."""
+    """A level under 0.6, or stock that is probably gone, gets a bubble — never those words."""
     spinach = ing(seeded_session, "spinach")
     lemon = ing(seeded_session, "lemon")
     chicken = ing(seeded_session, "chicken breast")
@@ -1881,10 +1894,11 @@ def test_uncertain_levels_mark_the_amount_and_home_says_check(
 
     page = signed_in.get("/pantry").text
     assert "probably gone" not in page.casefold()
-    assert _amount_text(page, "spinach").endswith("?")
-    lemon_amount = _amount_text(page, "lemon")
-    assert not lemon_amount.endswith("?")
-    assert _amount_text(page, "chicken breast").endswith("?")
+    for name in ("spinach", "lemon", "chicken breast"):
+        assert not _amount_text(page, name).endswith("?")
+    assert _mark(page, "spinach") is not None
+    assert _mark(page, "lemon") is None
+    assert _mark(page, "chicken breast") == "low"
     assert "use soon" in page
     assert f"expires {soon.strftime('%-d %b')}" in page
 

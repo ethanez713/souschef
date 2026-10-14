@@ -213,7 +213,7 @@ details.plan > summary { min-height: 44px; font-size: var(--fs-body-sm); color: 
 details.plan > summary::after { order: -1; }
 details.plan .daychips { margin-top: var(--sp-2); }
 
-/* ---------- badges, pips, notices ---------- */
+/* ---------- badges, confidence, notices ---------- */
 
 .badge {
   display: inline-flex; align-items: center; height: 22px; padding: 0 var(--sp-2);
@@ -226,16 +226,18 @@ details.plan .daychips { margin-top: var(--sp-2); }
 .badge.accent { background: var(--orange-100); color: var(--orange-700); }
 .badge.bad { background: var(--danger); color: var(--on-danger); }
 
-/* Confidence pips read as a traffic light: one lit pip is red, two amber, three green.
+/* The confidence bubble: red ? for low, amber ~ for medium, nothing when trusted.
    The design system's danger hue is indigo by design, so the red lives here. */
-:root { --pip-low: #D23A2C; }
-:root[data-theme="dark"] { --pip-low: #F0645A; }
-@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --pip-low: #F0645A; } }
-.pips { display: inline-flex; gap: 4px; align-items: center; vertical-align: middle; }
-.pips > i { width: 10px; height: 10px; border-radius: 50%; background: var(--ink-100); box-shadow: inset 0 0 0 1px var(--ink-300); }
-.pips.low > i.on { background: var(--pip-low); box-shadow: none; }
-.pips.med > i.on { background: var(--amber-500); box-shadow: none; }
-.pips.high > i.on { background: var(--success); box-shadow: none; }
+:root { --conf-low: #D23A2C; }
+:root[data-theme="dark"] { --conf-low: #F0645A; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --conf-low: #F0645A; } }
+.conf {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 18px; height: 18px; border-radius: 50%; vertical-align: middle;
+  font-size: var(--fs-micro); font-weight: var(--fw-bold); line-height: 1;
+}
+.conf.low { background: var(--conf-low); color: #fff; }
+.conf.med { background: var(--amber-500); color: var(--ink-900); }
 
 .notice {
   display: flex; gap: var(--sp-3); align-items: flex-start;
@@ -263,7 +265,7 @@ details.plan .daychips { margin-top: var(--sp-2); }
 }
 .item .list-row-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item .list-row-trail { gap: 0; }
-.item .list-row-trail .pips { margin-right: var(--sp-2); }
+.item .list-row-trail .conf { margin-right: var(--sp-2); }
 .edit-label {
   display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px;
   color: var(--text-muted); border-radius: var(--r-control); cursor: pointer; transition: var(--t-control); margin: 0;

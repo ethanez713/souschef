@@ -122,8 +122,8 @@ def _pantry_page(
     by_location: dict[str, list] = {}
     out: list = []
     for view in views:
-        # A zero row is the ledger remembering that you finished it. The green
-        # confidence pips describe trust in the number, so on a zero they read
+        # A zero row is the ledger remembering that you finished it. The
+        # confidence mark describes trust in the number, so on a zero it reads
         # as "in stock". A remainder below one base unit (0.4 g of cilantro)
         # is the same display: out, with the ledger left as it is.
         if view.is_staple or _on_hand(view):

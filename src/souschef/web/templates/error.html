@@ -1,7 +1,9 @@
 {% extends "base.html" %}
+{% from "macros.html" import toast %}
 {% block title %}{{ title }} · SousChef{% endblock %}
 {% block content %}
 <main id="main">
+  {% if toast_message %}{{ toast(toast_message) }}{% endif %}
   <h1>{{ title }}</h1>
   <p>{{ detail }}</p>
   <div class="actions"><a class="btn" href="/">Home</a></div>

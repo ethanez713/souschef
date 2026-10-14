@@ -233,8 +233,9 @@ def test_another_users_shopping_item_cannot_be_ticked_off(
     seeded_session.add(item)
     seeded_session.commit()
 
-    signed_in.post(f"/shopping/item/{item.id}/toggle")
+    missing = signed_in.post(f"/shopping/item/{item.id}/check", data={"checked": "1"})
 
+    assert missing.status_code == 404
     seeded_session.expire_all()
     assert seeded_session.get(ShoppingListItem, item.id).is_checked is False
 

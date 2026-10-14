@@ -21,6 +21,7 @@ from souschef.web.common import (
     THEME_COOKIE,
     THEMES,
     _render,
+    _sync_shopping,
 )
 
 router = APIRouter()
@@ -133,13 +134,14 @@ def add_staple(
         db.flush()
     ingredient.is_staple = True
     db.flush()
+    _sync_shopping(db, user.id)
     return RedirectResponse("/settings", status_code=303)
 
 
 @router.post("/settings/staples/{ingredient_id}/clear")
 def clear_staple(
     ingredient_id: int,
-    _user: User = Depends(auth.current_user),
+    user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     ingredient = db.get(CanonicalIngredient, ingredient_id)
@@ -147,6 +149,7 @@ def clear_staple(
         raise HTTPException(status_code=404, detail="No such ingredient")
     ingredient.is_staple = False
     db.flush()
+    _sync_shopping(db, user.id)
     return RedirectResponse("/settings", status_code=303)
 
 

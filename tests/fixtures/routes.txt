@@ -44,6 +44,6 @@ POST /settings/theme
 POST /settings/units
 POST /shopping/add
 POST /shopping/generate
+POST /shopping/item/{item_id}/check
 POST /shopping/item/{item_id}/skip
-POST /shopping/item/{item_id}/toggle
 POST /shopping/stock

@@ -215,6 +215,33 @@ def _on_the_list(line: NeedLine) -> bool:
     return line.unknown_amount and line.have <= 0 and line.needed <= 0
 
 
+def _item_key(ingredient_id: int | None, label: str) -> tuple[str, int | str]:
+    if ingredient_id is not None:
+        return ("id", ingredient_id)
+    return ("label", label.casefold())
+
+
+def _write_generated(item: ShoppingListItem, line: NeedLine, position: int) -> None:
+    if line.shortfall > 0:
+        quantity, unit, note = to_purchase_quantity(line.ingredient, line.shortfall)
+    else:
+        quantity, unit, note = _one_package(line.ingredient)
+    item.ingredient_id = line.ingredient.id
+    item.label = line.ingredient.name
+    item.needed_qty = line.shortfall
+    item.needed_unit = line.ingredient.base_unit
+    item.purchase_qty = quantity
+    item.purchase_unit = unit
+    item.purchase_note = note
+    item.driven_by = ", ".join(line.driven_by[:4]) or None
+    item.aisle = line.ingredient.aisle or DEFAULT_AISLE
+    item.sort_order = position
+    # A hand-added row stays manual, so a later rebuild will not drop it when
+    # the recipe that happened to need the same thing is gone.
+    if item.source != ItemSource.MANUAL:
+        item.source = line.source
+
+
 def build_shopping_list(
     session: Session,
     user_id: int,
@@ -224,7 +251,12 @@ def build_shopping_list(
     name: str = "Weekly shop",
     include_restock: bool = True,
 ) -> ShoppingList:
-    """Generate a shopping list for a date range of one user's planned meals."""
+    """Reconcile the kitchen's one live list for a date range of planned meals.
+
+    Rows update in place, keyed by ingredient or by casefolded label when the
+    line has none, so a row's id and its checked, stocked and skipped marks
+    survive a rebuild.
+    """
     entries = session.scalars(
         select(MealPlanEntry)
         .options(selectinload(MealPlanEntry.recipe).selectinload(Recipe.ingredients))
@@ -241,73 +273,70 @@ def build_shopping_list(
     if include_restock:
         needs = add_restock_candidates(session, user_id, needs)
 
-    # One live list per kitchen: replace whatever draft is hanging around so
-    # generating never piles up stale copies. Ticks, manual lines, skips and
-    # "already added to the pantry" marks are carried across, and so is the
-    # original build time — receipt review uses it to avoid counting a shop twice.
-    existing_lists = session.scalars(
-        select(ShoppingList)
-        .options(selectinload(ShoppingList.items))
-        .where(
-            ShoppingList.user_id == user_id,
-            ShoppingList.status != ShoppingListStatus.ARCHIVED,
+    # Same row every time, so receipt review still sees the original build time.
+    shopping_list = live_list(session, user_id)
+    if shopping_list is None:
+        shopping_list = ShoppingList(
+            user_id=user_id,
+            name=name,
+            status=ShoppingListStatus.DRAFT,
+            covers_from=covers_from,
+            covers_to=covers_to,
         )
-    ).all()
-    carried = _carry_forward(existing_lists)
-    for lst in existing_lists:
-        session.delete(lst)
-    session.flush()
-
-    shopping_list = ShoppingList(
-        user_id=user_id,
-        name=name,
-        status=ShoppingListStatus.DRAFT,
-        covers_from=covers_from,
-        covers_to=covers_to,
-    )
-    if carried.built_at is not None:
-        shopping_list.created_at = carried.built_at
-    session.add(shopping_list)
-    session.flush()
+        session.add(shopping_list)
+    else:
+        shopping_list.name = name
+        shopping_list.covers_from = covers_from
+        shopping_list.covers_to = covers_to
 
     ordered = sorted(
         (line for line in needs.values() if _on_the_list(line)),
         key=lambda line: (line.ingredient.aisle or DEFAULT_AISLE, line.ingredient.name),
     )
 
-    position = 0
-    generated_ids: set[int] = set()
-    for line in ordered:
-        if line.ingredient.id in carried.skipped_ids:
-            continue
-        if line.shortfall > 0:
-            quantity, unit, note = to_purchase_quantity(line.ingredient, line.shortfall)
-        else:
-            quantity, unit, note = _one_package(line.ingredient)
-        stocked = line.ingredient.id in carried.stocked_ids
-        shopping_list.items.append(
-            ShoppingListItem(
+    chosen: dict[tuple[str, int | str], ShoppingListItem] = {}
+    for item in sorted(shopping_list.items, key=lambda row: row.id or 0):
+        key = _item_key(item.ingredient_id, item.label)
+        current = chosen.get(key)
+        if current is None or (
+            item.source == ItemSource.MANUAL and current.source != ItemSource.MANUAL
+        ):
+            chosen[key] = item
+    keepers = {id(item) for item in chosen.values()}
+    for item in list(shopping_list.items):
+        if id(item) not in keepers:
+            shopping_list.items.remove(item)
+
+    generated: set[tuple[str, int | str]] = set()
+    for position, line in enumerate(ordered):
+        key = _item_key(line.ingredient.id, line.ingredient.name)
+        generated.add(key)
+        existing = chosen.get(key)
+        if existing is None:
+            existing = ShoppingListItem(
                 ingredient_id=line.ingredient.id,
                 label=line.ingredient.name,
-                needed_qty=line.shortfall,
-                needed_unit=line.ingredient.base_unit,
-                purchase_qty=quantity,
-                purchase_unit=unit,
-                purchase_note=note,
                 source=line.source,
-                driven_by=", ".join(line.driven_by[:4]) or None,
-                aisle=line.ingredient.aisle or DEFAULT_AISLE,
-                is_checked=stocked or line.ingredient.id in carried.checked_ids,
-                is_stocked=stocked,
+                is_checked=False,
+                is_stocked=False,
                 is_skipped=False,
-                sort_order=position,
             )
-        )
-        generated_ids.add(line.ingredient.id)
-        position += 1
+            shopping_list.items.append(existing)
+            chosen[key] = existing
+        _write_generated(existing, line, position)
 
-    _append_manuals(shopping_list, carried, generated_ids)
-    _append_skip_markers(session, shopping_list, carried)
+    # A tick still in the basket outlives the meal that put it there. A stocked
+    # line has already been written to the ledger, and a skip only lasts while
+    # its need is still generated — leaving either behind would make the next
+    # shop start already ticked or already skipped. Manual lines stay.
+    for item in list(shopping_list.items):
+        if _item_key(item.ingredient_id, item.label) in generated:
+            continue
+        if item.source == ItemSource.MANUAL:
+            continue
+        if item.is_checked and not item.is_stocked and not item.is_skipped:
+            continue
+        shopping_list.items.remove(item)
 
     session.flush()
     return shopping_list
@@ -317,151 +346,10 @@ class ShoppingError(ValueError):
     """A shopping-list edit the page can show as a form message."""
 
 
-@dataclass
-class _CarriedManual:
-    ingredient_id: int | None
-    label: str
-    needed_qty: float
-    needed_unit: str | None
-    purchase_qty: float | None
-    purchase_unit: str | None
-    purchase_note: str | None
-    driven_by: str | None
-    aisle: str | None
-    is_checked: bool
-    is_stocked: bool
-
-
-@dataclass
-class _Carried:
-    built_at: datetime | None = None
-    checked_ids: set[int] = field(default_factory=set)
-    stocked_ids: set[int] = field(default_factory=set)
-    skipped_ids: set[int] = field(default_factory=set)
-    skipped_labels: set[str] = field(default_factory=set)
-    manuals: list[_CarriedManual] = field(default_factory=list)
-
-
 def _aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value
-
-
-def _carry_forward(lists: list[ShoppingList]) -> _Carried:
-    carried = _Carried()
-    for lst in lists:
-        if lst.created_at is not None:
-            built = _aware(lst.created_at)
-            if carried.built_at is None or built < carried.built_at:
-                carried.built_at = built
-        for item in lst.items:
-            if item.source == ItemSource.MANUAL and not item.is_skipped:
-                carried.manuals.append(
-                    _CarriedManual(
-                        ingredient_id=item.ingredient_id,
-                        label=item.label,
-                        needed_qty=item.needed_qty,
-                        needed_unit=item.needed_unit,
-                        purchase_qty=item.purchase_qty,
-                        purchase_unit=item.purchase_unit,
-                        purchase_note=item.purchase_note,
-                        driven_by=item.driven_by,
-                        aisle=item.aisle,
-                        is_checked=item.is_checked,
-                        is_stocked=item.is_stocked,
-                    )
-                )
-                continue
-            if item.is_skipped:
-                if item.ingredient_id is not None:
-                    carried.skipped_ids.add(item.ingredient_id)
-                else:
-                    carried.skipped_labels.add(item.label.casefold())
-                continue
-            if item.ingredient_id is None:
-                continue
-            if item.is_checked:
-                carried.checked_ids.add(item.ingredient_id)
-            if item.is_stocked:
-                carried.stocked_ids.add(item.ingredient_id)
-
-    # Putting something back on the list by hand undoes an earlier skip.
-    for manual in carried.manuals:
-        if manual.ingredient_id is not None:
-            carried.skipped_ids.discard(manual.ingredient_id)
-        carried.skipped_labels.discard(manual.label.casefold())
-    return carried
-
-
-def _append_manuals(
-    shopping_list: ShoppingList, carried: _Carried, generated_ids: set[int]
-) -> None:
-    for manual in carried.manuals:
-        if manual.ingredient_id is not None and manual.ingredient_id in generated_ids:
-            for item in shopping_list.items:
-                if item.ingredient_id == manual.ingredient_id and not item.is_skipped:
-                    item.is_checked = item.is_checked or manual.is_checked
-                    item.is_stocked = item.is_stocked or manual.is_stocked
-            continue
-        shopping_list.items.append(
-            ShoppingListItem(
-                ingredient_id=manual.ingredient_id,
-                label=manual.label,
-                needed_qty=manual.needed_qty,
-                needed_unit=manual.needed_unit,
-                purchase_qty=manual.purchase_qty,
-                purchase_unit=manual.purchase_unit,
-                purchase_note=manual.purchase_note,
-                source=ItemSource.MANUAL,
-                driven_by=manual.driven_by,
-                aisle=manual.aisle or DEFAULT_AISLE,
-                is_checked=manual.is_checked,
-                is_stocked=manual.is_stocked,
-                is_skipped=False,
-            )
-        )
-
-
-def _append_skip_markers(session: Session, shopping_list: ShoppingList, carried: _Carried) -> None:
-    present = {
-        item.ingredient_id
-        for item in shopping_list.items
-        if item.ingredient_id is not None and not item.is_skipped
-    }
-    labels = {item.label.casefold() for item in shopping_list.items if not item.is_skipped}
-    for ingredient_id in carried.skipped_ids:
-        if ingredient_id in present:
-            continue
-        ingredient = session.get(CanonicalIngredient, ingredient_id)
-        if ingredient is None:
-            continue
-        shopping_list.items.append(
-            ShoppingListItem(
-                ingredient_id=ingredient_id,
-                label=ingredient.name,
-                needed_qty=0,
-                source=ItemSource.RECIPE,
-                aisle=ingredient.aisle or DEFAULT_AISLE,
-                is_checked=False,
-                is_stocked=False,
-                is_skipped=True,
-            )
-        )
-    for label in sorted(carried.skipped_labels):
-        if label in labels:
-            continue
-        shopping_list.items.append(
-            ShoppingListItem(
-                label=label,
-                needed_qty=0,
-                source=ItemSource.MANUAL,
-                aisle=DEFAULT_AISLE,
-                is_checked=False,
-                is_stocked=False,
-                is_skipped=True,
-            )
-        )
 
 
 def live_list(session: Session, user_id: int) -> ShoppingList | None:

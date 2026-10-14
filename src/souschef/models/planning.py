@@ -122,10 +122,12 @@ class ShoppingListItem(Base):
 
     aisle: Mapped[str | None] = mapped_column(String(60))
     is_checked: Mapped[bool] = mapped_column(default=False)
-    # Ticked and written to the ledger from this list. A rebuild keeps the mark
-    # so the same line cannot be purchased twice, and a later receipt can see it.
+    # Written to the ledger from this list. Kept while the line is still needed
+    # so it cannot be purchased twice; dropped once it is not, so the next time
+    # that ingredient is needed it starts unticked.
     is_stocked: Mapped[bool] = mapped_column(default=False)
-    # Taken off the list. Survives the rebuild that would otherwise put it back.
+    # Hidden while its need remains, so a rebuild does not put it back. Dropped
+    # once that need is gone: a skip lasts only as long as the need it removed.
     is_skipped: Mapped[bool] = mapped_column(default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 

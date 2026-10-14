@@ -27,6 +27,7 @@ from souschef.web.common import (
     _kitchen_unit_message,
     _owned,
     _render,
+    _sync_shopping,
 )
 
 router = APIRouter()
@@ -256,6 +257,7 @@ def correct_recipe_match(
         line.ingredient_id = ingredient.id
         line.match_confidence = 1.0
     db.flush()
+    _sync_shopping(db, user.id)
     return RedirectResponse(f"/recipes/{recipe.id}?saved={quote(clean)}", status_code=303)
 
 

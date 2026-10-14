@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -62,6 +63,18 @@ def _group_unnamed(lines: list[tuple[int, str, str]]) -> list[dict]:
     return groups
 
 
+_NOT_ON_LIST = "That item is no longer on the list"
+
+
+def _list_for_page(db: Session, user_id: int):
+    """The live list. A build runs only when nothing is stored or the window rolled past today."""
+    active = live_list(db, user_id)
+    today = date.today()
+    if active is None or active.covers_from is None or active.covers_from < today:
+        return _sync_shopping(db, user_id)
+    return active
+
+
 def _render_shopping(
     request: Request,
     db: Session,
@@ -75,13 +88,9 @@ def _render_shopping(
     package_qty: str = "",
     package_unit: str = "",
     status_code: int = 200,
-    rebuild: bool = True,
 ) -> HTMLResponse:
     start, end = _horizon()
-    if rebuild:
-        active = _sync_shopping(db, user.id)
-    else:
-        active = live_list(db, user.id) or _sync_shopping(db, user.id)
+    active = _list_for_page(db, user.id)
     has_plan = (
         db.scalar(
             select(func.count())
@@ -149,18 +158,29 @@ def generate_shopping(
     return RedirectResponse("/shopping", status_code=303)
 
 
-@router.post("/shopping/item/{item_id}/toggle")
-def toggle_shopping_item(
+@router.post("/shopping/item/{item_id}/check")
+def check_shopping_item(
+    request: Request,
     item_id: int,
+    checked: str = Form(pattern=r"^[01]$"),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
     # A list item carries no owner of its own; ownership lives on the parent
     # list, so that is what gets checked.
+    listing = live_list(db, user.id)
     item = db.get(ShoppingListItem, item_id)
-    if item is not None and item.shopping_list.user_id == user.id:
-        item.is_checked = not item.is_checked
-        db.flush()
+    if listing is None or item is None or item.shopping_list_id != listing.id:
+        return _render(
+            request,
+            "error.html",
+            status_code=404,
+            title="Not found",
+            detail=_NOT_ON_LIST,
+            toast_message=_NOT_ON_LIST,
+        )
+    item.is_checked = checked == "1"
+    db.flush()
     return RedirectResponse("/shopping", status_code=303)
 
 
@@ -176,6 +196,7 @@ def stock_shopping(
     except (ShoppingError, UnitConversionError) as exc:
         db.rollback()
         return _render_shopping(request, db, user, add_error=str(exc), status_code=400)
+    _sync_shopping(db, user.id)
     query = urlencode([("added", name) for name in names])
     return RedirectResponse("/shopping" + (f"?{query}" if query else ""), status_code=303)
 
@@ -204,7 +225,6 @@ def add_shopping_item(
             package_qty=package_qty,
             package_unit=package_unit,
             status_code=400,
-            rebuild=False,
         )
 
     parsed: float | None = None
@@ -243,4 +263,5 @@ def skip_shopping_item(
         item.is_skipped = True
         item.is_checked = False
         db.flush()
+        _sync_shopping(db, user.id)
     return RedirectResponse("/shopping", status_code=303)

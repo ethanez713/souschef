@@ -27,6 +27,7 @@ from souschef.web import auth
 from souschef.web.common import (
     _owned,
     _render,
+    _sync_shopping,
 )
 
 router = APIRouter()
@@ -358,6 +359,7 @@ async def apply_receipt_route(
             error=warnings[-1] if warnings else "Tick a line before applying.",
             status_code=400,
         )
+    _sync_shopping(db, user.id)
     return _render(
         request,
         "receipt_applied.html",

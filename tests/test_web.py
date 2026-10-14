@@ -488,6 +488,198 @@ def test_shopping_page_rebuilds_from_the_plan_without_a_button(
     assert "Build from this" not in page.text
 
 
+def _shop_item_id(html: str, label: str) -> int:
+    marker = re.search(rf">\s*{re.escape(label)}\s*<", html)
+    assert marker is not None, label
+    window = html[max(0, marker.start() - 1200) : marker.start()]
+    found = re.findall(r'action="/shopping/item/(\d+)/check"', window)
+    assert found, label
+    return int(found[-1])
+
+
+def _plan_pasta(session: Session, user: User, title: str, url: str) -> MealPlanEntry:
+    recipe = save_imported_recipe(
+        session,
+        user.id,
+        RawRecipe(title=title, ingredients=["1 pound spaghetti"], servings=1, source_url=url),
+        source=RecipeSource.URL,
+    )
+    entry = MealPlanEntry(
+        user_id=user.id,
+        plan_date=date.today(),
+        slot=MealSlot.DINNER,
+        recipe_id=recipe.id,
+        servings=1,
+    )
+    session.add(entry)
+    session.commit()
+    return entry
+
+
+def test_two_same_day_shopping_gets_write_nothing(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Quiet Shop", "https://example.com/quiet-shop")
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+    from sqlalchemy import event
+
+    from souschef.db import get_engine
+
+    writes: list[str] = []
+
+    def hear(conn, cursor, statement, parameters, context, executemany):  # noqa: ARG001
+        text = statement.decode() if isinstance(statement, bytes) else statement
+        verb = text.lstrip().split(None, 1)[0].upper()
+        if verb in {"INSERT", "UPDATE", "DELETE"}:
+            writes.append(text)
+
+    engine = get_engine()
+    event.listen(engine, "before_cursor_execute", hear)
+    try:
+        first = signed_in.get("/shopping")
+        second = signed_in.get("/shopping")
+    finally:
+        event.remove(engine, "before_cursor_execute", hear)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert writes == []
+
+
+def test_check_twice_leaves_the_item_checked(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Tick Twice", "https://example.com/tick-twice")
+    page = signed_in.get("/shopping")
+    item_id = _shop_item_id(page.text, "spaghetti")
+
+    assert signed_in.post(
+        f"/shopping/item/{item_id}/check", data={"checked": "1"}
+    ).status_code == 303
+    assert signed_in.post(
+        f"/shopping/item/{item_id}/check", data={"checked": "1"}
+    ).status_code == 303
+
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None and item.is_checked is True
+
+
+def test_checking_a_stale_item_is_a_404(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    entry = _plan_pasta(seeded_session, web_user, "Stale Tick", "https://example.com/stale-tick")
+    page = signed_in.get("/shopping")
+    item_id = _shop_item_id(page.text, "spaghetti")
+    assert signed_in.post(f"/plan/{entry.id}/remove").status_code == 303
+
+    missing = signed_in.post(f"/shopping/item/{item_id}/check", data={"checked": "1"})
+
+    assert missing.status_code == 404
+    assert "That item is no longer on the list" in missing.text
+    assert 'class="toast"' in missing.text
+
+
+def test_applying_a_receipt_drops_the_covered_item_on_the_next_shop_page(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Receipt Shop", "https://example.com/receipt-shop")
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+    spaghetti = ing(seeded_session, "spaghetti")
+    receipt = Receipt(
+        user_id=web_user.id,
+        image_path="spaghetti.png",
+        image_sha256="apply-covers-shop",
+        status=ReceiptStatus.NEEDS_REVIEW,
+    )
+    seeded_session.add(receipt)
+    seeded_session.flush()
+    line = ReceiptLine(
+        receipt_id=receipt.id,
+        position=0,
+        raw_text="SPAGHETTI",
+        parsed_quantity=500,
+        parsed_unit="g",
+        ingredient_id=spaghetti.id,
+    )
+    seeded_session.add(line)
+    seeded_session.commit()
+
+    applied = signed_in.post(
+        f"/receipts/{receipt.id}/apply",
+        data={
+            f"ingredient_{line.id}": str(spaghetti.id),
+            f"quantity_{line.id}": "500",
+            f"unit_{line.id}": "g",
+            f"confirmed_{line.id}": "on",
+        },
+    )
+    assert applied.status_code == 200
+    assert "spaghetti" not in signed_in.get("/shopping").text
+
+
+def test_an_audit_correction_drops_a_covered_item_on_the_next_shop_page(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Audit Shop", "https://example.com/audit-shop")
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+    spaghetti = ing(seeded_session, "spaghetti")
+    corrected = signed_in.post(f"/audit/{spaghetti.id}", data={"quantity": "2"})
+    assert corrected.status_code == 303
+    assert "spaghetti" not in signed_in.get("/shopping").text
+
+
+def test_marking_a_staple_drops_its_row_until_it_is_cleared(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Staple Shop", "https://example.com/staple-shop")
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+    marked = signed_in.post("/settings/staples", data={"name": "spaghetti"})
+    assert marked.status_code == 303
+    assert "spaghetti" not in signed_in.get("/shopping").text
+
+    spaghetti = ing(seeded_session, "spaghetti")
+    cleared = signed_in.post(f"/settings/staples/{spaghetti.id}/clear")
+    assert cleared.status_code == 303
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+
+def test_correcting_a_recipe_match_puts_the_ingredient_on_the_next_shop_page(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Mirin Dish",
+            ingredients=["2 Tbsp mirin"],
+            servings=2,
+            source_url="https://example.com/mirin-shop",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    line = recipe.ingredients[0]
+    assert line.ingredient_id is None
+    planned = signed_in.post(
+        "/plan/add",
+        data={"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()},
+    )
+    assert planned.status_code == 303
+    assert "spaghetti" not in signed_in.get("/shopping").text
+
+    corrected = signed_in.post(
+        f"/recipes/{recipe.id}/match",
+        data={"raw_text": line.raw_text, "name": "spaghetti"},
+    )
+    assert corrected.status_code == 303
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+
 def test_audit_page_renders_with_nothing_planned(signed_in: TestClient) -> None:
     response = signed_in.get("/audit")
     assert response.status_code == 200

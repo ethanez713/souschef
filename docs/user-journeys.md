@@ -27,7 +27,7 @@ is a failed journey, not a missing feature.
 
 3. **Shop the list.** I generate the list (`/shopping/generate`): grouped by aisle,
    rounded to real package sizes, each line saying which meal it's for. I tick items
-   off as I go (`/shopping/item/{id}/toggle`). → *Supported*.
+   off as I go (`/shopping/item/{id}/check`). → *Supported*.
 
 4. **Restock from the receipt.** Home from the store, I photograph the receipt
    (`/receipts/upload`), review the matched lines (`/receipts/{id}`), fix any bad

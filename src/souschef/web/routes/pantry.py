@@ -43,6 +43,7 @@ from souschef.web.common import (
     _on_hand,
     _render,
     _safe_next,
+    _sync_shopping,
     add_form_units,
 )
 
@@ -193,6 +194,7 @@ def update_level(
         set_level(db, user.id, ingredient, quantity, unit=typed)
     except (UnitConversionError, ValueError) as exc:
         return _pantry_page(request, db, user, q, level_error=str(exc), status_code=400)
+    _sync_shopping(db, user.id)
     return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
 
@@ -227,6 +229,7 @@ def discard_pantry_item(
     if event is not None:
         db.flush()
         target = _with_param(target, "wasted", event.id)
+        _sync_shopping(db, user.id)
     return RedirectResponse(target, status_code=303)
 
 
@@ -238,7 +241,8 @@ def undo_pantry_discard(
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    undo_discard(db, user.id, event_id)
+    if undo_discard(db, user.id, event_id) is not None:
+        _sync_shopping(db, user.id)
     return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
 
@@ -361,6 +365,7 @@ def add_to_pantry(
         if pack:
             return show(str(exc), word=pack)
         return show(_kitchen_unit_message(exc, unit))
+    _sync_shopping(db, user.id)
     return RedirectResponse(_pantry_url(q), status_code=303)
 
 

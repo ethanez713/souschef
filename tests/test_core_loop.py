@@ -139,7 +139,7 @@ def _item_id(html: str, label: str) -> int:
     marker = re.search(rf">\s*{re.escape(label)}\s*<", html)
     assert marker is not None, label
     window = html[max(0, marker.start() - 1200) : marker.start()]
-    found = re.findall(r'action="/shopping/item/(\d+)/toggle"', window)
+    found = re.findall(r'action="/shopping/item/(\d+)/check"', window)
     assert found, label
     return int(found[-1])
 
@@ -316,6 +316,131 @@ def test_skip_survives_rebuild_and_re_adding_clears_it(
     assert not any(item.is_skipped and item.ingredient_id == pasta.id for item in restored.items)
 
 
+def test_two_rebuilds_keep_every_item_id(seeded_session: Session, owner: int) -> None:
+    pasta = ing(seeded_session, "spaghetti")
+    chicken = ing(seeded_session, "chicken thigh")
+    today, end = _week()
+    recipe = _recipe(
+        seeded_session,
+        owner,
+        "Both",
+        [("200 g spaghetti", pasta, False), ("200 g chicken thigh", chicken, False)],
+    )
+    entry = _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    add_manual_item(seeded_session, listing, "paper towels", amount=2, unit="count")
+    ids = {item.id for item in listing.items}
+    assert len(ids) == 3
+
+    entry.servings = 2
+    seeded_session.flush()
+    second = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    third = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    assert second.id == listing.id
+    assert {item.id for item in second.items} == ids
+    assert third.id == listing.id
+    assert {item.id for item in third.items} == ids
+
+
+def test_a_tick_survives_a_plan_change_that_still_needs_the_ingredient(
+    seeded_session: Session, owner: int
+) -> None:
+    pasta = ing(seeded_session, "spaghetti")
+    today, end = _week()
+    recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
+    entry = _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    line = next(item for item in listing.items if item.ingredient_id == pasta.id)
+    line.is_checked = True
+    before = line.needed_qty
+    entry.servings = 3
+    seeded_session.flush()
+
+    rebuilt = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    kept = next(item for item in rebuilt.items if item.ingredient_id == pasta.id)
+    assert kept.id == line.id
+    assert kept.is_checked
+    assert kept.needed_qty > before
+
+
+def test_removing_the_only_meal_keeps_a_ticked_row(
+    seeded_session: Session, owner: int
+) -> None:
+    pasta = ing(seeded_session, "spaghetti")
+    today, end = _week()
+    recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
+    entry = _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    line = next(item for item in listing.items if item.ingredient_id == pasta.id)
+    line.is_checked = True
+    seeded_session.flush()
+    seeded_session.delete(entry)
+    seeded_session.flush()
+
+    rebuilt = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    rows = [item for item in rebuilt.items if item.ingredient_id == pasta.id]
+    assert len(rows) == 1
+    assert rows[0].id == line.id
+    assert rows[0].is_checked
+    assert not rows[0].is_stocked
+
+
+def test_a_stocked_row_drops_off_and_comes_back_unticked(
+    seeded_session: Session, owner: int
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    today, end = _week()
+    recipe = _recipe(
+        seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
+    )
+    _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    line = next(item for item in listing.items if item.ingredient_id == chicken.id)
+    line.is_checked = True
+    seeded_session.flush()
+    stock_ticked_items(seeded_session, owner, listing)
+
+    rebuilt = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    assert all(item.ingredient_id != chicken.id for item in rebuilt.items)
+
+    held = get_or_create_item(seeded_session, owner, chicken)
+    record_event(
+        seeded_session, owner, chicken, reason=EventReason.WASTE, delta=-held.quantity
+    )
+    later = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    rows = [item for item in later.items if item.ingredient_id == chicken.id]
+    assert len(rows) == 1
+    assert not rows[0].is_checked
+    assert not rows[0].is_stocked
+
+
+def test_a_skipped_row_is_deleted_once_its_key_is_not_generated(
+    seeded_session: Session, owner: int
+) -> None:
+    pasta = ing(seeded_session, "spaghetti")
+    today, end = _week()
+    recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
+    entry = _plan(seeded_session, owner, recipe, today)
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    line = next(item for item in listing.items if item.ingredient_id == pasta.id)
+    line.is_skipped = True
+    seeded_session.flush()
+    skipped_id = line.id
+
+    hidden = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    assert any(item.id == skipped_id and item.is_skipped for item in hidden.items)
+
+    seeded_session.delete(entry)
+    seeded_session.flush()
+    gone = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    assert skipped_id not in {item.id for item in gone.items}
+
+
 def test_skipped_and_old_meals_do_not_drive_the_list(
     seeded_session: Session, owner: int
 ) -> None:
@@ -471,7 +596,9 @@ def test_shopping_page_adds_ticked_items_at_package_size(
     assert "Add 1 ticked" not in page.text
     item_id = _item_id(page.text, "spaghetti")
 
-    assert signed_in.post(f"/shopping/item/{item_id}/toggle").status_code == 303
+    assert signed_in.post(
+        f"/shopping/item/{item_id}/check", data={"checked": "1"}
+    ).status_code == 303
     ticked = signed_in.get("/shopping")
     assert "Add 1 ticked item to pantry" in ticked.text
 
@@ -507,8 +634,8 @@ def test_two_ticked_lines_use_the_plural_button(
     page = signed_in.get("/shopping")
     pasta_id = _item_id(page.text, "spaghetti")
     towels_id = _item_id(page.text, "paper towels")
-    signed_in.post(f"/shopping/item/{pasta_id}/toggle")
-    signed_in.post(f"/shopping/item/{towels_id}/toggle")
+    signed_in.post(f"/shopping/item/{pasta_id}/check", data={"checked": "1"})
+    signed_in.post(f"/shopping/item/{towels_id}/check", data={"checked": "1"})
 
     ticked = signed_in.get("/shopping")
 
@@ -531,8 +658,12 @@ def test_a_bad_unit_on_a_ticked_line_adds_nothing(
     assert towels is not None
     towels.purchase_unit = "bogus"
     seeded_session.commit()
-    signed_in.post(f"/shopping/item/{_item_id(page.text, 'spaghetti')}/toggle")
-    signed_in.post(f"/shopping/item/{_item_id(page.text, 'paper towels')}/toggle")
+    signed_in.post(
+        f"/shopping/item/{_item_id(page.text, 'spaghetti')}/check", data={"checked": "1"}
+    )
+    signed_in.post(
+        f"/shopping/item/{_item_id(page.text, 'paper towels')}/check", data={"checked": "1"}
+    )
 
     failed = signed_in.post("/shopping/stock")
 
@@ -657,7 +788,9 @@ def test_receipt_review_unticks_what_the_list_already_added(
     seeded_session.commit()
 
     shop = signed_in.get("/shopping")
-    signed_in.post(f"/shopping/item/{_item_id(shop.text, 'spaghetti')}/toggle")
+    signed_in.post(
+        f"/shopping/item/{_item_id(shop.text, 'spaghetti')}/check", data={"checked": "1"}
+    )
     assert signed_in.post("/shopping/stock").status_code == 303
     signed_in.get("/shopping")
     receipt.created_at = datetime.now(UTC)

@@ -16,6 +16,7 @@ from souschef.web import auth
 from souschef.web.common import (
     _horizon,
     _render,
+    _sync_shopping,
 )
 
 router = APIRouter()
@@ -67,13 +68,18 @@ async def resolve_audit(
 ) -> Response:
     """Record every answer on the page. One card at a time used to drop the rest."""
     form = await request.form()
+    level_changed = False
     try:
         for key, raw in form.multi_items():
             name = str(key)
             if not name.startswith("quantity_"):
                 continue
             _confirm_audit_field(db, user, int(name.removeprefix("quantity_")), str(raw))
+            if str(raw).strip():
+                level_changed = True
     except (UnitConversionError, ValueError) as exc:
+        if level_changed:
+            _sync_shopping(db, user.id)
         today, week_end = _horizon()
         requirements = requirements_for_audit(db, user.id, today, week_end)
         candidates = build_audit(db, user.id, requirements)
@@ -86,6 +92,8 @@ async def resolve_audit(
             planned_items=len(requirements),
             error=str(exc),
         )
+    if level_changed:
+        _sync_shopping(db, user.id)
     return RedirectResponse("/audit", status_code=303)
 
 
@@ -97,4 +105,6 @@ def resolve_audit_item(
     db: Session = Depends(get_db),
 ) -> Response:
     _confirm_audit_field(db, user, ingredient_id, quantity)
+    if quantity.strip():
+        _sync_shopping(db, user.id)
     return RedirectResponse("/audit", status_code=303)

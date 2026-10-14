@@ -43,8 +43,9 @@
       <h2 class="aisle">{{ aisle }}</h2>
       {% for it in aisle_items %}
         <div class="shop-row">
-          <form method="post" action="/shopping/item/{{ it.id }}/toggle" class="shop-item {{ 'checked' if it.is_checked }}"
-                hx-post="/shopping/item/{{ it.id }}/toggle" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+          <form method="post" action="/shopping/item/{{ it.id }}/check" class="shop-item {{ 'checked' if it.is_checked }}"
+                hx-post="/shopping/item/{{ it.id }}/check" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+            <input type="hidden" name="checked" value="{{ '0' if it.is_checked else '1' }}">
             <button type="submit" aria-pressed="{{ 'true' if it.is_checked else 'false' }}">
               <span class="tick">{{ icon('check', 14) }}</span>
               <span class="stack">

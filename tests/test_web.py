@@ -655,10 +655,10 @@ def test_correcting_a_recipe_match_puts_the_ingredient_on_the_next_shop_page(
         seeded_session,
         web_user.id,
         RawRecipe(
-            title="Mirin Dish",
-            ingredients=["2 Tbsp mirin"],
+            title="Gochujang Dish",
+            ingredients=["2 Tbsp gochujang"],
             servings=2,
-            source_url="https://example.com/mirin-shop",
+            source_url="https://example.com/gochujang-shop",
         ),
         source=RecipeSource.URL,
     )

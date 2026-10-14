@@ -546,6 +546,33 @@ def test_manifest_declares_share_target(client: TestClient) -> None:
     assert payload["display"] == "standalone"
 
 
+def test_manifest_lists_a_maskable_icon_and_pages_link_the_touch_icon(
+    client: TestClient,
+) -> None:
+    assert client.get("/manifest.webmanifest").json()["icons"] == [
+        {
+            "src": "/static/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any",
+        },
+        {
+            "src": "/static/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any",
+        },
+        {
+            "src": "/static/icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable",
+        },
+    ]
+    page = client.get("/")
+    assert '<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">' in page.text
+
+
 TOP_LEVEL_PAGES = ("/", "/recipes", "/plan", "/shopping", "/pantry", "/receipts", "/settings")
 
 

@@ -2240,3 +2240,8 @@ def test_picker_focuses_the_search_field_inside_the_tap_handler() -> None:
     ).read_text()
     opener = source.split("function openPicker", 1)[1].split("function choose", 1)[0]
     assert opener.index(".focus(") < opener.index("htmx.trigger")
+
+
+def test_picker_ranks_a_later_word_match_above_fuzzy_hits(signed_in: TestClient) -> None:
+    rows = re.findall(r'data-name="([^"]*)"', signed_in.get("/pick/ingredient?q=paste").text)
+    assert {"tomato paste", "miso paste"} <= set(rows[:3])

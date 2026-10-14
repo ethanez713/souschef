@@ -91,6 +91,9 @@ def _rank(name: str, phrases: set[str], needle: str) -> _Rank | None:
     name_prefix = bool(name_key) and name_key.startswith(needle)
     if name_prefix or any(key.startswith(needle) for key in keys):
         return _Rank(1, 0 if name_prefix else 1, 100)
+    # "paste" finds "tomato paste": a later word starting with the query beats a fuzzy hit.
+    if any(word.startswith(needle) for key in keys for word in key.split()[1:]):
+        return _Rank(1, 2, 100)
     score = max(fuzz.WRatio(needle, key) for key in keys)
     if score >= FUZZY_CUTOFF:
         return _Rank(2, 1, float(score))

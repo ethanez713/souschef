@@ -310,13 +310,24 @@ def seconds_until_next(previous: float | None, *, now: float, interval: float) -
     return max(0.0, interval - (now - previous))
 
 
+# Open Food Facts' search endpoint sheds load with 503s well under the documented rate.
+OVERLOAD_STATUSES = frozenset({429, 502, 503, 504})
+RETRY_DELAYS_S = (30, 60, 120)
+
+
 def fetch_payload(name: str, *, timeout: float = 60) -> dict:
     request = urllib.request.Request(search_url(name), headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.load(response)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        return {"error": str(exc)}
+    for attempt in range(len(RETRY_DELAYS_S) + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                payload = json.load(response)
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code not in OVERLOAD_STATUSES or attempt == len(RETRY_DELAYS_S):
+                return {"error": str(exc)}
+            time.sleep(RETRY_DELAYS_S[attempt])
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError) as exc:
+            return {"error": str(exc)}
     if not isinstance(payload, dict):
         return {"error": "Open Food Facts returned no JSON object"}
     return payload
@@ -395,6 +406,14 @@ def _fetch(only: str | None) -> int:
                 f" ({row['agreeing']} agree, {row['product_count']} sized)",
                 file=sys.stderr,
             )
+    if only is not None and REVIEW_PATH.is_file():
+        fetched = {row["name"] for row in rows}
+        kept = [
+            row
+            for row in _read_json(REVIEW_PATH).get("ingredients") or []
+            if row.get("name") not in fetched
+        ]
+        rows = kept + rows
     _write_json(REVIEW_PATH, {"ingredients": rows})
     print(f"wrote {len(rows)} rows to {REVIEW_PATH}", file=sys.stderr)
     return 0

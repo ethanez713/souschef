@@ -14,10 +14,7 @@ from souschef.models.base import Base, OwnedMixin, TimestampMixin
 class AppSetting(Base, TimestampMixin):
     """Small key/value store for *app-wide* settings. Never holds secrets.
 
-    Not per-user: anything belonging to one person's account goes on ``User``.
-    This once held the single shared password hash, which is now
-    ``User.password_hash``; the migration reads the old key to build the first
-    account.
+    Not per-user: anything belonging to one account goes on ``User``.
     """
 
     __tablename__ = "app_setting"

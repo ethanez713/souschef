@@ -1,8 +1,8 @@
 """Web route tests.
 
 Exercised through a real TestClient against a real database, because the value
-here is in the wiring -- template rendering, auth gating, form handling -- and a
-mocked version of that proves nothing.
+here is in the wiring -- template rendering, form handling -- and a mocked
+version of that proves nothing.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from tests.conftest import WEB_PASSWORD, WEB_USERNAME
 
 from souschef.core.inventory import discard_item, get_or_create_item, physical_of, record_event
 from souschef.core.recipes import save_imported_recipe
@@ -45,114 +44,42 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
     return found
 
 
-def test_first_visit_offers_setup(client: TestClient) -> None:
-    response = client.get("/login")
+def test_home_needs_no_cookie(client: TestClient) -> None:
+    response = client.get("/")
     assert response.status_code == 200
-    assert "Claim this SousChef" in response.text
+    assert response.is_redirect is False
 
 
-def test_protected_routes_redirect_when_signed_out(client: TestClient) -> None:
-    for path in ("/", "/pantry", "/recipes", "/plan", "/shopping", "/audit", "/settings"):
-        response = client.get(path)
-        assert response.status_code == 303, path
-        assert response.headers["location"].split("?", 1)[0] == "/login"
+@pytest.mark.parametrize("path", ["/login", "/setup", "/join", "/logout"])
+def test_account_pages_are_gone(client: TestClient, path: str) -> None:
+    assert client.get(path).status_code == 404
+    assert client.post(path).status_code == 404
 
 
-def test_setup_then_access(client: TestClient) -> None:
+def test_a_foreign_host_is_refused(client: TestClient) -> None:
+    assert client.get("/", headers={"Host": "evil.example"}).status_code == 403
+
+
+def test_a_tailscale_host_is_allowed_behind_the_proxy(client: TestClient) -> None:
+    response = client.get(
+        "/",
+        headers={"Host": "x.tailnet.ts.net", "X-Forwarded-For": "100.64.0.2"},
+    )
+    assert response.status_code == 200
+
+
+def test_a_cross_site_post_is_refused(client: TestClient) -> None:
+    response = client.post("/", headers={"Origin": "https://evil.example"})
+    assert response.status_code == 403
+
+
+def test_a_same_origin_post_is_allowed(client: TestClient) -> None:
     response = client.post(
-        "/setup",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+        "/settings/theme",
+        data={"theme": "dark"},
+        headers={"Origin": "http://127.0.0.1"},
     )
     assert response.status_code == 303
-    assert client.get("/").status_code == 200
-
-
-def test_setup_rejects_mismatched_passwords(client: TestClient) -> None:
-    response = client.post(
-        "/setup",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": "different"},
-    )
-    assert "do not match" in response.text
-
-
-def test_setup_rejects_short_passwords(client: TestClient) -> None:
-    response = client.post(
-        "/setup", data={"username": WEB_USERNAME, "password": "short", "confirm": "short"}
-    )
-    assert "at least 12" in response.text
-
-
-def test_setup_rejects_a_malformed_username(client: TestClient) -> None:
-    response = client.post(
-        "/setup", data={"username": "a b", "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
-    )
-    assert "Username must be" in response.text
-
-
-def test_setup_only_works_once(signed_in: TestClient) -> None:
-    """The claim page must close behind the first account, not stay open."""
-    signed_in.cookies.clear()
-    response = signed_in.post(
-        "/setup",
-        data={"username": "squatter", "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
-    )
-    assert response.status_code == 400
-    assert signed_in.get("/login").status_code == 200
-    assert "Claim this SousChef" not in signed_in.get("/login").text
-
-
-def test_wrong_password_is_rejected(signed_in: TestClient) -> None:
-    signed_in.cookies.clear()
-    response = signed_in.post(
-        "/login", data={"username": WEB_USERNAME, "password": "wrong-password-here"}
-    )
-    assert "Incorrect username or password" in response.text
-    assert signed_in.get("/").status_code == 303
-
-
-def test_login_succeeds_with_correct_password(signed_in: TestClient) -> None:
-    signed_in.cookies.clear()
-    response = signed_in.post(
-        "/login", data={"username": WEB_USERNAME, "password": WEB_PASSWORD}
-    )
-    assert response.status_code == 303
-    assert signed_in.get("/").status_code == 200
-
-
-def test_unknown_username_gives_the_same_error_as_a_wrong_password(
-    signed_in: TestClient,
-) -> None:
-    """Otherwise the login form is a free list of who has an account here."""
-    signed_in.cookies.clear()
-    unknown = signed_in.post(
-        "/login", data={"username": "nobody-here", "password": WEB_PASSWORD}
-    )
-    wrong = signed_in.post(
-        "/login", data={"username": WEB_USERNAME, "password": "wrong-password-here"}
-    )
-    assert "Incorrect username or password" in unknown.text
-    assert "Incorrect username or password" in wrong.text
-
-
-def test_logout_clears_the_session(signed_in: TestClient) -> None:
-    assert signed_in.post("/logout").status_code == 303
-    assert signed_in.get("/").status_code == 303
-
-
-def test_repeated_failures_lock_out(client: TestClient) -> None:
-    client.post(
-        "/setup",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
-    )
-    client.cookies.clear()
-    from souschef.web import auth
-
-    auth._failures.clear()
-    for _ in range(auth.MAX_ATTEMPTS):
-        client.post("/login", data={"username": WEB_USERNAME, "password": "nope-nope-nope"})
-    response = client.post("/login", data={"username": WEB_USERNAME, "password": WEB_PASSWORD})
-    assert "Too many attempts" in response.text
-    auth._failures.clear()
 
 
 def test_dashboard_renders_when_empty(signed_in: TestClient) -> None:
@@ -648,7 +575,7 @@ def test_share_target_without_a_url_falls_back(signed_in: TestClient) -> None:
 
 
 def test_security_headers_are_set(client: TestClient) -> None:
-    headers = client.get("/login").headers
+    headers = client.get("/").headers
     assert headers["X-Content-Type-Options"] == "nosniff"
     assert headers["X-Frame-Options"] == "DENY"
     assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
@@ -1004,18 +931,6 @@ def test_a_missing_page_is_html(signed_in: TestClient) -> None:
     assert '"detail"' not in response.text
 
 
-def test_a_wrong_current_password_is_shown_on_the_settings_page(
-    signed_in: TestClient,
-) -> None:
-    response = signed_in.post(
-        "/settings/password",
-        data={"current": "not-the-password", "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
-    )
-    assert response.status_code == 400
-    assert "Current password is incorrect" in response.text
-    assert signed_in.get("/settings").status_code == 200
-
-
 def test_an_unknown_staple_is_shown_on_the_settings_page(
     signed_in: TestClient, seeded_session: Session
 ) -> None:
@@ -1028,70 +943,6 @@ def test_an_unknown_staple_is_shown_on_the_settings_page(
     )
     assert created is not None
     assert created.is_staple
-
-
-def test_sign_in_returns_to_the_page_that_was_requested(signed_in: TestClient) -> None:
-    signed_in.cookies.clear()
-    denied = signed_in.get("/pantry")
-    assert denied.headers["location"] == "/login?next=%2Fpantry"
-    assert 'name="next" value="/pantry"' in signed_in.get("/login?next=%2Fpantry").text
-
-    retry = signed_in.post(
-        "/login",
-        data={"username": WEB_USERNAME, "password": "nope-nope-nope-x", "next": "/pantry"},
-    )
-    assert 'name="next" value="/pantry"' in retry.text
-
-    logged_in = signed_in.post(
-        "/login",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "next": "/pantry"},
-    )
-    assert logged_in.headers["location"] == "/pantry"
-
-
-def test_sign_in_keeps_a_recipe_shared_from_the_phone(signed_in: TestClient) -> None:
-    signed_in.cookies.clear()
-    shared = "https://example.com/shakshuka"
-    denied = signed_in.get("/share", params={"url": shared})
-    assert denied.status_code == 303
-    assert denied.headers["location"].startswith("/login?next=")
-    assert shared in signed_in.get(denied.headers["location"]).text
-
-    logged_in = signed_in.post(
-        "/login",
-        data={
-            "username": WEB_USERNAME,
-            "password": WEB_PASSWORD,
-            "next": f"/share?url={shared}",
-        },
-    )
-    assert logged_in.headers["location"] == f"/share?url={shared}"
-    onward = signed_in.get(logged_in.headers["location"])
-    assert onward.headers["location"] == f"/recipes?import_url={shared}"
-
-
-def test_sign_in_drops_an_off_site_return_path(signed_in: TestClient) -> None:
-    signed_in.cookies.clear()
-    absolute = signed_in.post(
-        "/login",
-        data={
-            "username": WEB_USERNAME,
-            "password": WEB_PASSWORD,
-            "next": "https://evil.example/steal",
-        },
-    )
-    assert absolute.headers["location"] == "/"
-
-    signed_in.cookies.clear()
-    schemeless = signed_in.post(
-        "/login",
-        data={
-            "username": WEB_USERNAME,
-            "password": WEB_PASSWORD,
-            "next": "//evil.example",
-        },
-    )
-    assert schemeless.headers["location"] == "/"
 
 
 def test_the_same_meal_is_not_planned_twice_in_one_day(
@@ -1300,11 +1151,6 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
     assert "steak" not in signed_in.get("/shopping").text.casefold()
 
 
-def test_setup_username_pattern_escapes_the_hyphen(client: TestClient) -> None:
-    page = client.get("/login").text
-    assert 'pattern="[A-Za-z0-9][A-Za-z0-9._\\-]{2,31}"' in page
-
-
 def test_unknown_paths_and_the_wrong_method_render_html(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -1320,8 +1166,7 @@ def test_unknown_paths_and_the_wrong_method_render_html(
     refresh = signed_in.get("/pantry/add")
     assert refresh.status_code == 303
     assert refresh.headers["location"] == "/pantry"
-    assert signed_in.get("/setup").headers["location"] == "/login"
-    assert signed_in.get("/settings/password").headers["location"] == "/settings"
+    assert signed_in.get("/settings/staples").headers["location"] == "/settings"
 
     receipt = Receipt(
         user_id=web_user.id,
@@ -1335,10 +1180,10 @@ def test_unknown_paths_and_the_wrong_method_render_html(
     assert applied.status_code == 303
     assert applied.headers["location"] == f"/receipts/{receipt.id}"
 
-    logout = signed_in.get("/logout")
-    assert logout.status_code == 405
-    assert logout.headers["content-type"].startswith("text/html")
-    assert '"detail"' not in logout.text
+    wrong_method = signed_in.post("/")
+    assert wrong_method.status_code == 405
+    assert wrong_method.headers["content-type"].startswith("text/html")
+    assert '"detail"' not in wrong_method.text
 
 
 def test_skip_link_and_nav_come_before_the_page(signed_in: TestClient) -> None:
@@ -1450,13 +1295,6 @@ def test_recipe_search_matches_an_ingredient(
     found = signed_in.get("/recipes", params={"q": "garlic"}).text
     assert "Weeknight Pasta" in found
     assert "Plain Toast" not in found
-
-
-def test_a_signed_in_user_opening_join_is_told_so(signed_in: TestClient) -> None:
-    page = signed_in.get("/join")
-    assert page.status_code == 200
-    assert "already signed in" in page.text.casefold()
-    assert "needs a valid invite" not in page.text
 
 
 def test_a_night_off_shows_on_the_plan_and_adds_nothing_to_the_list(
@@ -1630,18 +1468,21 @@ def test_the_x_is_not_offered_on_staples(
 
 
 def test_an_undo_link_for_someone_elses_discard_changes_nothing(
-    signed_in: TestClient, seeded_session: Session, web_user: User, user
+    signed_in: TestClient, seeded_session: Session
 ) -> None:
+    other = User(username="someone-else", display_name="x", password_hash="x")
+    seeded_session.add(other)
+    seeded_session.flush()
     eggs = ing(seeded_session, "eggs")
-    record_event(seeded_session, user.id, eggs, reason=EventReason.PURCHASE, delta=12)
-    waste = discard_item(seeded_session, user.id, eggs)
+    record_event(seeded_session, other.id, eggs, reason=EventReason.PURCHASE, delta=12)
+    waste = discard_item(seeded_session, other.id, eggs)
     seeded_session.commit()
 
     signed_in.post(f"/pantry/undo/{waste.id}", data={})
     seeded_session.expire_all()
     theirs = seeded_session.scalar(
         select(PantryItem).where(
-            PantryItem.user_id == user.id, PantryItem.ingredient_id == eggs.id
+            PantryItem.user_id == other.id, PantryItem.ingredient_id == eggs.id
         )
     )
     assert theirs.quantity == 0
@@ -1742,11 +1583,14 @@ def test_servings_must_be_between_one_and_fifty(
 
 
 def test_another_users_plan_entry_servings_cannot_be_edited(
-    signed_in: TestClient, seeded_session: Session, user: User
+    signed_in: TestClient, seeded_session: Session
 ) -> None:
-    recipe = _pasta_recipe(seeded_session, user)
+    other = User(username="someone-else", display_name="x", password_hash="x")
+    seeded_session.add(other)
+    seeded_session.flush()
+    recipe = _pasta_recipe(seeded_session, other)
     entry = MealPlanEntry(
-        user_id=user.id, plan_date=date.today() + timedelta(days=1),
+        user_id=other.id, plan_date=date.today() + timedelta(days=1),
         slot=MealSlot.DINNER, recipe_id=recipe.id, servings=4,
     )
     seeded_session.add(entry)

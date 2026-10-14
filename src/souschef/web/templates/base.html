@@ -31,8 +31,7 @@
   <a class="nav-extra {{ 'on' if request.url.path.startswith('/settings') }}" href="/settings">{{ icon('settings', 18) }}<span>Settings</span></a>
 </nav>
 {% endif %}
-{# Chrome only for signed-in users: the login, setup and join pages have no
-   account to manage and nowhere to navigate to. #}
+{# A missing route never resolves an account, so its error page has no tab bar. #}
 <header class="topbar">
   <a class="brand" href="/">SousChef</a>
   {% if user %}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
@@ -22,7 +23,6 @@ from souschef.web.common import (
 )
 from souschef.web.routes import (
     audit,
-    auth,
     cook,
     home,
     meta,
@@ -54,19 +54,30 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # is wrong rather than merely busy.
 SLOW_REQUEST_SECONDS = 3.0
 
+_SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _origin_hostname(origin: str) -> str:
+    return (urlsplit(origin).hostname or "").lower()
+
 
 @app.middleware("http")
-async def single_user_guard(request: Request, call_next):  # noqa: ANN001, ANN201
-    """No-auth mode answers only this machine.
+async def host_guard(request: Request, call_next):  # noqa: ANN001, ANN201
+    """Refuse a request that did not come through loopback or Tailscale.
 
-    A loopback bind behind a reverse proxy such as `tailscale serve` is still
-    reachable from the proxy's network, so the Host and forwarding headers are
-    checked as well as the bind address.
+    Nothing checks who the caller is, so a public name that resolves here
+    (DNS rebinding) must not be answered. Tailscale serve sets Host to the
+    ``*.ts.net`` name and adds ``X-Forwarded-*``; those headers stay allowed.
+    A state-changing request whose Origin names a different host is a form
+    posted from another site.
     """
-    if get_settings().single_user:
-        forwarded = any(name.startswith("x-forwarded-") for name in request.headers)
-        if forwarded or request_hostname(request) not in LOOPBACK_HOSTS:
-            return PlainTextResponse("No-auth mode answers only this machine", status_code=403)
+    host = request_hostname(request)
+    if host not in LOOPBACK_HOSTS and not host.endswith(".ts.net"):
+        return PlainTextResponse("This host is not allowed", status_code=403)
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get("origin")
+        if origin is not None and _origin_hostname(origin) != host:
+            return PlainTextResponse("Cross-site request refused", status_code=403)
     return await call_next(request)
 
 
@@ -140,7 +151,7 @@ async def http_exception_page(request: Request, exc: StarletteHTTPException) -> 
 
     Routing 404s and 405s raise Starlette's HTTPException, not FastAPI's subclass,
     so the handler has to be registered on the base class or they stay raw JSON.
-    Redirects (the signed-out 303) must keep their Location header.
+    Redirects must keep their Location header.
     """
     if exc.status_code in {301, 302, 303, 307, 308}:
         return await http_exception_handler(request, exc)
@@ -177,7 +188,6 @@ async def validation_page(request: Request, exc: RequestValidationError) -> Resp
     )
 
 
-app.include_router(auth.router)
 app.include_router(home.router)
 app.include_router(pantry.router)
 app.include_router(recipes.router)

@@ -41,18 +41,16 @@ nothing about it that assumes a network beyond the one you are sitting on.
 ```bash
 python3 -m venv venv && ./venv/bin/pip install -e '.[dev]'
 
-./venv/bin/souschef init      # database, keys, ingredient catalog
+./venv/bin/souschef init      # database, key, ingredient catalog
 ./venv/bin/souschef serve     # http://127.0.0.1:8000
 ```
 
-`init` generates the two keys the app needs and writes them to
-`~/.config/souschef/`, mode 0600 — nothing to export and nothing left in a shell
-history. `session_secret` signs session cookies; `secret_key` encrypts the stored
-NYT cookie. Deleting the first signs everyone out, deleting the second costs one
-re-paste of that cookie, and neither protects anything else.
+`init` generates the key the app needs and writes it to `~/.config/souschef/`,
+mode 0600 — nothing to export and nothing left in a shell history. `secret_key`
+encrypts the stored NYT cookie. Deleting it costs one re-paste of that cookie.
 
-The first visitor to an empty database claims it and becomes the admin. Locally
-that is you, thirty seconds later.
+There is no sign-in. Every request acts as the one account. The first request
+creates it when the database has none.
 
 `souschef config` prints where everything ended up. `SOUSCHEF_NO_EXTERNAL=true`
 blocks every outbound call, for a run that provably cannot reach a third party.
@@ -63,32 +61,22 @@ Run Tailscale on the machine that hosts SousChef and on the phone, then
 `tailscale serve --bg --https=443 http://127.0.0.1:8000`. The phone reaches
 `https://<machine>.<tailnet>.ts.net` over a real certificate, which is what
 installing the app, the service worker, the share target and the clipboard
-need. The server stays bound to loopback and is never exposed publicly.
+need. The server stays bound to loopback. `souschef serve` refuses any other
+`--host`: other devices reach it through `tailscale serve`, which proxies to
+loopback and presents the tailnet name.
 
-`souschef serve --host 0.0.0.0` publishes to the local network only. Sessions
-and receipt photos work there; installing and offline use do not, because
-plain HTTP is not a secure context.
-
-`souschef serve --no-auth` skips sign-in and acts as the first account. It
-accepts only a loopback `--host`, and answers only requests made on this machine.
+A request is answered only when its Host is loopback or a `*.ts.net` name, so a
+public DNS name pointed at the machine is refused. A state-changing request
+whose `Origin` names a different host is refused too. Tailscale's `X-Forwarded-*`
+headers are allowed; the proxy sets Host to the `ts.net` name.
 
 ### Accounts
 
-Several people can share one instance, and each gets a **separate kitchen** — own
-pantry, recipes, plan, shopping list, receipts and NYT cookie. The only thing
-shared is the ingredient catalog, which is reference data about food rather than
-anything personal.
+One account, one kitchen: pantry, recipes, plan, shopping list, receipts and
+the NYT cookie. The ingredient catalog is shared reference data about food.
 
-The app is built and tested for one kitchen. Two pieces of per-kitchen state
-still live on that shared catalog, so with several accounts they leak between
-kitchens: the **Always have** list (`CanonicalIngredient.is_staple`) and
-**ingredients typed in by hand**, which are added to the catalog with no owner
-along with any package size learned for them. Real multi-user use needs a
-per-user staples table and an owner on typed-in catalog rows.
-
-Registration is closed: after the first account, joining needs a single-use
-invite generated from Settings. That leaves exactly one anonymous form on the
-whole site, whatever network you end up serving it on.
+The **Always have** list (`CanonicalIngredient.is_staple`) and **ingredients
+typed in by hand** live on that catalog. Write to them directly.
 
 ### Other commands
 
@@ -99,8 +87,6 @@ souschef scan photo.jpg   # dry-run OCR on a receipt, changes nothing
 souschef rebuild          # recompute pantry levels by replaying the ledger
 souschef config           # show effective configuration
 souschef users            # list accounts
-souschef invite           # mint an invite link
-souschef passwd <user>    # set a password; the only password-reset path there is
 ```
 
 ## Where your data lives
@@ -110,7 +96,7 @@ souschef passwd <user>    # set a password; the only password-reset path there i
 | `data/souschef.db` | Everything: pantry, ledger, recipes, plans, accounts |
 | `data/receipts/` | Receipt photos, stripped of EXIF on upload |
 | `data/backups/` | Snapshots from `souschef backup` |
-| `~/.config/souschef/` | The two keys, deliberately not in the data directory |
+| `~/.config/souschef/` | The encryption key, deliberately not in the data directory |
 
 `SOUSCHEF_DATA_DIR` moves the first three elsewhere.
 
@@ -134,8 +120,8 @@ Drive, and the database rides along as a `souschef backup` snapshot.
 What will not work is putting the live SQLite file on a synced drive. SQLite
 needs byte-range locks and an fsync that means something, and a sync client
 gives it neither — you get silent corruption rather than an error. The keys stay
-out of the data directory for a related reason: a session key that syncs to a
-third party is a session key you have given away.
+out of the data directory for a related reason: a key that syncs to a third
+party is a key you have given away.
 
 ## How it works
 
@@ -194,13 +180,13 @@ misbehaved can be traced to every line it produced:
 ```
 
 Warnings are reserved for things worth acting on: an unreadable photo, a store
-the matcher hasn't learned, a catalog gap that blocked a unit conversion,
-repeated failed sign-ins. `SOUSCHEF_LOG_LEVEL=DEBUG` for more.
+the matcher hasn't learned, a catalog gap that blocked a unit conversion.
+`SOUSCHEF_LOG_LEVEL=DEBUG` for more.
 
 Credentials are scrubbed by the formatter before anything is written, so logs
-are safe to paste into an issue. `/healthz` returns 503 rather than 200 when a
-required secret is missing — an app that looks healthy while unable to issue
-sessions is worse than one that is plainly down.
+are safe to paste into an issue. `/healthz` returns 503 rather than 200 when the
+encryption key is missing — an app that looks healthy while unable to decrypt
+the stored NYT cookie is worse than one that is plainly down.
 
 ## Testing
 

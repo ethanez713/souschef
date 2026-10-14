@@ -29,23 +29,35 @@ def install(tmp_path, monkeypatch) -> Iterator[Settings]:  # noqa: ANN001
 
 
 def test_first_run_generates_its_own_keys(install: Settings) -> None:
-    assert ensure_local_secrets() == ["session_secret", "secret_key"]
+    assert ensure_local_secrets() == ["secret_key"]
 
-    assert install.session_secret
     assert len(install.secret_key) == 64  # 32 bytes hex, what AES-GCM wants
-    for name in ("session_secret", "secret_key"):
-        assert (install.config_dir / name).stat().st_mode & 0o777 == 0o600
+    assert (install.config_dir / "secret_key").stat().st_mode & 0o777 == 0o600
     assert install.config_dir.stat().st_mode & 0o777 == 0o700
+    assert not (install.config_dir / "session_secret").exists()
 
 
 def test_keys_survive_a_restart(install: Settings) -> None:
-    """Regenerating on every start would sign everyone out and orphan the NYT cookie."""
+    """Regenerating on every start would orphan the NYT cookie."""
     ensure_local_secrets()
 
     restarted = Settings()
-    assert restarted.session_secret == install.session_secret
     assert restarted.secret_key == install.secret_key
     assert ensure_local_secrets() == []
+
+
+def test_an_existing_session_secret_file_still_loads(install: Settings) -> None:
+    path = install.config_dir / "session_secret"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("already-there\n", encoding="utf-8")
+    config_module.get_settings.cache_clear()
+    try:
+        loaded = Settings()
+        assert loaded.session_secret == "already-there"
+        assert ensure_local_secrets() == ["secret_key"]
+        assert loaded.session_secret == "already-there"
+    finally:
+        config_module.get_settings.cache_clear()
 
 
 def test_environment_wins_over_generated_keys(tmp_path, monkeypatch) -> None:  # noqa: ANN001
@@ -123,7 +135,7 @@ def test_restore_refuses_an_unknown_snapshot(install: Settings) -> None:
     assert _read_note(install) == "before"
 
 
-def test_no_auth_refuses_a_non_loopback_host(monkeypatch, capsys) -> None:  # noqa: ANN001
+def test_serve_refuses_a_non_loopback_host(monkeypatch, capsys) -> None:  # noqa: ANN001
     import uvicorn
 
     from souschef.cli import main
@@ -131,6 +143,20 @@ def test_no_auth_refuses_a_non_loopback_host(monkeypatch, capsys) -> None:  # no
     started: list[object] = []
     monkeypatch.setattr(uvicorn, "run", lambda *a, **k: started.append((a, k)))
 
-    assert main(["serve", "--no-auth", "--host", "0.0.0.0"]) != 0
+    assert main(["serve", "--host", "0.0.0.0"]) == 2
     assert started == []
-    assert "loopback" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "there is no sign-in, reach it from other devices via `tailscale serve`" in err
+
+
+def test_serve_on_loopback_starts(monkeypatch) -> None:  # noqa: ANN001
+    import uvicorn
+
+    from souschef.cli import main
+
+    started: list[object] = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: started.append((a, k)))
+
+    assert main(["serve"]) == 0
+    assert len(started) == 1
+    assert started[0][1]["host"] == "127.0.0.1"

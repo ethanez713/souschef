@@ -44,11 +44,10 @@ def manifest() -> JSONResponse:
 
 @router.get("/healthz")
 def healthz(db: Session = Depends(get_db)) -> JSONResponse:
-    """Liveness plus the two misconfigurations that break the app silently.
+    """Liveness plus the misconfiguration that breaks stored credentials silently.
 
-    An app that answers 200 while unable to decrypt credentials or issue
-    sessions is worse than one that is plainly down, because nothing surfaces
-    the problem until you try to sign in.
+    An app that answers 200 while unable to decrypt the stored NYT cookie is
+    worse than one that is plainly down.
     """
     problems: list[str] = []
     try:
@@ -58,8 +57,6 @@ def healthz(db: Session = Depends(get_db)) -> JSONResponse:
         problems.append(f"database: {exc}")
 
     settings = get_settings()
-    if not settings.session_secret:
-        problems.append("SOUSCHEF_SESSION_SECRET is not set")
     if not settings.secret_key:
         problems.append("SOUSCHEF_SECRET_KEY is not set")
 

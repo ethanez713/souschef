@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException, Request
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from sqlalchemy.orm import Session
@@ -26,7 +26,6 @@ from souschef.core.units import (
 from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, Recipe, User
 from souschef.models.base import Base
 from souschef.planning.shopping import build_shopping_list, is_package_count
-from souschef.web import auth
 
 PLAN_DAYS = 10
 
@@ -247,16 +246,15 @@ def _theme(request: Request) -> str:
 
 
 def _render(request: Request, template: str, *, status_code: int = 200, **context) -> HTMLResponse:
-    # `user` is injected rather than passed by each route: the nav and sign-out
-    # control need it on every authenticated page, and a route that forgot it
-    # would silently render the signed-out chrome to a signed-in user.
+    # `user` is injected rather than passed by each route: the nav needs it on
+    # every page, and a route that forgot it would render without the tab bar.
     context.setdefault("user", getattr(request.state, "user", None))
     context.setdefault("theme", _theme(request))
     return templates.TemplateResponse(request, template, context, status_code=status_code)
 
 
 def _safe_next(value: str | None) -> str:
-    """A same-origin path to return to after sign-in.
+    """A same-origin path to return to after a form post.
 
     The share target's query string contains a full URL, so ``://`` is only
     rejected in the path. An absolute or scheme-relative value is dropped.
@@ -323,44 +321,12 @@ def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str): 
     return obj
 
 
-TAILNET_SUFFIX = ".ts.net"
-
-
-def _is_secure_request(request: Request) -> bool:
-    """Whether the *browser* reached us over HTTPS.
-
-    A local run is plain HTTP, so the session cookie must not be marked Secure:
-    the browser would never send it back and sign-in would appear to succeed
-    while every following request came in anonymous. Behind a TLS tunnel the app
-    still sees http and has to take the forwarded header's word for it.
-    """
-    forwarded = request.headers.get("x-forwarded-proto", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip() == "https"
-    return request.url.scheme == "https" or request_hostname(request).endswith(TAILNET_SUFFIX)
-
-
 def request_hostname(request: Request) -> str:
     """The Host header without its port, lowercased; bracketed IPv6 loses its brackets."""
     host = request.headers.get("host", "").strip().lower()
     if host.startswith("["):
         return host[1:].split("]", 1)[0]
     return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
-
-
-def _set_session_cookie(request: Request, response: Response, user: User) -> None:
-    # Issuing a session *is* a sign-in, so record it here rather than only in
-    # the login route -- otherwise an account created via /setup or /join reads
-    # as "last login: never" while plainly being signed in.
-    user.last_login_at = datetime.now(UTC)
-    response.set_cookie(
-        auth.SESSION_COOKIE,
-        auth.issue_session(user),
-        max_age=auth.SESSION_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=_is_secure_request(request),
-    )
 
 
 def _discard_notice(db: Session, user: User, event_id: int) -> dict | None:

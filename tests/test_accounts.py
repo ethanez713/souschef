@@ -1,26 +1,23 @@
-"""Multi-user isolation and the invite flow.
+"""Owner filters on every route that takes an id.
 
-This file exists for one reason: in a multi-user app the expensive bug is not a
-crash, it is a query that quietly forgets to filter by owner and shows one
-person another person's kitchen. Every route that takes an id is therefore
-probed here from an account that does not own it.
+The expensive bug is a query that forgets to filter by owner and shows one
+account another account's kitchen. Every route that takes an id is probed here
+with a second account's row.
 
-The assertions are deliberately about *what the second user can reach*, not
-about internal call signatures -- a refactor that changes how `user_id` is
-threaded through should not be able to make these pass while the isolation is
-actually broken.
+The assertions are about what the acting account can reach, not about internal
+call signatures -- a refactor that changes how `user_id` is threaded through
+should not be able to make these pass while the filter is actually gone.
 """
 
 from __future__ import annotations
 
-import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from tests.conftest import WEB_PASSWORD, WEB_USERNAME
+from tests.conftest import WEB_USERNAME
 
 from souschef.core.inventory import get_or_create_item, pantry_view, record_event
 from souschef.core.recipes import save_imported_recipe
@@ -28,7 +25,6 @@ from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
-    Invite,
     MealPlanEntry,
     MealSlot,
     Receipt,
@@ -39,9 +35,6 @@ from souschef.models import (
     StoredCredential,
     User,
 )
-from souschef.web import auth
-
-OTHER_PASSWORD = "another-long-test-password"
 
 
 def ing(session: Session, name: str) -> CanonicalIngredient:
@@ -51,9 +44,11 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
 
 
 @pytest.fixture
-def stranger(seeded_session: Session) -> User:
-    """A second account whose data the signed-in user must never reach."""
-    user = auth.create_user(seeded_session, "stranger", OTHER_PASSWORD)
+def stranger(seeded_session: Session, signed_in: TestClient) -> User:
+    """A second account, inserted after the web account so requests do not act as it."""
+    assert signed_in is not None
+    user = User(username="stranger", display_name="stranger", password_hash="x")
+    seeded_session.add(user)
     seeded_session.commit()
     return user
 
@@ -298,284 +293,6 @@ def test_deleting_a_user_takes_their_data_with_them(
     assert seeded_session.scalars(select(PantryItem)).all() == []
     assert seeded_session.scalars(select(InventoryEvent)).all() == []
     assert seeded_session.scalars(select(ShoppingList)).all() == []
-
-
-def test_registration_is_closed_without_an_invite(signed_in: TestClient) -> None:
-    signed_in.cookies.clear()
-    page = signed_in.get("/join")
-    assert "needs a valid invite" in page.text
-    response = signed_in.post(
-        "/join",
-        data={
-            "code": "made-up-code",
-            "username": "gatecrasher",
-            "password": OTHER_PASSWORD,
-            "confirm": OTHER_PASSWORD,
-        },
-    )
-    assert "invalid, already used, or expired" in response.text
-
-
-def _invite_code(client: TestClient) -> str:
-    created = client.post("/settings/invites", data={"note": "for a friend"})
-    assert created.status_code == 303
-    assert "new_invite" not in created.headers["location"]
-    assert "code=" not in created.headers["location"]
-    page = client.get("/settings")
-    found = re.search(r"/join\?code=([A-Za-z0-9_\-]+)", page.text)
-    assert found is not None
-    return found.group(1)
-
-
-@pytest.mark.parametrize(
-    ("host", "expected_base", "warns"),
-    [
-        ("box.tailnet.ts.net", "https://box.tailnet.ts.net", False),
-        ("127.0.0.1:8000", "http://127.0.0.1:8000", True),
-    ],
-)
-def test_invite_notice_names_the_address_it_was_made_on(
-    signed_in: TestClient, host: str, expected_base: str, warns: bool
-) -> None:
-    signed_in.post("/settings/invites", data={"note": "for a friend"})
-    page = signed_in.get("/settings", headers={"Host": host})
-    assert f"{expected_base}/join?code=" in page.text
-    assert ("replace that" in page.text) is warns
-
-
-def test_invite_lets_exactly_one_person_join(
-    signed_in: TestClient, seeded_session: Session
-) -> None:
-    code = _invite_code(signed_in)
-
-    signed_in.cookies.clear()
-    joined = signed_in.post(
-        "/join",
-        data={
-            "code": code,
-            "username": "friend",
-            "password": OTHER_PASSWORD,
-            "confirm": OTHER_PASSWORD,
-        },
-    )
-    assert joined.status_code == 303
-    assert signed_in.get("/").status_code == 200  # signed in as the new account
-
-    # The same code must not work a second time.
-    signed_in.cookies.clear()
-    reused = signed_in.post(
-        "/join",
-        data={
-            "code": code,
-            "username": "gatecrasher",
-            "password": OTHER_PASSWORD,
-            "confirm": OTHER_PASSWORD,
-        },
-    )
-    assert "invalid, already used, or expired" in reused.text
-
-    seeded_session.expire_all()
-    assert seeded_session.scalar(
-        select(User).where(User.username == "gatecrasher")
-    ) is None
-
-
-def test_a_new_account_starts_with_an_empty_kitchen(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    # Not olive oil: it appears as a placeholder in the "add an item" form, so
-    # asserting on its absence would pass for the wrong reason.
-    record_event(
-        seeded_session, web_user.id, ing(seeded_session, "heavy cream"),
-        reason=EventReason.PURCHASE, delta=500,
-    )
-    seeded_session.commit()
-    assert "heavy cream" in signed_in.get("/pantry").text
-
-    code = _invite_code(signed_in)
-
-    signed_in.cookies.clear()
-    signed_in.post(
-        "/join",
-        data={
-            "code": code,
-            "username": "newcomer",
-            "password": OTHER_PASSWORD,
-            "confirm": OTHER_PASSWORD,
-        },
-    )
-    assert "heavy cream" not in signed_in.get("/pantry").text
-
-
-def test_expired_invites_are_refused(seeded_session: Session, user: User) -> None:
-    invite, code = auth.create_invite(seeded_session, user)
-    invite.expires_at = datetime.now(UTC) - timedelta(seconds=1)
-    seeded_session.flush()
-
-    assert auth.find_usable_invite(seeded_session, code) is None
-    with pytest.raises(ValueError, match="invalid, already used, or expired"):
-        auth.redeem_invite(seeded_session, code, "toolate", OTHER_PASSWORD)
-
-
-def test_invite_codes_are_not_stored_in_the_clear(
-    seeded_session: Session, user: User
-) -> None:
-    """A database leak must not hand out working invites."""
-    _, code = auth.create_invite(seeded_session, user)
-    stored = seeded_session.scalars(select(Invite)).all()
-    assert len(stored) == 1
-    assert code not in stored[0].code_hash
-
-
-def test_only_admins_can_create_invites(
-    signed_in: TestClient, seeded_session: Session
-) -> None:
-    code = _invite_code(signed_in)
-
-    signed_in.cookies.clear()
-    signed_in.post(
-        "/join",
-        data={
-            "code": code,
-            "username": "plainuser",
-            "password": OTHER_PASSWORD,
-            "confirm": OTHER_PASSWORD,
-        },
-    )
-    # Now signed in as the non-admin account that just joined.
-    assert signed_in.post("/settings/invites", data={"note": ""}).status_code == 403
-    assert "Create invite" not in signed_in.get("/settings").text
-
-
-def test_usernames_are_case_insensitive(seeded_session: Session) -> None:
-    auth.create_user(seeded_session, "Ethan", WEB_PASSWORD)
-    with pytest.raises(ValueError, match="already taken"):
-        auth.create_user(seeded_session, "ETHAN", WEB_PASSWORD)
-
-
-def test_changing_your_password_signs_out_other_devices(
-    signed_in: TestClient, seeded_session: Session
-) -> None:
-    """A stolen cookie must not outlive the password change meant to kill it."""
-    from souschef.web.app import app
-
-    other_device = TestClient(app, follow_redirects=False)
-    other_device.cookies.update(signed_in.cookies)
-    assert other_device.get("/").status_code == 200
-
-    changed = signed_in.post(
-        "/settings/password",
-        data={
-            "current": WEB_PASSWORD,
-            "password": OTHER_PASSWORD,
-            "confirm": OTHER_PASSWORD,
-        },
-    )
-    assert changed.status_code == 303
-
-    assert other_device.get("/").status_code == 303  # old cookie is dead
-    assert signed_in.get("/").status_code == 200  # the device that changed it stays in
-
-
-def test_a_session_for_a_deleted_account_stops_working(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    assert signed_in.get("/").status_code == 200
-
-    seeded_session.delete(web_user)
-    seeded_session.commit()
-
-    assert signed_in.get("/").status_code == 303
-
-
-def test_a_forged_session_cookie_is_rejected(signed_in: TestClient) -> None:
-    signed_in.cookies.set(auth.SESSION_COOKIE, "not-a-real-signed-value")
-    assert signed_in.get("/").status_code == 303
-
-
-def test_lockout_is_per_account_not_per_box(
-    signed_in: TestClient, seeded_session: Session
-) -> None:
-    """One person fat-fingering their password must not lock everyone else out."""
-    auth.create_user(seeded_session, "housemate", OTHER_PASSWORD)
-    seeded_session.commit()
-    signed_in.cookies.clear()
-
-    for _ in range(auth.MAX_ATTEMPTS):
-        signed_in.post("/login", data={"username": WEB_USERNAME, "password": "wrong-guess-x"})
-
-    assert "Too many attempts" in signed_in.post(
-        "/login", data={"username": WEB_USERNAME, "password": WEB_PASSWORD}
-    ).text
-    assert signed_in.post(
-        "/login", data={"username": "housemate", "password": OTHER_PASSWORD}
-    ).status_code == 303
-
-
-LOOPBACK = {"Host": "127.0.0.1:8000"}
-
-
-def test_single_user_mode_skips_sign_in(client, monkeypatch) -> None:  # noqa: ANN001
-    from souschef.config import get_settings
-
-    assert client.get("/").status_code == 303
-
-    monkeypatch.setenv("SOUSCHEF_SINGLE_USER", "true")
-    get_settings.cache_clear()
-    try:
-        assert client.get("/", headers=LOOPBACK).status_code == 200
-        assert client.get("/login", headers=LOOPBACK).headers["location"] == "/"
-    finally:
-        monkeypatch.delenv("SOUSCHEF_SINGLE_USER")
-        get_settings.cache_clear()
-
-
-@pytest.mark.parametrize(
-    ("headers", "status"),
-    [
-        ({"Host": "127.0.0.1:8000"}, 200),
-        ({"Host": "localhost:8000"}, 200),
-        ({"Host": "[::1]:8000"}, 200),
-        ({"Host": "box.tailnet.ts.net"}, 403),
-        ({"Host": "192.168.1.5:8000"}, 403),
-        ({"Host": "127.0.0.1:8000", "X-Forwarded-For": "100.64.0.2"}, 403),
-        ({"Host": "127.0.0.1:8000", "X-Forwarded-Proto": "https"}, 403),
-    ],
-)
-def test_no_auth_mode_answers_only_this_machine(
-    client, monkeypatch, headers: dict[str, str], status: int  # noqa: ANN001
-) -> None:
-    from souschef.config import get_settings
-
-    monkeypatch.setenv("SOUSCHEF_SINGLE_USER", "true")
-    get_settings.cache_clear()
-    try:
-        response = client.get("/", headers=headers)
-    finally:
-        monkeypatch.delenv("SOUSCHEF_SINGLE_USER")
-        get_settings.cache_clear()
-    assert response.status_code == status
-    if status == 403:
-        assert "only this machine" in response.text
-
-
-def test_a_tailnet_host_gets_a_secure_session_cookie(client) -> None:  # noqa: ANN001
-    response = client.post(
-        "/setup",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
-        headers={"Host": "box.tailnet.ts.net"},
-    )
-    assert response.status_code == 303
-    assert "secure" in response.headers["set-cookie"].lower()
-
-
-def test_a_loopback_host_gets_a_plain_session_cookie(client) -> None:  # noqa: ANN001
-    response = client.post(
-        "/setup",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
-        headers=LOOPBACK,
-    )
-    assert "secure" not in response.headers["set-cookie"].lower()
 
 
 def test_unit_preferences_persist(signed_in, seeded_session) -> None:  # noqa: ANN001

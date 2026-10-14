@@ -6,7 +6,6 @@
 <main id="main">
   <h1>Settings</h1>
   {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
-  {% if saved == 'password' %}<div class="notice good">{{ icon('circle-check', 16) }}<div>Password changed.</div></div>{% endif %}
 
   {{ group_header('Appearance') }}
   <div class="card">
@@ -67,40 +66,7 @@
     </div>
   </details>
 
-  {{ group_header('Account') }}
-  <div class="card">
-    <div class="row">
-      <div class="stack">
-        <strong>{{ user.username }}</strong>
-        <span class="meta">{{ 'Admin — can invite people' if user.is_admin else 'Standard account' }}</span>
-      </div>
-      <form method="post" action="/logout" class="inline">
-        <button type="submit">{{ icon('log-out', 16) }}Sign out</button>
-      </form>
-    </div>
-
-    <details style="margin-top:var(--sp-4)">
-      <summary class="small" style="cursor:pointer;color:var(--text-link)">Change password</summary>
-      <form method="post" action="/settings/password" style="margin-top:var(--sp-3)">
-        <div class="field">
-          <label for="cur">Current password</label>
-          <input id="cur" name="current" type="password" autocomplete="current-password" required>
-        </div>
-        <div class="field">
-          <label for="np">New password</label>
-          <input id="np" name="password" type="password" autocomplete="new-password" required minlength="12">
-        </div>
-        <div class="field">
-          <label for="np2">Confirm</label>
-          <input id="np2" name="confirm" type="password" autocomplete="new-password" required minlength="12">
-        </div>
-        <button type="submit">Change password</button>
-        <p class="note">Changing your password signs out every other device you are signed in on.</p>
-      </form>
-    </details>
-  </div>
-
-  <details class="group" {{ 'open' if new_invite or error }}>
+  <details class="group" {{ 'open' if error }}>
     <summary>{{ group_header('Advanced') }}</summary>
   <h2>NYT Cooking</h2>
   <div class="card">
@@ -148,78 +114,6 @@
       </p>
     </details>
   </div>
-
-  {% if user.is_admin %}
-  <h2>Invites</h2>
-  <div class="card">
-    {% if new_invite %}
-      {% set invite_url = invite_base ~ '/join?code=' ~ new_invite %}
-      <div class="notice">
-        {{ icon('triangle-alert', 16) }}
-        <div>
-          <strong>Send this link. It is shown once and cannot be recovered.</strong>
-          <p style="word-break:break-all;margin-top:var(--sp-2)">
-            <code>{{ invite_url }}</code>
-          </p>
-          <button type="button" data-copy="{{ invite_url }}">Copy link</button>
-          {% if request.url.hostname in ['localhost', '127.0.0.1', '::1'] %}
-            <p class="note">
-              This link uses {{ request.url.hostname }}. On another device, replace that
-              with this computer's LAN address.
-            </p>
-          {% endif %}
-        </div>
-      </div>
-    {% endif %}
-
-    <form method="post" action="/settings/invites">
-      <div class="field">
-        <label for="note">Who is it for? (optional)</label>
-        <input id="note" name="note" placeholder="Jordan" maxlength="120">
-      </div>
-      <button type="submit">Create invite</button>
-    </form>
-
-    {% if invites %}
-      <table style="margin-top:var(--sp-4);width:100%">
-        <tbody>
-        {% for invite in invites %}
-          <tr>
-            <td>
-              <div class="stack">
-                <span>{{ invite.note or 'No note' }}</span>
-                <span class="meta">
-                  {% if invite.redeemed_at %}
-                    used by {{ invite.redeemed_by.username if invite.redeemed_by else 'a deleted account' }}
-                  {% elif invite.expires_at.replace(tzinfo=None) < now.replace(tzinfo=None) %}
-                    expired
-                  {% else %}
-                    expires {{ invite.expires_at.strftime('%-d %b') }}
-                  {% endif %}
-                </span>
-              </div>
-            </td>
-            <td style="text-align:right">
-              {% if not invite.redeemed_at %}
-                <form method="post" action="/settings/invites/{{ invite.id }}/revoke" class="inline">
-                  <button class="small danger" type="submit">Revoke</button>
-                </form>
-              {% else %}
-                <span class="badge good">used</span>
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    {% endif %}
-
-    <p class="note">
-      Each invite creates one account and then stops working. Codes are stored hashed, so a
-      lost link is reissued rather than looked up.
-    </p>
-  </div>
-  {% endif %}
 
   <h2>Outbound calls</h2>
   <div class="card">

@@ -10,8 +10,8 @@ writing to files would mean hunting for them, and rotating them myself.
 a warning from the matcher, a traceback -- and without a correlation id they
 cannot be tied together after the fact.
 
-**Secrets are never logged.** Not the NYT cookie, not the session token, not the
-password. :func:`scrub` exists so that a careless caller still cannot leak them,
+**Secrets are never logged.** Not the NYT cookie, not a token, not a key.
+:func:`scrub` exists so that a careless caller still cannot leak them,
 because a log file is exactly the place these end up by accident.
 """
 
@@ -127,7 +127,5 @@ def log_startup(settings: Any) -> None:
 
     if not settings.secret_key:
         logger.warning("SOUSCHEF_SECRET_KEY is not set: stored credentials cannot be decrypted")
-    if not settings.session_secret:
-        logger.error("SOUSCHEF_SESSION_SECRET is not set: sign-in will fail")
     if not settings.spoonacular_key:
         logger.info("  spoonacular    : no key, recipe discovery disabled")

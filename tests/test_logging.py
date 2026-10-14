@@ -11,7 +11,6 @@ import logging
 
 import pytest
 from fastapi.testclient import TestClient
-from tests.conftest import WEB_USERNAME
 
 from souschef.logconfig import (
     REQUEST_ID,
@@ -132,17 +131,12 @@ def test_warnings_during_a_request_share_its_id(
     signed_in: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A warning and the request that caused it must be correlatable."""
-
-    signed_in.cookies.clear()
-
     with caplog.at_level(logging.INFO):
-        response = signed_in.post(
-            "/login", data={"username": WEB_USERNAME, "password": "definitely-wrong"}
-        )
+        response = signed_in.get("/recipes/999999")
 
     request_id = response.headers["X-Request-ID"]
-    auth_warning = next(r for r in caplog.records if "Failed sign-in" in r.getMessage())
-    assert auth_warning.request_id == request_id
+    warning = next(r for r in caplog.records if "404" in r.getMessage())
+    assert warning.request_id == request_id
 
 
 def test_unhandled_errors_are_logged_with_a_traceback(
@@ -155,7 +149,9 @@ def test_unhandled_errors_are_logged_with_a_traceback(
     def _boom() -> None:
         raise RuntimeError("intentional test failure")
 
-    boom_client = TestClient(app, raise_server_exceptions=False)
+    boom_client = TestClient(
+        app, base_url="http://127.0.0.1", raise_server_exceptions=False
+    )
     with caplog.at_level(logging.ERROR, logger="souschef.web"):
         assert boom_client.get("/_boom_test").status_code == 500
 
@@ -168,60 +164,28 @@ def test_unhandled_errors_are_logged_with_a_traceback(
 def test_client_errors_are_logged_as_warnings(
     signed_in: TestClient, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # Must be signed in, or the route redirects to /login before it can 404.
     with caplog.at_level(logging.WARNING, logger="souschef.web"):
         assert signed_in.get("/recipes/999999").status_code == 404
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert any("404" in r.getMessage() for r in warnings)
 
 
-def test_failed_signin_is_logged(
-    signed_in: TestClient, caplog: pytest.LogCaptureFixture
-) -> None:
-    """On a public box, repeated failures are the signal that matters."""
-
-    signed_in.cookies.clear()
-
-    with caplog.at_level(logging.WARNING, logger="souschef.auth"):
-        signed_in.post(
-            "/login",
-            data={"username": WEB_USERNAME, "password": "wrong-password-attempt"},
-        )
-    assert "Failed sign-in" in caplog.text
-    # The attempted password must never appear.
-    assert "wrong-password-attempt" not in caplog.text
-
-
-def test_lockout_is_logged_as_an_error(
-    signed_in: TestClient, caplog: pytest.LogCaptureFixture
-) -> None:
-    from souschef.web import auth
-
-    signed_in.cookies.clear()
-
-    with caplog.at_level(logging.WARNING, logger="souschef.auth"):
-        for _ in range(auth.MAX_ATTEMPTS):
-            signed_in.post(
-                "/login", data={"username": WEB_USERNAME, "password": "nope-nope-nope"}
-            )
-    assert any(r.levelno == logging.ERROR and "Locked out" in r.getMessage()
-               for r in caplog.records)
-
-
 def test_healthz_reports_degraded_when_secrets_are_missing(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A container answering 200 while unable to issue sessions is worse than one that is down."""
+    """A process answering 200 while unable to decrypt stored credentials is worse
+    than one that is down.
+    """
     from souschef.config import get_settings
 
     settings = get_settings()
-    monkeypatch.setattr(settings, "session_secret", "", raising=False)
+    monkeypatch.setattr(settings, "secret_key", "", raising=False)
 
     response = client.get("/healthz")
     assert response.status_code == 503
     payload = response.json()
     assert payload["status"] == "degraded"
-    assert any("SESSION_SECRET" in p for p in payload["problems"])
+    assert any("SECRET_KEY" in p for p in payload["problems"])
 
 
 def test_healthz_is_ok_when_configured(client: TestClient) -> None:

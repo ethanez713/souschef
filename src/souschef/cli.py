@@ -187,96 +187,31 @@ def cmd_users(_args: argparse.Namespace) -> int:
     with session_scope() as session:
         users = session.scalars(select(User).order_by(User.id)).all()
         if not users:
-            print("No accounts yet -- visit the site to claim the first one.")
+            print("No accounts yet.")
             return 0
         for user in users:
             flags = " ".join(
                 f for f in ("admin" if user.is_admin else "", "" if user.is_active else "disabled")
                 if f
             )
-            last = user.last_login_at.strftime("%Y-%m-%d") if user.last_login_at else "never"
-            print(f"  {user.id:>3}  {user.username:<24} last login {last:<12} {flags}")
-    return 0
-
-
-def cmd_passwd(args: argparse.Namespace) -> int:
-    """Set a user's password.
-
-    The recovery path when nobody can sign in: there is no email reset, so a
-    shell on the machine running SousChef is deliberately the only way back in.
-    """
-    import getpass
-
-    from sqlalchemy import select
-
-    from souschef.db import session_scope
-    from souschef.models import User
-    from souschef.web import auth
-
-    with session_scope() as session:
-        user = session.scalar(
-            select(User).where(User.username == args.username.strip().casefold())
-        )
-        if user is None:
-            print(f"No such user: {args.username}", file=sys.stderr)
-            return 1
-
-        password = getpass.getpass("New password: ")
-        if password != getpass.getpass("Repeat: "):
-            print("Passwords do not match.", file=sys.stderr)
-            return 1
-        try:
-            auth.set_password(session, user, password)
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
-            return 1
-
-    print(f"Password updated for {args.username}. Existing sessions were signed out.")
-    return 0
-
-
-def cmd_invite(args: argparse.Namespace) -> int:
-    """Mint an invite from the command line."""
-    from sqlalchemy import select
-
-    from souschef.db import session_scope
-    from souschef.models import User
-    from souschef.web import auth
-
-    with session_scope() as session:
-        admin = session.scalar(
-            select(User).where(User.is_admin.is_(True)).order_by(User.id)
-        )
-        if admin is None:
-            print("No admin account exists yet.", file=sys.stderr)
-            return 1
-        invite, code = auth.create_invite(session, admin, note=args.note)
-        print(f"Invite {invite.id}, expires {invite.expires_at:%Y-%m-%d}:")
-        print(f"  http://127.0.0.1:8000/join?code={code}")
-        print("\nShown once. It is stored hashed, so it cannot be printed again.")
+            print(f"  {user.id:>3}  {user.username:<24} {flags}")
     return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    import os
-
     import uvicorn
 
     from souschef.config import LOOPBACK_HOSTS
 
-    if args.no_auth and args.host not in LOOPBACK_HOSTS:
+    if args.host not in LOOPBACK_HOSTS:
         print(
-            f"--no-auth is only allowed on a loopback host, not {args.host}.", file=sys.stderr
+            "there is no sign-in, reach it from other devices via `tailscale serve`",
+            file=sys.stderr,
         )
         return 2
 
-    if args.no_auth:
-        os.environ["SOUSCHEF_SINGLE_USER"] = "true"
-        get_settings.cache_clear()
-        print("--no-auth: sign-in is off; whoever can reach this port is the first account.")
-
     # The app already logs method and path. Uvicorn's access line includes the
-    # query string, which is where an invite code and a shared recipe URL sit.
+    # query string, which is where a shared recipe URL sits.
     uvicorn.run(
         "souschef.web.app:app",
         host=args.host,
@@ -297,7 +232,6 @@ def cmd_config(_args: argparse.Namespace) -> int:
     print(f"files         : {settings.storage_backend} -> {get_storage().location}")
     print(f"external calls: {'BLOCKED' if settings.no_external else 'allowed'}")
     print(f"secret key    : {'set' if settings.secret_key else 'MISSING'}")
-    print(f"session secret: {'set' if settings.session_secret else 'MISSING'}")
     return 0
 
 
@@ -317,14 +251,6 @@ def main(argv: list[str] | None = None) -> int:
     rebuild.add_argument("--user", default=None, help="one username (default: everyone)")
     rebuild.set_defaults(func=cmd_rebuild)
 
-    invite = sub.add_parser("invite", help="mint an invite code")
-    invite.add_argument("--note", default="", help="a reminder of who it is for")
-    invite.set_defaults(func=cmd_invite)
-
-    passwd = sub.add_parser("passwd", help="set a user's password")
-    passwd.add_argument("username")
-    passwd.set_defaults(func=cmd_passwd)
-
     backup = sub.add_parser("backup", help="snapshot the database")
     backup.add_argument("--keep", type=int, default=14, help="snapshots to retain (default 14)")
     backup.set_defaults(func=cmd_backup)
@@ -341,9 +267,6 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--reload", action="store_true")
-    serve.add_argument(
-        "--no-auth", action="store_true", help="skip sign-in and act as the first account"
-    )
     serve.set_defaults(func=cmd_serve)
 
     parser.add_argument(

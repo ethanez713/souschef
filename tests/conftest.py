@@ -21,7 +21,6 @@ def _isolate_settings(tmp_path_factory: pytest.TempPathFactory) -> Iterator[None
     data_dir = tmp_path_factory.mktemp("souschef-data")
     os.environ["SOUSCHEF_DATA_DIR"] = str(data_dir)
     os.environ["SOUSCHEF_NO_EXTERNAL"] = "true"
-    os.environ["SOUSCHEF_SESSION_SECRET"] = "test-only-not-a-real-secret"
     os.environ["SOUSCHEF_SECRET_KEY"] = "0" * 64
 
     from souschef.config import get_settings
@@ -60,12 +59,7 @@ def session(_schema: None) -> Iterator[Session]:
 
 
 def _make_user(session: Session, username: str, *, is_admin: bool = False):  # noqa: ANN202
-    """Insert an account directly, skipping the argon2 hash.
-
-    Hashing a password costs ~50 ms by design, which is the right price at a
-    login form and the wrong one multiplied across a test suite. Tests that
-    exercise the login path itself go through the real `auth.create_user`.
-    """
+    """Insert an account directly."""
     from souschef.models import User
 
     user = User(
@@ -97,44 +91,52 @@ def owner(user) -> int:  # noqa: ANN001
     return user.id
 
 
-# Credentials for the account that web tests sign in as. Deliberately a
-# different username from the `user` fixture, so a test can hold both a
-# signed-in account and somebody else's data at the same time.
+# The account web tests act as. Deliberately a different username from the
+# `user` fixture, so a test can hold both that account and somebody else's data.
 WEB_USERNAME = "webuser"
-WEB_PASSWORD = "a-long-enough-test-password"
 
 
 @pytest.fixture
 def client(seeded_session: Session) -> Iterator[TestClient]:
-    """A TestClient against the real app and the real test database."""
-    from souschef.web import auth
+    """A TestClient against the real app and the real test database.
+
+    The host guard refuses the client's default host (``testserver``). Loopback
+    is what a real local run sends, so tests use that and do not special-case
+    the test host.
+    """
     from souschef.web.app import app
 
     # The app opens its own sessions against the same test database.
     seeded_session.commit()
-
-    # The login throttle is in-process, so without this a test that exhausts it
-    # locks out every test that runs afterwards -- an order-dependent failure
-    # that only shows up when the suite is run as a whole.
-    auth._failures.clear()
-    yield TestClient(app, follow_redirects=False)
-    auth._failures.clear()
+    yield TestClient(app, base_url="http://127.0.0.1", follow_redirects=False)
 
 
 @pytest.fixture
-def signed_in(client: TestClient) -> TestClient:
-    """A client that has claimed the instance and holds a session cookie."""
-    response = client.post(
-        "/setup",
-        data={"username": WEB_USERNAME, "password": WEB_PASSWORD, "confirm": WEB_PASSWORD},
+def signed_in(client: TestClient, seeded_session: Session) -> TestClient:
+    """Ensure the web account exists and is the lowest-id active user."""
+    from sqlalchemy import select
+
+    from souschef.models import User
+
+    existing = seeded_session.scalar(
+        select(User).where(User.is_active.is_(True)).order_by(User.id)
     )
-    assert response.status_code == 303, response.text
+    if existing is None:
+        seeded_session.add(
+            User(
+                username=WEB_USERNAME,
+                display_name=WEB_USERNAME,
+                password_hash="not-a-usable-hash",
+                is_admin=True,
+            )
+        )
+        seeded_session.commit()
     return client
 
 
 @pytest.fixture
 def web_user(signed_in: TestClient, session: Session):  # noqa: ANN201, ARG001
-    """The account `signed_in` is signed in as, for seeding data it should see."""
+    """The account requests act as, for seeding data it should see."""
     from sqlalchemy import select
 
     from souschef.models import User
@@ -142,6 +144,8 @@ def web_user(signed_in: TestClient, session: Session):  # noqa: ANN201, ARG001
     session.expire_all()
     user = session.scalar(select(User).where(User.username == WEB_USERNAME))
     assert user is not None
+    lowest = session.scalar(select(User).where(User.is_active.is_(True)).order_by(User.id))
+    assert lowest is not None and lowest.id == user.id
     return user
 
 

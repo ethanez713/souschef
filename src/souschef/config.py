@@ -4,8 +4,8 @@ Secrets are never read from the repo. They come from the environment, from a
 file whose path is given by a ``*_FILE`` env var, or from the config directory,
 which is where a local install keeps the ones it generated for itself. The
 config directory is deliberately not the data directory: the data directory is
-what a future cloud backend would sync, and a session key that syncs to a third
-party is a session key you have given away.
+what a future cloud backend would sync, and a key that syncs to a third party
+is a key you have given away.
 """
 
 from __future__ import annotations
@@ -59,9 +59,6 @@ class Settings(BaseSettings):
     # test suite turns it on so a test can never hit a real service.
     no_external: bool = False
     debug: bool = False
-    # Skips sign-in and acts as the first active account. Only safe when
-    # nothing but this machine can reach the server.
-    single_user: bool = False
     log_level: str = "INFO"
 
     # Days for the low bound of an unverified level to halve. Bulk staples drift
@@ -74,6 +71,7 @@ class Settings(BaseSettings):
     # Max items the pre-shop audit will ever ask you to physically check.
     audit_max_items: int = 10
 
+    # Loaded when a config file or the environment still holds one. Nothing requires it.
     session_secret: str = Field(default="", repr=False)
     secret_key: str = Field(default="", repr=False)  # AES-GCM key for stored creds
 
@@ -119,7 +117,7 @@ def get_settings() -> Settings:
 def ensure_local_secrets() -> list[str]:
     """Generate the keys this install needs, if nobody has supplied them.
 
-    A local install has no operator to hand it secrets, and refusing to start
+    A local install has no operator to hand it a key, and refusing to start
     would be a setup step that buys nothing: the alternative to a generated key
     is not a better key, it is a `.env` file with the same value typed by hand.
     Returns the names of any that were created.
@@ -128,7 +126,6 @@ def ensure_local_secrets() -> list[str]:
 
     settings = get_settings()
     generators = {
-        "session_secret": lambda: stdlib_secrets.token_urlsafe(48),
         "secret_key": lambda: stdlib_secrets.token_hex(32),
     }
     created = []

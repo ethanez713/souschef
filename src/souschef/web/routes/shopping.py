@@ -124,6 +124,15 @@ def _toast(message: str, *, undo: str = "", extra_label: str = "", extra_action:
     }
 
 
+def _pantry_added_message(names: list[str]) -> str:
+    shown = names[:3]
+    extra = len(names) - len(shown)
+    listed = ", ".join(shown)
+    if extra:
+        listed = f"{listed} and {extra} more"
+    return f"Added {listed} to the pantry."
+
+
 def _toast_from_query(request: Request, db: Session, listing: ShoppingList | None) -> dict | None:
     params = request.query_params
     removed = params.get("removed", "")
@@ -155,6 +164,12 @@ def _toast_from_query(request: Request, db: Session, listing: ShoppingList | Non
     named = params.get("named", "")
     if named:
         return _toast(f"Named as {named}")
+    added = params.getlist("added")
+    if added:
+        return _toast(_pantry_added_message(added))
+    listed = params.get("listed", "")
+    if listed:
+        return _toast(f"Added {listed} to the list")
     return None
 
 
@@ -265,7 +280,6 @@ def _render_shopping(
         copy_text=_shopping_copy(copy_groups, user),
         has_plan=has_plan,
         pending_stock=pending_stock,
-        added=request.query_params.getlist("added"),
         add_error=add_error,
         add_name=add_name,
         add_amount=add_amount,
@@ -374,7 +388,7 @@ def add_shopping_item(
             return show("Amount isn't a number.")
     listing = live_list(db, user.id) or _sync_shopping(db, user.id)
     try:
-        add_manual_item(
+        item = add_manual_item(
             db,
             listing,
             name,
@@ -387,7 +401,7 @@ def add_shopping_item(
         return show(exc.detail, word=exc.word)
     except ShoppingError as exc:
         return show(str(exc))
-    return RedirectResponse("/shopping", status_code=303)
+    return _shop_redirect(listed=item.label)
 
 
 def _amount_error(

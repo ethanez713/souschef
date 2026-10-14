@@ -498,7 +498,7 @@ details.inline-fix .controls,
 }
 
 @media print {
-  .skip, .topbar, .tabbar, .no-print, .actions, .shop-plain, dialog.sheet { display: none !important; }
+  .skip, .topbar, .tabbar, .no-print, .actions, .shop-plain, dialog.sheet, .sticky-bar { display: none !important; }
   body { padding: 0 !important; background: white; color: black; }
   main { max-width: none; padding: 0; }
   .group-head { margin: 8px 0 2px; }
@@ -600,6 +600,8 @@ body:has(.sticky-bar) { --dock-sticky-h: var(--sticky-h); }
   display: flex; align-items: center; gap: var(--sp-3); padding: 0 var(--sp-5);
   background: var(--bg-app); border-top: 1px solid var(--ink-rule);
 }
+.sticky-bar form { flex: 1; display: flex; align-self: stretch; margin: 0; }
+.sticky-bar button { flex: 1; font-variant-numeric: tabular-nums; }
 @media (min-width: 900px) {
   .sticky-bar { left: 208px; }
   .toast { left: calc(208px + var(--sp-4)); }

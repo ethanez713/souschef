@@ -11,6 +11,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1924,6 +1925,41 @@ def test_edited_shopping_amount_survives_a_rebuild(
     assert "3 lb" in signed_in.get("/shopping").text
 
 
+def test_adding_an_item_answers_with_a_toast(signed_in: TestClient) -> None:
+    added = signed_in.post("/shopping/add", data={"name": "onion"})
+    assert added.status_code == 303
+    page = signed_in.get(added.headers["location"]).text
+    assert 'class="toast"' in page
+    assert 'data-toast' in page
+    assert "Added yellow onion to the list" in page
+
+
+def test_stocking_more_than_three_lines_names_three_then_the_rest(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Four Things", "https://example.com/four-things")
+    for name in ("onion", "spinach", "ground beef"):
+        added = signed_in.post("/shopping/add", data={"name": name})
+        assert added.status_code == 303
+    page = signed_in.get("/shopping").text
+    for label in ("spaghetti", "yellow onion", "spinach", "ground beef"):
+        assert signed_in.post(
+            f"/shopping/item/{_shop_item_id(page, label)}/check", data={"checked": "1"}
+        ).status_code == 303
+
+    stocked = signed_in.post("/shopping/stock")
+    assert stocked.status_code == 303
+    names = parse_qs(urlparse(stocked.headers["location"]).query)["added"]
+    assert len(names) == 4
+    followed = signed_in.get(stocked.headers["location"]).text
+    toast = re.search(
+        r'<div class="toast" role="status" data-toast>\s*<span>(.*?)</span>', followed
+    )
+    assert toast is not None
+    assert toast.group(1) == f"Added {', '.join(names[:3])} and 1 more to the pantry."
+    assert "notice good" not in followed
+
+
 def test_shopping_list_offers_a_copy(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -1947,7 +1983,9 @@ def test_shopping_list_offers_a_copy(
     page = signed_in.get("/shopping").text
     assert "Copy list" in page
     assert 'id="shop-plain"' in page
-    assert "@media print" in signed_in.get("/static/app.css").text
+    css = signed_in.get("/static/app.css").text
+    assert "@media print" in css
+    assert ".sticky-bar" in css.split("@media print", 1)[1].split("}", 1)[0]
 
 
 def test_pantry_search_does_not_offer_an_unrelated_hit(
@@ -2494,7 +2532,7 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v7" in worker
+    assert "souschef-shell-v8" in worker
 
 
 def test_pages_follow_the_signed_in_unit_system(

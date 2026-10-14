@@ -73,7 +73,8 @@ document.addEventListener("click", function (event) {
   if (!text) return;
   var label = button.textContent;
   function finish(ok) {
-    button.textContent = ok ? "Copied" : "Copy failed";
+    if (ok) { showToast("List copied"); return; }
+    button.textContent = "Copy failed";
     setTimeout(function () { button.textContent = label; }, 1500);
   }
   function fallback() {
@@ -97,6 +98,19 @@ document.addEventListener("click", function (event) {
     finish(fallback());
   }
 });
+function showToast(message) {
+  document.querySelectorAll("[data-copy-toast]").forEach(function (node) { node.remove(); });
+  var toast = document.createElement("div");
+  toast.className = "toast";
+  toast.setAttribute("role", "status");
+  toast.setAttribute("data-toast", "");
+  toast.setAttribute("data-copy-toast", "");
+  var text = document.createElement("span");
+  text.textContent = message;
+  toast.appendChild(text);
+  document.body.appendChild(toast);
+  armToasts();
+}
 function armToasts() {
   document.querySelectorAll("[data-toast]:not([data-armed])").forEach(function (toast) {
     toast.setAttribute("data-armed", "1");

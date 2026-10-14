@@ -745,13 +745,22 @@ def test_shopping_page_adds_ticked_items_at_package_size(
     ).status_code == 303
     ticked = signed_in.get("/shopping")
     assert "Add 1 ticked item to pantry" in ticked.text
+    assert 'class="toast"' not in ticked.text
+    start = ticked.text.index('id="shop-list"')
+    bar = ticked.text.index('class="sticky-bar"')
+    plain = ticked.text.index('id="shop-plain"')
+    assert start < bar < plain
+    assert 'action="/shopping/stock"' in ticked.text[bar:plain]
 
     stocked = signed_in.post("/shopping/stock")
     assert stocked.status_code == 303
     assert stocked.headers["location"].startswith("/shopping?added=spaghetti")
     followed = signed_in.get(stocked.headers["location"])
+    assert 'class="toast"' in followed.text
     assert "Added spaghetti to the pantry." in followed.text
+    assert "notice good" not in followed.text
     assert "Add 1 ticked item to pantry" not in followed.text
+    assert 'class="sticky-bar"' not in followed.text
 
     seeded_session.expire_all()
     pasta = ing(seeded_session, "spaghetti")
@@ -783,6 +792,7 @@ def test_two_ticked_lines_use_the_plural_button(
 
     ticked = signed_in.get("/shopping")
 
+    assert 'class="sticky-bar"' in ticked.text
     assert "Add 2 ticked items to pantry" in ticked.text
 
 
@@ -936,6 +946,7 @@ def test_ticking_an_unnamed_row_does_not_change_the_pantry(
     ).status_code == 303
     ticked = signed_in.get("/shopping")
     assert "Add 1 ticked" not in ticked.text
+    assert 'class="sticky-bar"' not in ticked.text
     assert "In basket" in ticked.text
     assert signed_in.post("/shopping/stock").status_code == 303
     seeded_session.expire_all()
@@ -949,6 +960,7 @@ def test_ticking_an_unnamed_row_does_not_change_the_pantry(
         f"/shopping/item/{flour_id}/check", data={"checked": "1"}
     ).status_code == 303
     both = signed_in.get("/shopping")
+    assert 'class="sticky-bar"' in both.text
     assert "Add 1 ticked item to pantry" in both.text
     assert "Add 2 ticked" not in both.text
 

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Shop · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import add_units, group_header, package_size, picker, row, sheet, toast %}
+{% from "macros.html" import add_units, group_header, package_size, picker, row, sheet, sticky_bar, toast %}
 {% set active = 'shopping' %}
 
 {# Restock and hand-added lines are not recipe titles, so they get no "for" line. #}
@@ -81,12 +81,6 @@
 
   <div id="shop-list">
   {% if shop_toast %}{{ toast(shop_toast.message, shop_toast.undo, shop_toast.extra_label, shop_toast.extra_action, '#shop-list') }}{% endif %}
-  {% if added %}
-    <div class="notice good spaced">
-      {{ icon('circle-check', 16) }}
-      <div>Added {{ added|join(', ') }} to the pantry.</div>
-    </div>
-  {% endif %}
   {% if add_error %}
     <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>
   {% endif %}
@@ -121,11 +115,13 @@
     {% endif %}
 
     {% if pending_stock %}
-      <form method="post" action="/shopping/stock" class="actions no-print">
+      {% call sticky_bar() %}
+      <form method="post" action="/shopping/stock">
         <button class="primary" type="submit">
           Add {{ pending_stock }} ticked {{ 'item' if pending_stock == 1 else 'items' }} to pantry
         </button>
       </form>
+      {% endcall %}
     {% endif %}
 
     <pre id="shop-plain" class="shop-plain" hidden>{{ copy_text }}</pre>

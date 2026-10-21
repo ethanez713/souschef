@@ -1,5 +1,8 @@
 # SousChef — project rules
 
+This file is published with the repo. Personal or machine-specific notes go in the
+gitignored `CLAUDE.local.md`, which Claude Code loads right after it.
+
 ## No sign-in, ever
 
 SousChef is single-user with no authentication: every request acts as the one account

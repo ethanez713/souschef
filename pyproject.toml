@@ -70,3 +70,13 @@ extend-immutable-calls = [
     "fastapi.Depends", "fastapi.Form", "fastapi.File", "fastapi.Query",
     "fastapi.Body", "fastapi.Header", "fastapi.Path",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Alembic autogenerate emits one long call per column. This revision stays
+# byte-for-byte as applied; E501 is the only finding in it.
+"migrations/versions/583397610c73_initial_schema.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+files = "src"

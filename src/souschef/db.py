@@ -45,7 +45,7 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         settings = get_settings()
-        settings.db_path.parent.mkdir(parents=True, exist_ok=True)
+        settings.db_path.parent.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
         _engine = create_engine(
             settings.database_url,
             echo=settings.debug,

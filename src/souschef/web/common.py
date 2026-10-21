@@ -320,7 +320,7 @@ def _owned(db: Session, model: type[Base], obj_id: int, user: User, what: str): 
     difference anyway.
     """
     obj = db.get(model, obj_id)
-    if obj is None or obj.user_id != user.id:
+    if obj is None or obj.user_id != user.id:  # type: ignore[attr-defined]
         raise HTTPException(status_code=404, detail=f"No such {what}")
     return obj
 

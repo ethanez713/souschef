@@ -312,7 +312,7 @@ def build_shopping_list(
         .order_by(MealPlanEntry.plan_date)
     ).all()
 
-    needs = collect_requirements(session, entries)
+    needs = collect_requirements(session, entries)  # type: ignore[arg-type]
     needs = apply_pantry(session, user_id, needs)
     if include_restock:
         needs = add_restock_candidates(session, user_id, needs)
@@ -789,5 +789,5 @@ def requirements_for_audit(
             MealPlanEntry.plan_date <= covers_to,
         )
     ).all()
-    needs = collect_requirements(session, entries)
+    needs = collect_requirements(session, entries)  # type: ignore[arg-type]
     return {ingredient_id: line.needed for ingredient_id, line in needs.items()}

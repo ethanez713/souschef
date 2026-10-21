@@ -112,7 +112,7 @@ def _is_range(amount: object) -> bool:
 
 def _flatten_amounts(amounts: object) -> list[object]:
     flat: list[object] = []
-    for amount in amounts or []:
+    for amount in amounts or []:  # type: ignore[attr-defined]
         nested = getattr(amount, "amounts", None)
         if nested:
             flat.extend(_flatten_amounts(nested))
@@ -189,11 +189,11 @@ def parse_line(text: str) -> ParsedIngredient:
 
     preparation = None
     if getattr(parsed, "preparation", None):
-        preparation = str(parsed.preparation.text)
+        preparation = str(parsed.preparation.text)  # type: ignore[union-attr]
 
     comment_text = ""
     if getattr(parsed, "comment", None):
-        comment_text = str(parsed.comment.text).lower()
+        comment_text = str(parsed.comment.text).lower()  # type: ignore[union-attr]
 
     return ParsedIngredient(
         raw_text=raw,

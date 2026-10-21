@@ -1,5 +1,7 @@
 # SousChef
 
+[![CI](https://github.com/ethanez713/souschef/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/souschef/actions/workflows/ci.yml)
+
 A weekly cooking planner that tracks your pantry, suggests recipes you can
 actually cook, builds the shopping list, and updates itself from a photo of the
 receipt.
@@ -222,3 +224,11 @@ present — otherwise every recipe looks unmakeable and every list runs ten item
 long. Things you genuinely re-buy weekly are *not* staples, however basic they
 feel; flagging pasta as a staple means a pasta recipe never tells you to buy
 pasta.
+
+## License
+
+MIT. Copyright (c) 2026 Ethan Zhou. See [LICENSE](LICENSE).
+
+IBM Plex Mono, Instrument Sans, and Piazzolla, the fonts in
+`src/souschef/static/fonts/`, are under the SIL Open Font License 1.1. Their
+license texts are in `THIRD_PARTY_LICENSES/`.

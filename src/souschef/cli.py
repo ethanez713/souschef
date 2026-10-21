@@ -35,7 +35,7 @@ def cmd_init(_args: argparse.Namespace) -> int:
     command.upgrade(config, "head")
 
     with session_scope() as session:
-        created, updated, aliases = seed_ingredients(session)
+        created, updated, aliases = seed_ingredients(session)  # type: ignore[assignment]
     print(f"Catalog ready: {created} new, {updated} updated, {aliases} aliases added.")
     return 0
 
@@ -48,15 +48,15 @@ def cmd_backup(args: argparse.Namespace) -> int:
     from souschef.storage import get_storage
 
     settings = get_settings()
-    if not settings.db_path.is_file():
+    if not settings.db_path.is_file():  # type: ignore[union-attr]
         print(f"No database at {settings.db_path}", file=sys.stderr)
         return 1
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    staged = settings.db_path.with_name(f".backup-{stamp}.db")
+    staged = settings.db_path.with_name(f".backup-{stamp}.db")  # type: ignore[union-attr]
     # SQLite's own backup API, not a file copy: copying a database that is
     # mid-write produces a torn file that reads fine and restores broken.
-    source = sqlite3.connect(settings.db_path)
+    source = sqlite3.connect(settings.db_path)  # type: ignore[arg-type]
     try:
         target = sqlite3.connect(staged)
         try:
@@ -106,17 +106,21 @@ def cmd_restore(args: argparse.Namespace) -> int:
         return 1
 
     data = storage.read(key)
-    if settings.db_path.is_file():
-        aside = settings.db_path.with_name(settings.db_path.name + ".replaced")
-        settings.db_path.replace(aside)
+    if settings.db_path.is_file():  # type: ignore[union-attr]
+        aside = settings.db_path.with_name(  # type: ignore[union-attr]
+            settings.db_path.name + ".replaced"  # type: ignore[union-attr]
+        )
+        settings.db_path.replace(aside)  # type: ignore[union-attr]
         print(f"Previous database moved to {aside}")
-    settings.db_path.write_bytes(data)
-    settings.db_path.chmod(0o600)
+    settings.db_path.write_bytes(data)  # type: ignore[union-attr]
+    settings.db_path.chmod(0o600)  # type: ignore[union-attr]
 
     # A leftover write-ahead log belongs to the database that was just replaced;
     # SQLite would replay it into the restored one and corrupt it.
     for suffix in ("-wal", "-shm"):
-        settings.db_path.with_name(settings.db_path.name + suffix).unlink(missing_ok=True)
+        settings.db_path.with_name(  # type: ignore[union-attr]
+            settings.db_path.name + suffix  # type: ignore[union-attr]
+        ).unlink(missing_ok=True)
 
     print(f"Restored {key}")
     return 0

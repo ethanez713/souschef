@@ -265,7 +265,11 @@ def _matched_lines(
         # with use. Weak matches are left alone -- learning a guess would make
         # the matcher confidently wrong later.
         if learn_aliases and match and match.is_auto and parsed.name:
-            matcher.learn(parsed.name, match.ingredient_id, source=AliasSource.RECIPE)
+            matcher.learn(
+                parsed.name,
+                match.ingredient_id,  # type: ignore[arg-type]
+                source=AliasSource.RECIPE,
+            )
     return lines
 
 

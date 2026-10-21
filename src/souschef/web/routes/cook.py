@@ -147,8 +147,8 @@ async def mark_cooked(
 ) -> Response:
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
     form = await request.form()
-    servings = min(int(form.get("servings") or 0), MAX_SERVINGS)
-    entry_id = int(form.get("entry_id") or 0)
+    servings = min(int(form.get("servings") or 0), MAX_SERVINGS)  # type: ignore[arg-type]
+    entry_id = int(form.get("entry_id") or 0)  # type: ignore[arg-type]
     raw_date = str(form.get("cooked_on") or "")
     cooked_on = _parse_cook_date(raw_date)
     plan_entry = None

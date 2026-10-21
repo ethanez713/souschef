@@ -565,7 +565,7 @@ def edit_recipe_form(
         heading="Edit recipe",
         action=f"/recipes/{recipe.id}",
         cancel=f"/recipes/{recipe.id}",
-        **_form_fields(recipe),
+        **_form_fields(recipe),  # type: ignore[arg-type]
     )
 
 

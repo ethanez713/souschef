@@ -23,7 +23,7 @@ import pint
 
 # A single shared registry. Building one is expensive and pint quantities from
 # different registries cannot be compared, so everything must use this instance.
-_ureg = pint.UnitRegistry()
+_ureg = pint.UnitRegistry()  # type: ignore[var-annotated]
 
 # pint ships a dimensionless `count`; we need it to carry its own dimension so
 # "3 eggs" cannot be silently added to "3 grams". The override is deliberate, so

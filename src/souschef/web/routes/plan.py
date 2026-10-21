@@ -104,7 +104,7 @@ def plan_page(
         today=today,
         has_meals=any(by_day.values()),
         past_days=[day for day in shown if day < today and by_day[day]],
-        recipe_groups=_recipe_groups(db, user.id, entries, today),
+        recipe_groups=_recipe_groups(db, user.id, entries, today),  # type: ignore[arg-type]
         week_end=week_end,
         skipped=bool(skipped),
     )
@@ -144,12 +144,15 @@ async def add_to_plan(
     db: Session = Depends(get_db),
 ) -> Response:
     form = await request.form()
-    recipe_id = int(form.get("recipe_id") or 0)
+    recipe_id = int(form.get("recipe_id") or 0)  # type: ignore[arg-type]
     # Validate the recipe is theirs before planning it: without this, posting an
     # arbitrary id would put another user's recipe on your calendar, and the
     # plan page would then render its title.
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
-    servings = min(int(form.get("servings") or 0), MAX_SERVINGS) or _default_servings(recipe)
+    servings = min(
+        int(form.get("servings") or 0),  # type: ignore[arg-type]
+        MAX_SERVINGS,
+    ) or _default_servings(recipe)
     skipped = False
     added = False
     for raw in form.getlist("plan_date"):

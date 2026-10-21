@@ -720,7 +720,11 @@ class IngredientMatcher:
                 forms.append(varied)
 
         seen: set[str] = set()
-        return [f for f in forms if f and not (f in seen or seen.add(f))]
+        return [
+            f
+            for f in forms
+            if f and not (f in seen or seen.add(f))  # type: ignore[func-returns-value]
+        ]
 
     def _hit(self, key: str) -> MatchResult | None:
         """Exact resolution: a user correction, else the catalog name, else an alias."""

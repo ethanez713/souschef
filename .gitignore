@@ -47,3 +47,7 @@ htmlcov/
 .vscode/
 .idea/
 .DS_Store
+
+# Real-receipt regression tests and their OCR fixtures: run locally when present, never published
+tests/test_receipts_real.py
+tests/fixtures/receipts/

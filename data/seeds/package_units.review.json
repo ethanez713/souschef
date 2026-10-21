@@ -1,0 +1,1020 @@
+{
+  "ingredients": [
+    {
+      "name": "all-purpose flour",
+      "package_noun": "bag",
+      "median_base_qty": 2269,
+      "base_unit": "g",
+      "product_count": 4,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "whole wheat flour",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "cornstarch",
+      "package_noun": "box",
+      "median_base_qty": 993,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "brown sugar",
+      "package_noun": "box",
+      "median_base_qty": 363,
+      "base_unit": "g",
+      "product_count": 15,
+      "agreeing": 15,
+      "package_source": "Open Food Facts, median of 15 US products, 2026-10"
+    },
+    {
+      "name": "maple syrup",
+      "package_noun": "bottle",
+      "median_base_qty": 946,
+      "base_unit": "ml",
+      "product_count": 7,
+      "agreeing": 9,
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
+    },
+    {
+      "name": "baking soda",
+      "package_noun": "bag",
+      "median_base_qty": 454,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "baking powder",
+      "package_noun": "can",
+      "median_base_qty": 115,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "olive oil",
+      "package_noun": "bottle",
+      "median_base_qty": 750,
+      "base_unit": "ml",
+      "product_count": 8,
+      "agreeing": 10,
+      "package_source": "Open Food Facts, median of 8 US products, 2026-10"
+    },
+    {
+      "name": "black pepper",
+      "package_noun": "bottle",
+      "median_base_qty": 349,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "paprika",
+      "package_noun": "jar",
+      "median_base_qty": 128,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "dried oregano",
+      "package_noun": "jar",
+      "median_base_qty": 43,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "dried thyme",
+      "package_noun": "bottle",
+      "median_base_qty": 40,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "ground cinnamon",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "ground turmeric",
+      "package_noun": "jar",
+      "median_base_qty": 198,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "whole chicken",
+      "package_noun": "box",
+      "median_base_qty": 0.19,
+      "base_unit": "count",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "ground beef",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "ground turkey",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "bacon",
+      "package_noun": "bag",
+      "median_base_qty": 879,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "salmon",
+      "package_noun": "can",
+      "median_base_qty": 418,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "white fish",
+      "package_noun": "bag",
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 1,
+      "package_source": null
+    },
+    {
+      "name": "canned tuna",
+      "package_noun": "can",
+      "median_base_qty": 1,
+      "base_unit": "count",
+      "product_count": 4,
+      "agreeing": 6,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "eggs",
+      "package_noun": "bag",
+      "median_base_qty": 5,
+      "base_unit": "count",
+      "product_count": 3,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "butter",
+      "package_noun": "jar",
+      "median_base_qty": 765,
+      "base_unit": "g",
+      "product_count": 13,
+      "agreeing": 13,
+      "package_source": "Open Food Facts, median of 13 US products, 2026-10"
+    },
+    {
+      "name": "greek yogurt",
+      "package_noun": "tub",
+      "median_base_qty": 907,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "parmesan cheese",
+      "package_noun": "bottle",
+      "median_base_qty": 227,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "feta cheese",
+      "package_noun": "tub",
+      "median_base_qty": 234,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "brown rice",
+      "package_noun": "box",
+      "median_base_qty": 397,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "spaghetti",
+      "package_noun": "box",
+      "median_base_qty": 454,
+      "base_unit": "g",
+      "product_count": 8,
+      "agreeing": 8,
+      "package_source": "Open Food Facts, median of 8 US products, 2026-10"
+    },
+    {
+      "name": "couscous",
+      "package_noun": "box",
+      "median_base_qty": 164,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "breadcrumbs",
+      "package_noun": "carton",
+      "median_base_qty": 30,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "tortillas",
+      "package_noun": "bag",
+      "median_base_qty": 7.56,
+      "base_unit": "count",
+      "product_count": 12,
+      "agreeing": 12,
+      "package_source": "Open Food Facts, median of 12 US products, 2026-10"
+    },
+    {
+      "name": "sandwich bread",
+      "package_noun": "bag",
+      "median_base_qty": 567,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "tomato paste",
+      "package_noun": "can",
+      "median_base_qty": 170,
+      "base_unit": "g",
+      "product_count": 8,
+      "agreeing": 8,
+      "package_source": "Open Food Facts, median of 8 US products, 2026-10"
+    },
+    {
+      "name": "chickpeas",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "count",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "dried lentils",
+      "package_noun": "bag",
+      "median_base_qty": 680,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "chicken stock",
+      "package_noun": "carton",
+      "median_base_qty": 3293,
+      "base_unit": "ml",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "beef stock",
+      "package_noun": "jar",
+      "median_base_qty": 597,
+      "base_unit": "ml",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "coconut milk",
+      "package_noun": "can",
+      "median_base_qty": 0.96,
+      "base_unit": "count",
+      "product_count": 3,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "soy sauce",
+      "package_noun": "bottle",
+      "median_base_qty": 500,
+      "base_unit": "ml",
+      "product_count": 5,
+      "agreeing": 6,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "salsa",
+      "package_noun": "bottle",
+      "median_base_qty": 377,
+      "base_unit": "g",
+      "product_count": 16,
+      "agreeing": 16,
+      "package_source": "Open Food Facts, median of 16 US products, 2026-10"
+    },
+    {
+      "name": "walnuts",
+      "package_noun": "bag",
+      "median_base_qty": 454,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "almonds",
+      "package_noun": "bag",
+      "median_base_qty": 907,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "pine nuts",
+      "package_noun": "bag",
+      "median_base_qty": 397,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "sesame seeds",
+      "package_noun": "bag",
+      "median_base_qty": 98,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "frozen corn",
+      "package_noun": "box",
+      "median_base_qty": 352,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "frozen spinach",
+      "package_noun": "box",
+      "median_base_qty": 283,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "dry red wine",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "ml",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "bread flour",
+      "package_noun": "bag",
+      "median_base_qty": 320,
+      "base_unit": "g",
+      "product_count": 7,
+      "agreeing": 7,
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
+    },
+    {
+      "name": "granulated sugar",
+      "package_noun": "bag",
+      "median_base_qty": 4536,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "coconut sugar",
+      "package_noun": "bottle",
+      "median_base_qty": 1012,
+      "base_unit": "g",
+      "product_count": 4,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "powdered sugar",
+      "package_noun": "bag",
+      "median_base_qty": 907,
+      "base_unit": "g",
+      "product_count": 4,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "honey",
+      "package_noun": "bag",
+      "median_base_qty": 499,
+      "base_unit": "g",
+      "product_count": 7,
+      "agreeing": 7,
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
+    },
+    {
+      "name": "molasses",
+      "package_noun": "jar",
+      "median_base_qty": 338,
+      "base_unit": "ml",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "active dry yeast",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "cocoa powder",
+      "package_noun": "box",
+      "median_base_qty": 267,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "vanilla extract",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "chocolate chips",
+      "package_noun": "box",
+      "median_base_qty": 145,
+      "base_unit": "g",
+      "product_count": 9,
+      "agreeing": 9,
+      "package_source": "Open Food Facts, median of 9 US products, 2026-10"
+    },
+    {
+      "name": "vegetable oil",
+      "package_noun": "bottle",
+      "median_base_qty": 750,
+      "base_unit": "ml",
+      "product_count": 10,
+      "agreeing": 14,
+      "package_source": "Open Food Facts, median of 10 US products, 2026-10"
+    },
+    {
+      "name": "sesame oil",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "coconut oil",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "cooking spray",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "white vinegar",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "apple cider vinegar",
+      "package_noun": "bottle",
+      "median_base_qty": 946,
+      "base_unit": "ml",
+      "product_count": 4,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "balsamic vinegar",
+      "package_noun": "bottle",
+      "median_base_qty": 500,
+      "base_unit": "ml",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "rice vinegar",
+      "package_noun": "bottle",
+      "median_base_qty": 428,
+      "base_unit": "ml",
+      "product_count": 4,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "red wine vinegar",
+      "package_noun": "bottle",
+      "median_base_qty": 473,
+      "base_unit": "ml",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "table salt",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "kosher salt",
+      "package_noun": "bag",
+      "median_base_qty": 198,
+      "base_unit": "g",
+      "product_count": 7,
+      "agreeing": 9,
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
+    },
+    {
+      "name": "red pepper flakes",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "ground cumin",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "ground coriander",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "smoked paprika",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "chili powder",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "garlic powder",
+      "package_noun": "jar",
+      "median_base_qty": 298,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "onion powder",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "dried basil",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "bay leaves",
+      "package_noun": "bottle",
+      "median_base_qty": 18.43,
+      "base_unit": "count",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "ground ginger",
+      "package_noun": "bottle",
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 2,
+      "package_source": null
+    },
+    {
+      "name": "curry powder",
+      "package_noun": "jar",
+      "median_base_qty": 1,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "nutmeg",
+      "package_noun": "bottle",
+      "median_base_qty": 57,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "cayenne pepper",
+      "package_noun": "bottle",
+      "median_base_qty": 359,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "italian seasoning",
+      "package_noun": "bottle",
+      "median_base_qty": 24,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "chicken breast",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "chicken thigh",
+      "package_noun": "bag",
+      "median_base_qty": 4536,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "ground pork",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "pork shoulder",
+      "package_noun": "bag",
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 1,
+      "package_source": null
+    },
+    {
+      "name": "pork chop",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "count",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "sausage",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "beef chuck",
+      "package_noun": "box",
+      "median_base_qty": 907,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "steak",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "shrimp",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "whole milk",
+      "package_noun": "bottle",
+      "median_base_qty": 1893,
+      "base_unit": "ml",
+      "product_count": 5,
+      "agreeing": 6,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "heavy cream",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "ml",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "sour cream",
+      "package_noun": "bag",
+      "median_base_qty": 223,
+      "base_unit": "g",
+      "product_count": 4,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "cheddar cheese",
+      "package_noun": "bag",
+      "median_base_qty": 71,
+      "base_unit": "g",
+      "product_count": 6,
+      "agreeing": 7,
+      "package_source": "Open Food Facts, median of 6 US products, 2026-10"
+    },
+    {
+      "name": "mozzarella cheese",
+      "package_noun": "bag",
+      "median_base_qty": 340,
+      "base_unit": "g",
+      "product_count": 4,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "cream cheese",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "white rice",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "penne",
+      "package_noun": "box",
+      "median_base_qty": 369,
+      "base_unit": "g",
+      "product_count": 4,
+      "agreeing": 4,
+      "package_source": "Open Food Facts, median of 4 US products, 2026-10"
+    },
+    {
+      "name": "rolled oats",
+      "package_noun": "box",
+      "median_base_qty": 1191,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "quinoa",
+      "package_noun": "bag",
+      "median_base_qty": 2040,
+      "base_unit": "g",
+      "product_count": 1,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "canned diced tomatoes",
+      "package_noun": "can",
+      "median_base_qty": 1,
+      "base_unit": "count",
+      "product_count": 7,
+      "agreeing": 8,
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
+    },
+    {
+      "name": "canned crushed tomatoes",
+      "package_noun": "can",
+      "median_base_qty": 0.54,
+      "base_unit": "count",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "tomato sauce",
+      "package_noun": "jar",
+      "median_base_qty": 439,
+      "base_unit": "g",
+      "product_count": 7,
+      "agreeing": 7,
+      "package_source": "Open Food Facts, median of 7 US products, 2026-10"
+    },
+    {
+      "name": "black beans",
+      "package_noun": "can",
+      "median_base_qty": 1,
+      "base_unit": "count",
+      "product_count": 5,
+      "agreeing": 6,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "cannellini beans",
+      "package_noun": "can",
+      "median_base_qty": 1.03,
+      "base_unit": "count",
+      "product_count": 1,
+      "agreeing": 1,
+      "package_source": "Open Food Facts, median of 1 US products, 2026-10"
+    },
+    {
+      "name": "vegetable stock",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "ml",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "fish sauce",
+      "package_noun": "bottle",
+      "median_base_qty": 258,
+      "base_unit": "ml",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "dijon mustard",
+      "package_noun": "bottle",
+      "median_base_qty": 227,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 5,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "mayonnaise",
+      "package_noun": "jar",
+      "median_base_qty": 377,
+      "base_unit": "g",
+      "product_count": 5,
+      "agreeing": 7,
+      "package_source": "Open Food Facts, median of 5 US products, 2026-10"
+    },
+    {
+      "name": "ketchup",
+      "package_noun": "bottle",
+      "median_base_qty": 580,
+      "base_unit": "g",
+      "product_count": 11,
+      "agreeing": 11,
+      "package_source": "Open Food Facts, median of 11 US products, 2026-10"
+    },
+    {
+      "name": "hot sauce",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "worcestershire sauce",
+      "error": "HTTP Error 503: Service Temporarily Unavailable"
+    },
+    {
+      "name": "peanut butter",
+      "package_noun": "jar",
+      "median_base_qty": 462,
+      "base_unit": "g",
+      "product_count": 11,
+      "agreeing": 11,
+      "package_source": "Open Food Facts, median of 11 US products, 2026-10"
+    },
+    {
+      "name": "miso paste",
+      "package_noun": "bag",
+      "median_base_qty": 30,
+      "base_unit": "g",
+      "product_count": 2,
+      "agreeing": 2,
+      "package_source": "Open Food Facts, median of 2 US products, 2026-10"
+    },
+    {
+      "name": "tahini",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "frozen peas",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "g",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    },
+    {
+      "name": "tofu",
+      "package_noun": "tub",
+      "median_base_qty": 454,
+      "base_unit": "g",
+      "product_count": 3,
+      "agreeing": 3,
+      "package_source": "Open Food Facts, median of 3 US products, 2026-10"
+    },
+    {
+      "name": "dry white wine",
+      "package_noun": null,
+      "median_base_qty": null,
+      "base_unit": "ml",
+      "product_count": 0,
+      "agreeing": 0,
+      "package_source": null
+    }
+  ]
+}

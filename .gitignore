@@ -51,3 +51,10 @@ htmlcov/
 # Real-receipt regression tests and their OCR fixtures: run locally when present, never published
 tests/test_receipts_real.py
 tests/fixtures/receipts/
+
+# Local working notes: kept on disk, not published
+docs/plans/
+docs/ux-journal.md
+docs/ux-journal-2.md
+docs/ux-review.md
+docs/pantry-market-research.md

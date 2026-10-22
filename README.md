@@ -35,6 +35,31 @@ target is a five-item check instead of an eighty-item audit.
    Nothing touches the pantry until you confirm.
 5. **Cook** — tap "I cooked this" and levels are debited.
 
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/tonight.png" alt="Tonight"></td>
+    <td width="33%"><img src="docs/screenshots/before-you-shop.png" alt="Before you shop"></td>
+    <td width="33%"><img src="docs/screenshots/shopping-list.png" alt="Shopping list"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Tonight.</b> Planned dinners first, then every recipe ranked by how many ingredients are missing.</td>
+    <td valign="top"><b>Before you shop.</b> It asks only about the items whose uncertainty would change the list, each with a best guess, its range and how sure it is.</td>
+    <td valign="top"><b>Shopping list.</b> Grouped by aisle and rounded to package sizes, each line naming the meal it is for. Recipe lines the catalog cannot name come first.</td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/pantry.png" alt="Pantry"></td>
+    <td width="33%"><img src="docs/screenshots/cook.png" alt="Cook"></td>
+    <td width="33%"><img src="docs/screenshots/receipt.png" alt="Receipt scan"></td>
+  </tr>
+  <tr>
+    <td valign="top"><b>Pantry.</b> Every level is a belief with a confidence. One tap confirms it, edits it or marks it gone.</td>
+    <td valign="top"><b>Cook.</b> Each ingredient's debit is shown and editable before the cook is logged, with a warning where the recipe uses more than the pantry is believed to hold.</td>
+    <td valign="top"><b>Receipt scan.</b> Local OCR of a receipt photo. Lines that match the catalog are proposed with amounts, and nothing reaches the pantry until it is ticked and applied.</td>
+  </tr>
+</table>
+
+Invented demo data in a throwaway database, from [`scripts/demo_data.py`](scripts/demo_data.py). The receipt is a rendered image of an invented receipt, scanned through the real upload.
+
 ## Running it
 
 It runs on your own machine. There is no server to rent, no domain to point, and

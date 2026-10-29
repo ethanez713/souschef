@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Plan · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import sheet, group_header %}
+{% from "macros.html" import sheet, group_header, toast %}
 {% set active = 'plan' %}
 
 {% macro day_row(day, today, entries) %}
@@ -51,6 +51,7 @@
 
 {% block content %}
 <main id="main">
+  {% if plan_toast %}{{ toast(plan_toast.message, plan_toast.undo) }}{% endif %}
   <div class="page-head">
     <h1>Plan</h1>
     {% if has_meals %}
@@ -77,24 +78,30 @@
     {{ day_row(day, today, by_day[day]) }}
     {% call sheet('day-' ~ day.isoformat(), day.strftime('%a %-d %b')) %}
       {% for e in by_day[day] %}{{ entry_row(e, today) }}{% endfor %}
-      <form method="post" action="/plan/day" class="dayadd">
-        <input type="hidden" name="plan_date" value="{{ day.isoformat() }}">
-        <select name="choice" aria-label="Add to {{ day.strftime('%A %-d %B') }}" onchange="if (this.value) this.form.requestSubmit()">
-          <option value="">{{ 'Add…' if by_day[day] else 'Unplanned — add…' }}</option>
-          <optgroup label="Not cooking">
-            <option value="n:Eating out">Eating out</option>
-            <option value="n:Leftovers">Leftovers</option>
-          </optgroup>
+      <div class="dayadd">
+        {# No autofocus: opening the sheet would raise the keyboard over the list. #}
+        {% if show_recipe_filter %}
+          <input type="search" class="dayadd-filter" data-dayadd-filter placeholder="Filter recipes"
+                 aria-label="Filter recipes" autocomplete="off" enterkeyhint="search">
+        {% endif %}
+        <form method="post" action="/plan/day" aria-label="Add to {{ day.strftime('%A %-d %B') }}">
+          <input type="hidden" name="plan_date" value="{{ day.isoformat() }}">
+          <div class="dayadd-chips">
+            <button type="submit" name="choice" value="n:Eating out" data-dayadd-option>Eating out</button>
+            <button type="submit" name="choice" value="n:Leftovers" data-dayadd-option>Leftovers</button>
+          </div>
           {% for label, options in recipe_groups %}
-            <optgroup label="{{ label }}">
+            <div class="dayadd-group" data-dayadd-group>
+              {{ group_header(label) }}
               {% for recipe, marker in options %}
-                <option value="r:{{ recipe.id }}">{{ recipe.title }}{{ marker }}</option>
+                <button type="submit" name="choice" value="r:{{ recipe.id }}" class="dayadd-option" data-dayadd-option>
+                  <span>{{ recipe.title }}</span>{% if marker %}<span class="dayadd-marker">{{ marker }}</span>{% endif %}
+                </button>
               {% endfor %}
-            </optgroup>
+            </div>
           {% endfor %}
-        </select>
-        <noscript><button class="small" type="submit">Add</button></noscript>
-      </form>
+        </form>
+      </div>
     {% endcall %}
   {% endfor %}
 
@@ -105,4 +112,24 @@
     </div>
   {% endif %}
 </main>
+{% if show_recipe_filter %}
+<script>
+(function () {
+  document.querySelectorAll("[data-dayadd-filter]").forEach(function (input) {
+    input.addEventListener("input", function () {
+      var root = input.closest(".dayadd");
+      if (!root) return;
+      var query = input.value.trim().toLowerCase();
+      root.querySelectorAll("[data-dayadd-option]").forEach(function (option) {
+        var title = (option.textContent || "").toLowerCase();
+        option.hidden = query !== "" && title.indexOf(query) === -1;
+      });
+      root.querySelectorAll("[data-dayadd-group]").forEach(function (group) {
+        group.hidden = group.querySelector("[data-dayadd-option]:not([hidden])") === null;
+      });
+    });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

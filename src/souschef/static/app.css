@@ -508,9 +508,6 @@ details.inline-fix .controls,
   details.basket > * { display: block !important; }
 }
 
-.dayrow .dayadd { margin-top: var(--sp-2); }
-.dayrow .dayadd select { width: 100%; min-height: 44px; }
-
 .grid-2 { display: grid; gap: var(--sp-2); align-items: start; }
 .grid-2 > .card { margin-bottom: 0; }
 @media (min-width: 480px) { .grid-2 { grid-template-columns: 1fr 1fr; } }
@@ -555,7 +552,23 @@ details.inline-fix .controls,
 .plan-slot.add:hover { color: var(--text-accent); }
 .plan-day.today { background: var(--surface-accent-soft); }
 .sheet-body .dayadd { margin-top: var(--sp-3); }
-.sheet-body .dayadd select { width: 100%; }
+.dayadd-filter { margin: 0 0 var(--sp-3); }
+.dayadd [hidden] { display: none; }
+.dayadd-chips { display: flex; gap: var(--sp-2); }
+.dayadd-chips button { flex: 1; min-height: 48px; border-radius: var(--r-full); }
+.dayadd-option {
+  display: flex; align-items: baseline; justify-content: flex-start; flex-wrap: wrap;
+  width: 100%; min-height: 48px; padding: var(--sp-2) 0;
+  background: transparent; border: 0; border-bottom: 1px solid var(--ink-rule);
+  border-radius: 0; box-shadow: none;
+  color: var(--text-heading); font-size: var(--fs-body); font-weight: var(--fw-medium);
+  text-align: left; white-space: normal;
+}
+.dayadd-option:hover { background: var(--surface-hover); color: var(--text-heading); }
+.dayadd-marker {
+  color: var(--text-muted); font-size: var(--fs-body-sm); font-weight: var(--fw-regular);
+  line-height: var(--lh-body-sm); white-space: nowrap;
+}
 
 .group-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
 .group-side { display: inline-flex; align-items: center; gap: var(--sp-3); margin-left: auto; }

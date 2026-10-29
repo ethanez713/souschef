@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, date, datetime, timedelta
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -41,6 +42,7 @@ from souschef.models import (
     StoredCredential,
     User,
 )
+from souschef.web.common import PLAN_DAYS
 
 
 def ing(session: Session, name: str) -> CanonicalIngredient:
@@ -1355,7 +1357,12 @@ def test_the_same_meal_is_not_planned_twice_in_one_day(
     )
     seeded_session.commit()
     payload = {"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()}
-    assert signed_in.post("/plan/add", data=payload).headers["location"] == "/plan"
+    first = signed_in.post("/plan/add", data=payload)
+    assert first.headers["location"].startswith("/plan?added=")
+    added = signed_in.get(first.headers["location"]).text
+    when = date.today().strftime("%a %-d %b")
+    assert f"Added Once to {when}" in added
+    assert _undo_action(added).startswith("/plan/")
 
     again = signed_in.post("/plan/add", data=payload)
     assert again.headers["location"] == "/plan?skipped=1"
@@ -2043,7 +2050,7 @@ def test_a_night_off_shows_on_the_plan_and_adds_nothing_to_the_list(
 ) -> None:
     day = date.today().isoformat()
     posted = signed_in.post("/plan/day", data={"plan_date": day, "choice": "n:Eating out"})
-    assert posted.headers["location"] == f"/plan#d-{day}"
+    assert posted.headers["location"].startswith("/plan?added=")
     signed_in.post("/plan/day", data={"plan_date": day, "choice": "n:Eating out"})
 
     page = signed_in.get("/plan")
@@ -2076,13 +2083,299 @@ def test_the_plan_lists_every_day_with_a_picker_and_plans_a_recipe_once(
     day = date.today().isoformat()
     page = signed_in.get("/plan")
     assert page.text.count('action="/plan/day"') == 10
-    assert f'<option value="r:{recipe.id}">Day Pick' in page.text
+    assert f'name="choice" value="r:{recipe.id}"' in page.text
+    assert "<select" not in page.text
 
     for _ in range(2):
         signed_in.post("/plan/day", data={"plan_date": day, "choice": f"r:{recipe.id}"})
     seeded_session.expire_all()
     assert len(seeded_session.scalars(select(MealPlanEntry)).all()) == 1
     assert len(seeded_session.scalars(select(ShoppingListItem)).all()) == 1
+
+
+def _sheet(html: str, sheet_id: str) -> str:
+    match = re.search(
+        rf'<dialog class="sheet" id="{re.escape(sheet_id)}"[\s\S]*?</dialog>',
+        html,
+    )
+    assert match is not None, sheet_id
+    return match.group(0)
+
+
+def _undo_action(html: str) -> str:
+    match = re.search(r'action="([^"]+)"><button type="submit">Undo</button>', html)
+    assert match is not None
+    return unescape(match.group(1))
+
+
+def _plan_recipe(session: Session, user: User, title: str, url: str) -> Recipe:
+    recipe = save_imported_recipe(
+        session,
+        user.id,
+        RawRecipe(
+            title=title,
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url=url,
+        ),
+        source=RecipeSource.URL,
+    )
+    session.commit()
+    return recipe
+
+
+def test_an_upcoming_day_sheet_lists_meals_without_a_select(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(
+        seeded_session, web_user, "Sheet Meal", "https://example.com/sheet-meal"
+    )
+    yesterday = date.today() - timedelta(days=1)
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=yesterday,
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=2,
+        )
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/plan").text
+    upcoming = _sheet(page, f"day-{date.today().isoformat()}")
+    assert "<select" not in upcoming
+    assert upcoming.count('name="choice"') == 3
+    assert 'value="n:Eating out"' in upcoming
+    assert 'value="n:Leftovers"' in upcoming
+    assert f'value="r:{recipe.id}"' in upcoming
+    assert "Missing 1–3" in upcoming
+
+    past = _sheet(page, f"day-{yesterday.isoformat()}")
+    assert "<select" not in past
+    assert 'name="choice"' not in past
+    assert "Sheet Meal" in past
+
+
+def test_adding_from_the_day_sheet_can_be_undone(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(
+        seeded_session, web_user, "Undo Meal", "https://example.com/undo-meal"
+    )
+    day = date.today()
+    posted = signed_in.post(
+        "/plan/day", data={"plan_date": day.isoformat(), "choice": f"r:{recipe.id}"}
+    )
+    page = signed_in.get(posted.headers["location"]).text
+    assert f"Added {recipe.title} to {day.strftime('%a %-d %b')}" in page
+
+    seeded_session.expire_all()
+    entry = seeded_session.scalar(select(MealPlanEntry))
+    assert entry is not None
+    assert _undo_action(page) == f"/plan/{entry.id}/remove"
+    assert seeded_session.scalars(select(ShoppingListItem)).all() != []
+
+    signed_in.post(f"/plan/{entry.id}/remove")
+    seeded_session.expire_all()
+    assert seeded_session.scalars(select(MealPlanEntry)).all() == []
+    assert seeded_session.scalars(select(ShoppingListItem)).all() == []
+
+
+def test_removing_a_meal_can_be_undone(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(
+        seeded_session, web_user, "Restore Meal", "https://example.com/restore-meal"
+    )
+    day = date.today() + timedelta(days=1)
+    entry = MealPlanEntry(
+        user_id=web_user.id,
+        plan_date=day,
+        slot=MealSlot.LUNCH,
+        recipe_id=recipe.id,
+        servings=6,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    removed = signed_in.post(f"/plan/{entry.id}/remove")
+    query = parse_qs(urlparse(removed.headers["location"]).query)
+    assert query["recipe"] == [str(recipe.id)]
+    assert query["date"] == [day.isoformat()]
+    assert query["servings"] == ["6"]
+    assert query["slot"] == ["lunch"]
+    assert "title" not in query
+    page = signed_in.get(removed.headers["location"]).text
+    assert f"Removed {recipe.title}" in page
+
+    signed_in.post(_undo_action(page))
+    seeded_session.expire_all()
+    restored = seeded_session.scalars(select(MealPlanEntry)).all()
+    assert len(restored) == 1
+    assert restored[0].recipe_id == recipe.id
+    assert restored[0].plan_date == day
+    assert restored[0].servings == 6
+    assert restored[0].slot == MealSlot.LUNCH
+    assert seeded_session.scalars(select(ShoppingListItem)).all() != []
+
+
+def test_removing_a_night_off_can_be_undone(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    day = date.today()
+    posted = signed_in.post(
+        "/plan/day", data={"plan_date": day.isoformat(), "choice": "n:Eating out"}
+    )
+    removed = signed_in.post(_undo_action(signed_in.get(posted.headers["location"]).text))
+    gone = signed_in.get(removed.headers["location"]).text
+    assert "Removed Eating out" in gone
+    assert "<strong>Eating out</strong>" not in gone
+
+    signed_in.post(_undo_action(gone))
+    seeded_session.expire_all()
+    restored = seeded_session.scalars(select(MealPlanEntry)).all()
+    assert len(restored) == 1
+    assert restored[0].freeform_title == "Eating out"
+    assert restored[0].plan_date == day
+    assert restored[0].servings == 4
+    assert restored[0].slot == MealSlot.DINNER
+
+
+def test_a_freeform_undo_title_is_capped_and_escaped(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    raw = "<b>" + ("n" * 250)
+    day = date.today()
+    page = signed_in.get(
+        "/plan",
+        params={"title": raw, "date": day.isoformat(), "servings": "4", "slot": "dinner"},
+    ).text
+    assert "<b>" not in page
+    assert "Removed &lt;b&gt;" in page
+    assert "n" * 198 not in page
+    assert "n" * 197 in page
+
+    signed_in.post(_undo_action(page))
+    seeded_session.expire_all()
+    entry = seeded_session.scalar(select(MealPlanEntry))
+    assert entry is not None
+    assert entry.freeform_title == raw[:200]
+    assert len(entry.freeform_title) == 200
+
+
+def test_plan_restore_rejects_a_bad_undo(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    day = date.today().isoformat()
+    quiet = signed_in.get(
+        "/plan",
+        params={"title": "Eating out", "date": day, "servings": "4", "slot": "brunch"},
+    )
+    assert 'class="toast"' not in quiet.text
+    rejected = signed_in.post(
+        "/plan/restore",
+        params={"title": "Eating out", "date": day, "servings": "99", "slot": "dinner"},
+    )
+    assert rejected.status_code == 303
+    assert rejected.headers["location"] == "/plan"
+    seeded_session.expire_all()
+    assert seeded_session.scalars(select(MealPlanEntry)).all() == []
+
+
+def test_plan_undo_does_not_reveal_another_users_recipe(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    other = User(username="someone-else", display_name="x", password_hash="x")
+    seeded_session.add(other)
+    seeded_session.flush()
+    recipe = save_imported_recipe(
+        seeded_session,
+        other.id,
+        RawRecipe(
+            title="Hidden Stew",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/hidden-stew",
+        ),
+        source=RecipeSource.URL,
+    )
+    entry = MealPlanEntry(
+        user_id=other.id,
+        plan_date=date.today(),
+        slot=MealSlot.DINNER,
+        recipe_id=recipe.id,
+        servings=2,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    hidden = signed_in.get("/plan", params={"added": str(entry.id)})
+    assert "Hidden Stew" not in hidden.text
+    assert 'class="toast"' not in hidden.text
+    listed = signed_in.get(
+        "/plan",
+        params={
+            "recipe": str(recipe.id),
+            "date": date.today().isoformat(),
+            "servings": "2",
+            "slot": "dinner",
+        },
+    )
+    assert "Hidden Stew" not in listed.text
+    denied = signed_in.post(
+        "/plan/restore",
+        params={
+            "recipe": str(recipe.id),
+            "date": date.today().isoformat(),
+            "servings": "2",
+            "slot": "dinner",
+        },
+    )
+    assert denied.status_code == 404
+    seeded_session.expire_all()
+    assert seeded_session.get(MealPlanEntry, entry.id) is not None
+    assert (
+        seeded_session.scalars(
+            select(MealPlanEntry).where(MealPlanEntry.user_id != other.id)
+        ).all()
+        == []
+    )
+
+
+def test_the_day_sheet_filters_only_after_eight_recipes(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    for number in range(8):
+        save_imported_recipe(
+            seeded_session,
+            web_user.id,
+            RawRecipe(
+                title=f"Counted Meal {number}",
+                ingredients=["1 pound spaghetti"],
+                servings=2,
+                source_url=f"https://example.com/counted-{number}",
+            ),
+            source=RecipeSource.URL,
+        )
+    seeded_session.commit()
+    assert 'class="dayadd-filter"' not in signed_in.get("/plan").text
+
+    save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Ninth Meal",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/counted-ninth",
+        ),
+        source=RecipeSource.URL,
+    )
+    seeded_session.commit()
+    page = signed_in.get("/plan").text
+    assert page.count('class="dayadd-filter"') == PLAN_DAYS
+    assert "autofocus" not in page
 
 
 def test_a_recipe_that_is_not_yours_cannot_be_planned_by_day(

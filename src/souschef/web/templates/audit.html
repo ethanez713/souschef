@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import qty_row, toast with context %}
 {% set active = 'shopping' %}
 {% block title %}Before you shop · SousChef{% endblock %}
 
@@ -7,72 +8,18 @@
 <main id="main">
   <h1>Before you shop</h1>
 
-  {% if checked_everything %}
-    <div class="card">
-      <h3>Nothing worth checking</h3>
-      <p class="muted" style="margin-top:var(--sp-2)">
-        {% if planned_items %}
-          Your levels for this week's {{ planned_items }} planned ingredient{{ '' if planned_items == 1 else 's' }}
-          are either confident enough to trust, or clearly on one side of the buy line.
-          Go straight to the list.
-        {% else %}
-          Nothing is planned for the week yet, so there is nothing to verify.
-        {% endif %}
-      </p>
-      <div class="actions"><a class="btn primary" href="/shopping">Go to shopping list</a></div>
-    </div>
-  {% else %}
-    <p class="muted">
-      {% if candidates|length == 1 %}
-        Only this one needs a physical look. Everything else is either
-      {% else %}
-        Only these {{ candidates|length }} need a physical look. Everything else is either
-      {% endif %}
-      confidently stocked, confidently empty, or not needed this week.
-    </p>
-    {% if error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>{% endif %}
+  {% if form_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ form_error }}</div></div>{% endif %}
+  {% if change %}{{ toast(change.message, '/pantry/undo/' ~ change.event_id, return_to='/audit') }}{% endif %}
 
-    <form method="post" action="/audit">
-    <div class="spaced">
+  {% if candidates %}
+    <p>Check these {{ candidates|length }} before you shop.</p>
     {% for c in candidates %}
-      <div class="card">
-        <div class="row">
-          <div class="stack">
-            <h3>{{ c.ingredient.name }}</h3>
-            <span class="meta">
-              {% if c.reason == 'needed_this_week' %}
-                Recipes need about <span class="num">{{ c.required|quantity(c.ingredient, round_count=True) }}</span>.
-                Best guess: <span class="num">{{ c.believed|quantity(c.ingredient, round_count=True) }}</span>.
-              {% else %}
-                Might be below your restock level.
-                Best guess: <span class="num">{{ c.believed|quantity(c.ingredient, round_count=True) }}</span>.
-              {% endif %}
-              Could be anywhere from <span class="num">{{ c.low|quantity(c.ingredient, round_count=True) }}</span>
-              to <span class="num">{{ c.high|quantity(c.ingredient, round_count=True) }}</span>.
-            </span>
-          </div>
-          <span class="badge warn">
-            {{ (c.confidence * 100)|round|int }}% sure
-          </span>
-        </div>
-
-        <div class="controls" style="margin-top:var(--sp-4)">
-          <div class="field">
-            <label for="q{{ c.ingredient.id }}">Actual amount ({{ c.ingredient|unit_label }})</label>
-            <input id="q{{ c.ingredient.id }}" name="quantity_{{ c.ingredient.id }}" type="number" step="any"
-                   inputmode="decimal"
-                   placeholder="{{ c.believed|entry_amount(c.ingredient) }}">
-          </div>
-        </div>
-        <p class="note">Leave blank if the best guess looks right.</p>
-      </div>
+      {% set sub %}need <span class="num">{{ c.required|quantity(c.ingredient) }}</span>{% endset %}
+      {{ qty_row(c.ingredient, c.believed|entry_amount(c.ingredient), sub, next='/audit') }}
     {% endfor %}
-    </div>
-    <div class="actions">
-      <button class="primary" type="submit">Save</button>
-      <a class="btn" href="/shopping">Build the list</a>
-    </div>
-    </form>
+  {% else %}
+    <p>Nothing to check.</p>
   {% endif %}
+  <div class="actions"><a class="btn primary" href="/shopping">Go to list</a></div>
 </main>
 {% endblock %}

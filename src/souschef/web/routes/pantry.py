@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from urllib.parse import quote_plus
 
@@ -12,12 +13,10 @@ from sqlalchemy.orm import Session
 
 from souschef.core.inventory import (
     confirm_level,
-    discard_item,
     pantry_view,
     record_event,
     save_package_size,
-    set_level,
-    undo_discard,
+    undo_event,
 )
 from souschef.core.matching import IngredientMatcher, MatchMethod
 from souschef.core.spoilage import freshness_by_ingredient
@@ -32,12 +31,12 @@ from souschef.core.units import (
     resolve_entry,
 )
 from souschef.db import get_db
-from souschef.models import CanonicalIngredient, EventReason, User
+from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, User
 from souschef.models.ingredient import IngredientCategory
 from souschef.web import auth
 from souschef.web.common import (
     _adhoc_units,
-    _discard_notice,
+    _change_toast,
     _is_htmx,
     _kitchen_unit_message,
     _on_hand,
@@ -112,7 +111,7 @@ def _pantry_page(
     package_qty: str = "",
     package_unit: str = "",
     level_error: str = "",
-    wasted: int = 0,
+    changed: int = 0,
     status_code: int = 200,
 ) -> HTMLResponse:
     views = pantry_view(db, user.id, include_empty=True)
@@ -157,7 +156,7 @@ def _pantry_page(
         unit_choices=unit_choices,
         package_caption=package_caption,
         level_error=level_error,
-        discarded=_discard_notice(db, user, wasted),
+        change=_change_toast(db, user, changed),
     )
 
 
@@ -165,83 +164,104 @@ def _pantry_page(
 def pantry_page(
     request: Request,
     q: str = "",
-    wasted: int = 0,
+    changed: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    return _pantry_page(request, db, user, q, wasted=wasted)
+    return _pantry_page(request, db, user, q, changed=changed)
 
 
-@router.post("/pantry/{ingredient_id}/level")
-def update_level(
+def _record_check(
+    db: Session,
+    user: User,
+    ingredient: CanonicalIngredient,
+    quantity: str,
+    shown: str,
+) -> InventoryEvent:
+    text = quantity.strip()
+    if not text:
+        raise ValueError("Enter a number.")
+    # The box is prefilled with a display string. Matching that string is a
+    # confirm; parsing both and comparing floats would turn a tick into a
+    # zero-delta correction.
+    if text == shown.strip():
+        return confirm_level(db, user.id, ingredient)
+    try:
+        value = float(text)
+    except ValueError:
+        raise ValueError("Enter a number.") from None
+    if not math.isfinite(value):
+        raise ValueError("Enter a number.")
+    if value < 0:
+        raise ValueError("Amount has to be zero or more.")
+    return confirm_level(
+        db,
+        user.id,
+        ingredient,
+        value,
+        unit=entry_unit(ingredient, user.unit_system or "us"),
+    )
+
+
+def _check_error(
+    request: Request,
+    db: Session,
+    user: User,
+    q: str,
+    next_path: str,
+    message: str,
+) -> HTMLResponse:
+    target = _safe_next(next_path) if next_path.strip() else ""
+    path = target.split("?", 1)[0].split("#", 1)[0] if target else ""
+    if path == "/audit":
+        from souschef.web.routes.audit import render_audit
+
+        page = render_audit(request, db, user, form_error=message)
+        page.status_code = 400
+        return page
+    if path == "/":
+        from souschef.web.routes.home import render_home
+
+        page = render_home(request, db, user, form_error=message)
+        page.status_code = 400
+        return page
+    # htmx 2 does not swap a 4xx into #pantry-list, so the notice only shows at 200.
+    status = 200 if _is_htmx(request) else 400
+    return _pantry_page(request, db, user, q, level_error=message, status_code=status)
+
+
+@router.post("/pantry/{ingredient_id}/check")
+def check_item(
     request: Request,
     ingredient_id: int,
-    quantity: float = Form(...),
-    unit: str = Form(""),
+    quantity: str = Form(""),
+    shown: str = Form(""),
     q: str = Form(""),
     next_path: str = Form("", alias="next"),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    # The ingredient catalog is shared, so no ownership check applies to it --
-    # the scoping happens on the pantry row `set_level` writes.
     ingredient = db.get(CanonicalIngredient, ingredient_id)
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
-    # An empty unit means the number was typed in the entry unit shown on the box.
-    typed = unit.strip() or entry_unit(ingredient, user.unit_system or "us")
     try:
-        set_level(db, user.id, ingredient, quantity, unit=typed)
+        event = _record_check(db, user, ingredient, quantity, shown)
     except (UnitConversionError, ValueError) as exc:
-        return _pantry_page(request, db, user, q, level_error=str(exc), status_code=400)
+        return _check_error(request, db, user, q, next_path, str(exc))
     _sync_shopping(db, user.id)
-    return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
-
-
-@router.post("/pantry/{ingredient_id}/confirm")
-def confirm_item(
-    ingredient_id: int,
-    q: str = Form(""),
-    next_path: str = Form("", alias="next"),
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    ingredient = db.get(CanonicalIngredient, ingredient_id)
-    if ingredient is None:
-        raise HTTPException(status_code=404, detail="No such ingredient")
-    confirm_level(db, user.id, ingredient)
-    return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
-
-
-@router.post("/pantry/{ingredient_id}/discard")
-def discard_pantry_item(
-    ingredient_id: int,
-    q: str = Form(""),
-    next_path: str = Form("", alias="next"),
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    ingredient = db.get(CanonicalIngredient, ingredient_id)
-    if ingredient is None:
-        raise HTTPException(status_code=404, detail="No such ingredient")
-    event = discard_item(db, user.id, ingredient)
-    target = _after_pantry_edit(q, next_path)
-    if event is not None:
-        db.flush()
-        target = _with_param(target, "wasted", event.id)
-        _sync_shopping(db, user.id)
+    target = _with_param(_after_pantry_edit(q, next_path), "changed", event.id)
     return RedirectResponse(target, status_code=303)
 
 
 @router.post("/pantry/undo/{event_id}")
-def undo_pantry_discard(
+def undo_pantry_event(
     event_id: int,
     q: str = Form(""),
     next_path: str = Form("", alias="next"),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
-    if undo_discard(db, user.id, event_id) is not None:
+    if undo_event(db, user.id, event_id) is not None:
         _sync_shopping(db, user.id)
     return RedirectResponse(_after_pantry_edit(q, next_path), status_code=303)
 
@@ -349,7 +369,7 @@ def add_to_pantry(
             )
             db.add(ingredient)
             db.flush()
-        record_event(
+        event = record_event(
             db,
             user.id,
             ingredient,
@@ -366,7 +386,9 @@ def add_to_pantry(
             return show(str(exc), word=pack)
         return show(_kitchen_unit_message(exc, unit))
     _sync_shopping(db, user.id)
-    return RedirectResponse(_pantry_url(q), status_code=303)
+    return RedirectResponse(
+        _with_param(_pantry_url(q), "changed", event.id), status_code=303
+    )
 
 
 @router.get("/pantry/add")

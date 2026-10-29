@@ -128,10 +128,11 @@ def test_home_and_pantry_name_what_is_probably_gone(
     assert "probably gone" not in pantry.casefold()
     assert "probably gone" not in home.casefold()
     assert "Use soon:" not in home
-    amount = pantry.split('class="list-row-title">chicken breast<', 1)[1]
-    assert 'class="num">' in amount
-    assert not amount.split('class="num">', 1)[1].split("</span>", 1)[0].endswith("?")
-    assert 'class="conf low"' in amount[:1400]
+    start = pantry.index(f'action="/pantry/{ingredient.id}/check"')
+    form = pantry[start:pantry.index("</form>", start)]
+    assert 'name="quantity"' in form
+    assert "?" not in form.split('name="quantity"', 1)[1].split(">", 1)[0]
+    assert 'class="conf low"' in form
 
 
 def test_home_levels_use_the_pantry_card_and_return_home(
@@ -147,17 +148,21 @@ def test_home_levels_use_the_pantry_card_and_return_home(
     seeded_session.commit()
 
     home = signed_in.get("/").text
-    assert f'id="edit{ingredient.id}"' in home
+    assert f'action="/pantry/{ingredient.id}/check"' in home
     assert 'name="next" value="/"' in home
+    assert f'id="edit{ingredient.id}"' not in home
 
     confirmed = signed_in.post(
-        f"/pantry/{ingredient.id}/confirm", data={"next": "/"}
+        f"/pantry/{ingredient.id}/check",
+        data={"quantity": "1", "shown": "1", "next": "/"},
     )
-    assert confirmed.headers["location"] == "/"
+    assert confirmed.headers["location"].startswith("/?changed=")
     elsewhere = signed_in.post(
-        f"/pantry/{ingredient.id}/confirm", data={"next": "https://example.com/x"}
+        f"/pantry/{ingredient.id}/check",
+        data={"quantity": "1", "shown": "1", "next": "https://example.com/x"},
     )
-    assert elsewhere.headers["location"] == "/"
+    assert elsewhere.headers["location"].startswith("/?changed=")
+    assert "example.com" not in elsewhere.headers["location"]
 
 
 def test_a_voided_purchase_no_longer_anchors_freshness(

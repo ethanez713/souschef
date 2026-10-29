@@ -2,31 +2,31 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from souschef.core.audit import build_audit
-from souschef.core.inventory import confirm_level
-from souschef.core.units import UnitConversionError, entry_unit
 from souschef.db import get_db
-from souschef.models import CanonicalIngredient, User
+from souschef.models import User
 from souschef.planning.shopping import requirements_for_audit
 from souschef.web import auth
 from souschef.web.common import (
+    _change_toast,
     _horizon,
     _render,
-    _sync_shopping,
 )
 
 router = APIRouter()
 
 
-@router.get("/audit", response_class=HTMLResponse)
-def audit_page(
+def render_audit(
     request: Request,
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
+    db: Session,
+    user: User,
+    *,
+    changed: int = 0,
+    form_error: str = "",
 ) -> HTMLResponse:
     """The pre-shop check: the few things worth physically verifying."""
     today, week_end = _horizon()
@@ -36,75 +36,16 @@ def audit_page(
         request,
         "audit.html",
         candidates=candidates,
-        checked_everything=not candidates,
-        planned_items=len(requirements),
+        change=_change_toast(db, user, changed),
+        form_error=form_error,
     )
 
 
-def _confirm_audit_field(db: Session, user: User, ingredient_id: int, raw: str) -> None:
-    ingredient = db.get(CanonicalIngredient, ingredient_id)
-    if ingredient is None:
-        raise HTTPException(status_code=404, detail="No such ingredient")
-    # An empty box means "the estimate was right", which still restores
-    # confidence -- that is the whole point of asking.
-    text = raw.strip()
-    if not text:
-        confirm_level(db, user.id, ingredient)
-        return
-    confirm_level(
-        db,
-        user.id,
-        ingredient,
-        float(text),
-        unit=entry_unit(ingredient, user.unit_system or "us"),
-    )
-
-
-@router.post("/audit")
-async def resolve_audit(
+@router.get("/audit", response_class=HTMLResponse)
+def audit_page(
     request: Request,
+    changed: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
-) -> Response:
-    """Record every answer on the page. One card at a time used to drop the rest."""
-    form = await request.form()
-    level_changed = False
-    try:
-        for key, raw in form.multi_items():
-            name = str(key)
-            if not name.startswith("quantity_"):
-                continue
-            _confirm_audit_field(db, user, int(name.removeprefix("quantity_")), str(raw))
-            if str(raw).strip():
-                level_changed = True
-    except (UnitConversionError, ValueError) as exc:
-        if level_changed:
-            _sync_shopping(db, user.id)
-        today, week_end = _horizon()
-        requirements = requirements_for_audit(db, user.id, today, week_end)
-        candidates = build_audit(db, user.id, requirements)
-        return _render(
-            request,
-            "audit.html",
-            status_code=400,
-            candidates=candidates,
-            checked_everything=not candidates,
-            planned_items=len(requirements),
-            error=str(exc),
-        )
-    if level_changed:
-        _sync_shopping(db, user.id)
-    return RedirectResponse("/audit", status_code=303)
-
-
-@router.post("/audit/{ingredient_id}")
-def resolve_audit_item(
-    ingredient_id: int,
-    quantity: str = Form(""),
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
-) -> Response:
-    _confirm_audit_field(db, user, ingredient_id, quantity)
-    if quantity.strip():
-        _sync_shopping(db, user.id)
-    return RedirectResponse("/audit", status_code=303)
+) -> HTMLResponse:
+    return render_audit(request, db, user, changed=changed)

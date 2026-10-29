@@ -20,13 +20,9 @@ GET /settings
 GET /settings/{rest:path}
 GET /share
 GET /shopping
-POST /audit
-POST /audit/{ingredient_id}
 POST /pantry/add
 POST /pantry/undo/{event_id}
-POST /pantry/{ingredient_id}/confirm
-POST /pantry/{ingredient_id}/discard
-POST /pantry/{ingredient_id}/level
+POST /pantry/{ingredient_id}/check
 POST /plan/add
 POST /plan/day
 POST /plan/restore

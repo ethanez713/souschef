@@ -385,12 +385,31 @@ def void_events(session: Session, user_id: int, event_ids: list[int]) -> list[In
     return events
 
 
-def undo_discard(session: Session, user_id: int, event_id: int) -> InventoryEvent | None:
-    """Put back what a discard removed by voiding it; later events replay on top."""
-    waste = session.get(InventoryEvent, event_id)
-    if waste is None or waste.user_id != user_id or waste.reason != EventReason.WASTE:
+_UNDOABLE = frozenset(
+    {
+        EventReason.CONFIRM,
+        EventReason.MANUAL,
+        EventReason.PURCHASE,
+        EventReason.WASTE,
+    }
+)
+
+
+def undo_event(session: Session, user_id: int, event_id: int) -> InventoryEvent | None:
+    """Void one live confirm, correction, purchase or discard, then refold.
+
+    Later events replay on top. A cook belongs to its cook record, so it is
+    not undone from a pantry toast.
+    """
+    event = session.get(InventoryEvent, event_id)
+    if (
+        event is None
+        or event.user_id != user_id
+        or event.voided_at is not None
+        or event.reason not in _UNDOABLE
+    ):
         return None
-    voided = void_events(session, user_id, [waste.id])
+    voided = void_events(session, user_id, [event.id])
     return voided[0] if voided else None
 
 

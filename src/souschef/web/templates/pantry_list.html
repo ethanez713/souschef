@@ -1,7 +1,7 @@
 {% from "icons.html" import icon %}
 {# `with context` so the card's quantity filters see the signed-in user. A bare import does not. #}
-{% from "macros.html" import pantry_card, discard_notice, group_header, row with context %}
-{{ discard_notice(discarded, query) }}
+{% from "macros.html" import pantry_card, group_header, row, toast with context %}
+{% if change %}{{ toast(change.message, '/pantry/undo/' ~ change.event_id, q=query, hx_inner='#pantry-list') }}{% endif %}
 {% if level_error %}
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>
 {% endif %}
@@ -21,23 +21,7 @@
   <section class="row-group">
     {{ group_header('Out') }}
     {% for v in out %}
-      <div class="item">
-        <input class="edit-toggle" type="checkbox" id="edit{{ v.ingredient.id }}" aria-label="Set {{ v.ingredient.name }} level">
-        {% set trail %}
-          <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
-        {% endset %}
-        {{ row(v.ingredient.name, sub='out', trail=trail) }}
-        <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
-              hx-post="/pantry/{{ v.ingredient.id }}/level" hx-target="#pantry-list" hx-swap="innerHTML">
-          <input type="hidden" name="q" value="{{ query }}">
-          <div class="field">
-            <input name="quantity" type="number" step="any" inputmode="decimal" required
-                   aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient|unit_label }})"
-                   placeholder="Set to… ({{ v.ingredient|unit_label }})">
-          </div>
-          <button type="submit">Set</button>
-        </form>
-      </div>
+      {{ pantry_card(v, freshness, query, amount='0') }}
     {% endfor %}
   </section>
 {% endif %}

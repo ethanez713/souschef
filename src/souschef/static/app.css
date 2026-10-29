@@ -166,7 +166,7 @@ button.link { min-height: 44px; padding: 0 var(--sp-2); background: none; border
 .iconbtn.bare { background: transparent; border-color: transparent; box-shadow: none; }
 .iconbtn.bare:hover { background: var(--surface-hover); color: var(--text-heading); }
 .iconbtn.small { width: 44px; }
-.iconbtn.discard:hover { background: var(--danger-soft); color: var(--text-danger); }
+
 
 input, select, textarea {
   width: 100%; min-height: 44px; padding: 0 var(--sp-4);
@@ -258,24 +258,18 @@ details.plan .daychips { margin-top: var(--sp-2); }
 
 /* ---------- pantry ---------- */
 
-.item { position: relative; }
-.item .edit-toggle { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
-.item .set-form { display: none; margin: 0; padding: 0 0 var(--sp-2); border: 0; border-bottom: 1px solid var(--ink-rule); }
-.item:has(.edit-toggle:checked) .set-form { display: flex; }
-.item:has(.edit-toggle:checked) > .list-row { border-bottom: 0; }
-.item:has(.edit-toggle:focus-visible) .edit-label { box-shadow: var(--ring-focus); }
+form.item { margin: 0; }
+.item .list-row { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
 .item .list-row-title {
   display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .item .list-row-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item .list-row-trail { gap: 0; }
-.item .list-row-trail .conf { margin-right: var(--sp-2); }
-.edit-label {
-  display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px;
-  color: var(--text-muted); border-radius: var(--r-control); cursor: pointer; transition: var(--t-control); margin: 0;
+.item .list-row-trail { gap: var(--sp-2); }
+.item input.qty {
+  width: 4.5em; max-width: 4.5em; flex: none;
+  padding: 0 var(--sp-2); font-size: 16px; text-align: right;
 }
-.edit-label:hover { background: var(--surface-hover); color: var(--text-heading); }
-.item:has(.edit-toggle:checked) .edit-label { background: var(--surface-accent-soft); color: var(--on-accent-soft); }
+.qty-unit { flex: none; font-size: 14px; color: var(--text-muted); white-space: nowrap; }
 .trail { display: flex; align-items: center; gap: var(--sp-3); white-space: nowrap; }
 
 /* ---------- plan ---------- */

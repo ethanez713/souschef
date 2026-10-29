@@ -19,9 +19,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from souschef.core.inventory import discard_item, get_or_create_item, physical_of, record_event
+from souschef.core.inventory import get_or_create_item, physical_of, record_event
 from souschef.core.recipes import save_imported_recipe
-from souschef.core.units import entry_unit, to_base
+from souschef.core.units import entry_label, entry_unit, format_entry_amount, to_base
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.models import (
     CanonicalIngredient,
@@ -207,9 +207,9 @@ def test_editing_a_level_keeps_the_active_search(
     seeded_session.commit()
 
     response = signed_in.post(
-        f"/pantry/{oil.id}/confirm", data={"q": "olive"}
+        f"/pantry/{oil.id}/check", data={"quantity": "1", "shown": "1", "q": "olive"}
     )
-    assert response.headers["location"] == "/pantry?q=olive"
+    assert response.headers["location"].startswith("/pantry?q=olive&changed=")
 
 
 def test_plan_page_offers_a_recipe_picker_per_day(
@@ -430,7 +430,7 @@ def test_pantry_shows_a_staple_as_assumed_stocked(
 
     page = signed_in.get("/pantry")
     assert "Always have" in page.text
-    assert f"/pantry/{oil.id}/confirm" not in page.text
+    assert f"/pantry/{oil.id}/check" not in page.text
 
 
 def test_shopping_list_generates_from_the_plan(
@@ -634,7 +634,9 @@ def test_an_audit_correction_drops_a_covered_item_on_the_next_shop_page(
     assert "spaghetti" in signed_in.get("/shopping").text
 
     spaghetti = ing(seeded_session, "spaghetti")
-    corrected = signed_in.post(f"/audit/{spaghetti.id}", data={"quantity": "2"})
+    corrected = signed_in.post(
+        f"/pantry/{spaghetti.id}/check", data={"quantity": "2", "shown": "0"}
+    )
     assert corrected.status_code == 303
     assert "spaghetti" not in signed_in.get("/shopping").text
 
@@ -690,7 +692,9 @@ def test_correcting_a_recipe_match_puts_the_ingredient_on_the_next_shop_page(
 def test_audit_page_renders_with_nothing_planned(signed_in: TestClient) -> None:
     response = signed_in.get("/audit")
     assert response.status_code == 200
-    assert "Nothing is planned" in response.text
+    assert "Nothing to check." in response.text
+    assert "Go to list" in response.text
+    assert "% sure" not in response.text
 
 
 def test_receipts_page_renders(signed_in: TestClient) -> None:
@@ -966,7 +970,12 @@ def test_a_bunch_of_cilantro_uses_the_catalog_package(
     row = _pantry_row(seeded_session, web_user, "fresh cilantro")
     assert row is not None
     assert row.quantity == pytest.approx(30)
-    assert "1 oz" in signed_in.get("/pantry").text
+    cilantro = ing(seeded_session, "fresh cilantro")
+    page = signed_in.get("/pantry").text
+    amount, unit = _shown_level(page, cilantro.id)
+    assert amount == format_entry_amount(row.quantity, cilantro, "us")
+    assert unit == entry_label(cilantro, "us")
+    assert "bunch" not in _check_form(page, cilantro.id)
 
 
 def test_a_bag_of_spinach_is_not_stored_as_a_sack_of_cement(
@@ -997,19 +1006,23 @@ def test_pantry_add_parses_packages_and_kitchen_units(
 
     page = signed_in.get("/pantry").text
     assert "spinach" in page
-    assert "5 oz" in page
-    assert "1 bag" not in page
     assert "chicken thigh" in page
-    assert "2 lb" in page
     assert "whole milk" in page
-    assert "1 gal" in page
-    assert _pantry_row(seeded_session, web_user, "spinach").quantity == pytest.approx(142)
-    assert _pantry_row(seeded_session, web_user, "chicken thigh").quantity == pytest.approx(
-        907.185, rel=0.01
-    )
-    assert _pantry_row(seeded_session, web_user, "whole milk").quantity == pytest.approx(
-        3785.41, rel=0.01
-    )
+    assert "1 bag" not in page
+    spinach = ing(seeded_session, "spinach")
+    chicken = ing(seeded_session, "chicken thigh")
+    milk = ing(seeded_session, "whole milk")
+    spinach_row = _pantry_row(seeded_session, web_user, "spinach")
+    chicken_row = _pantry_row(seeded_session, web_user, "chicken thigh")
+    milk_row = _pantry_row(seeded_session, web_user, "whole milk")
+    assert spinach_row is not None and chicken_row is not None and milk_row is not None
+    assert spinach_row.quantity == pytest.approx(142)
+    assert chicken_row.quantity == pytest.approx(907.185, rel=0.01)
+    assert milk_row.quantity == pytest.approx(3785.41, rel=0.01)
+    for item, row in ((spinach, spinach_row), (chicken, chicken_row), (milk, milk_row)):
+        amount, unit = _shown_level(page, item.id)
+        assert amount == format_entry_amount(row.quantity, item, "us")
+        assert unit == entry_label(item, "us")
 
 
 def test_an_unknown_package_asks_then_stores_the_size(
@@ -1044,7 +1057,6 @@ def test_an_unknown_package_asks_then_stores_the_size(
     assert saved.status_code == 303
     page = signed_in.get("/pantry").text
     assert "gochujang" in page
-    assert "1 lb" in page
     assert "1 jar" not in page
 
     seeded_session.expire_all()
@@ -1052,6 +1064,9 @@ def test_an_unknown_package_asks_then_stores_the_size(
         select(CanonicalIngredient).where(CanonicalIngredient.name == "gochujang")
     )
     assert created is not None
+    amount, unit = _shown_level(page, created.id)
+    assert amount == format_entry_amount(454, created, "us")
+    assert unit == entry_label(created, "us")
     assert created.package_qty == pytest.approx(454)
     assert created.package_unit == "g"
     assert created.base_unit == "g"
@@ -1295,7 +1310,9 @@ def test_a_negative_pantry_amount_is_refused(
     )
 
     eggs = ing(seeded_session, "eggs")
-    corrected = signed_in.post(f"/pantry/{eggs.id}/level", data={"quantity": "-3"})
+    corrected = signed_in.post(
+        f"/pantry/{eggs.id}/check", data={"quantity": "-3", "shown": "0"}
+    )
     assert corrected.status_code == 400
     assert "zero or more" in corrected.text
     assert _pantry_row(seeded_session, web_user, "eggs") is None
@@ -1309,12 +1326,18 @@ def test_a_finished_item_is_shown_as_out_rather_than_in_stock(
         seeded_session, web_user.id, eggs, reason=EventReason.PURCHASE, delta=4
     )
     seeded_session.commit()
-    assert signed_in.post(f"/pantry/{eggs.id}/level", data={"quantity": "0"}).status_code == 303
+    posted = signed_in.post(
+        f"/pantry/{eggs.id}/check", data={"quantity": "0", "shown": "4"}
+    )
+    assert posted.status_code == 303
 
-    page = signed_in.get("/pantry")
-    assert '<span>Out</span>' in page.text
-    assert "eggs" in page.text
-    assert "High confidence" not in page.text
+    page = signed_in.get("/pantry").text
+    assert '<span>Out</span>' in page
+    form = _check_form(page, eggs.id)
+    assert _input_value(form, "quantity") == "0"
+    assert _input_value(form, "shown") == "0"
+    assert page.index("<span>Out</span>") < page.index(f'action="/pantry/{eggs.id}/check"')
+    assert "High confidence" not in page
     assert _pantry_row(seeded_session, web_user, "eggs").quantity == 0
 
 
@@ -1387,11 +1410,13 @@ def test_one_audit_save_records_every_answer(
     record_event(seeded_session, web_user.id, eggs, reason=EventReason.PURCHASE, delta=2)
     seeded_session.commit()
 
-    response = signed_in.post(
-        "/audit",
-        data={f"quantity_{oil.id}": "80", f"quantity_{eggs.id}": "5"},
+    oil_set = signed_in.post(
+        f"/pantry/{oil.id}/check", data={"quantity": "80", "shown": "0"}
     )
-    assert response.status_code == 303
+    eggs_set = signed_in.post(
+        f"/pantry/{eggs.id}/check", data={"quantity": "5", "shown": "0"}
+    )
+    assert oil_set.status_code == eggs_set.status_code == 303
     # 80 is cups for a US user; eggs stay a count. The ledger stores milliliters.
     oil_ml = to_base(80, entry_unit(oil, "us"), physical_of(oil))
     assert _pantry_row(seeded_session, web_user, "olive oil").quantity == pytest.approx(oil_ml)
@@ -2103,7 +2128,9 @@ def _sheet(html: str, sheet_id: str) -> str:
 
 
 def _undo_action(html: str) -> str:
-    match = re.search(r'action="([^"]+)"><button type="submit">Undo</button>', html)
+    match = re.search(
+        r'action="([^"]+)"[^>]*>\s*(?:<input[^>]*>\s*)*<button type="submit">Undo</button>', html
+    )
     assert match is not None
     return unescape(match.group(1))
 
@@ -2443,38 +2470,123 @@ def test_an_unknown_theme_is_ignored(signed_in: TestClient) -> None:
     assert 'data-theme="light"' in signed_in.get("/settings").text
 
 
-def test_the_x_throws_an_item_out_and_offers_undo(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    spinach = ing(seeded_session, "spinach")
-    record_event(seeded_session, web_user.id, spinach, reason=EventReason.PURCHASE, delta=200)
-    seeded_session.commit()
-
-    assert f"/pantry/{spinach.id}/discard" in signed_in.get("/pantry").text
-
-    thrown = signed_in.post(f"/pantry/{spinach.id}/discard", data={"q": ""})
-    assert thrown.status_code == 303
-    assert "wasted=" in thrown.headers["location"]
-
-    page = signed_in.get(thrown.headers["location"])
-    assert "Threw out spinach" in page.text
-    assert "Undo" in page.text
-    seeded_session.expire_all()
-    item = seeded_session.scalar(
-        select(PantryItem).where(
-            PantryItem.user_id == web_user.id, PantryItem.ingredient_id == spinach.id
+def _ledger(session: Session, user: User, ingredient: CanonicalIngredient) -> list[InventoryEvent]:
+    session.expire_all()
+    return list(
+        session.scalars(
+            select(InventoryEvent).where(
+                InventoryEvent.user_id == user.id,
+                InventoryEvent.ingredient_id == ingredient.id,
+            )
         )
     )
-    assert item.quantity == 0
 
-    event_id = int(thrown.headers["location"].rsplit("wasted=", 1)[1])
+
+def test_an_unchanged_check_records_one_confirm(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    garlic = ing(seeded_session, "garlic")
+    record_event(seeded_session, web_user.id, garlic, reason=EventReason.PURCHASE, delta=3)
+    seeded_session.commit()
+
+    page = signed_in.get("/pantry").text
+    form = _check_form(page, garlic.id)
+    shown = _input_value(form, "shown")
+    assert shown == _input_value(form, "quantity")
+    assert 'inputmode="decimal"' in form
+    assert "/discard" not in form
+    assert "edit-toggle" not in page
+
+    posted = signed_in.post(
+        f"/pantry/{garlic.id}/check",
+        data={"quantity": shown, "shown": shown},
+        headers={"HX-Request": "true"},
+    )
+    assert posted.status_code == 303
+    assert posted.headers["location"].startswith("/pantry?changed=")
+    fragment = signed_in.get(posted.headers["location"], headers={"HX-Request": "true"})
+    assert "Scan receipt" not in fragment.text
+    assert "Confirmed garlic" in fragment.text
+    assert ">Undo<" in fragment.text
+
+    events = _ledger(seeded_session, web_user, garlic)
+    assert [event.reason for event in events].count(EventReason.CONFIRM) == 1
+    assert EventReason.MANUAL not in [event.reason for event in events]
+    assert _pantry_row(seeded_session, web_user, "garlic").quantity == 3
+
+
+def test_an_edited_check_records_one_manual_at_that_level(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    garlic = ing(seeded_session, "garlic")
+    record_event(seeded_session, web_user.id, garlic, reason=EventReason.PURCHASE, delta=3)
+    seeded_session.commit()
+
+    posted = signed_in.post(
+        f"/pantry/{garlic.id}/check", data={"quantity": "5", "shown": "3"}
+    )
+    assert posted.status_code == 303
+    page = signed_in.get(posted.headers["location"]).text
+    assert "Set garlic to 5 cloves" in page
+
+    events = _ledger(seeded_session, web_user, garlic)
+    manuals = [event for event in events if event.reason == EventReason.MANUAL]
+    assert len(manuals) == 1
+    assert manuals[0].resulting_quantity == 5
+    assert EventReason.CONFIRM not in [event.reason for event in events]
+    assert _pantry_row(seeded_session, web_user, "garlic").quantity == 5
+
+
+def test_setting_zero_moves_the_row_to_out(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    garlic = ing(seeded_session, "garlic")
+    record_event(seeded_session, web_user.id, garlic, reason=EventReason.PURCHASE, delta=3)
+    seeded_session.commit()
+
+    posted = signed_in.post(
+        f"/pantry/{garlic.id}/check", data={"quantity": "0", "shown": "3"}
+    )
+    assert posted.status_code == 303
+    page = signed_in.get("/pantry").text
+    assert '<span>Out</span>' in page
+    assert page.index("<span>Out</span>") < page.index(f'action="/pantry/{garlic.id}/check"')
+    form = _check_form(page, garlic.id)
+    assert _input_value(form, "quantity") == "0"
+    events = _ledger(seeded_session, web_user, garlic)
+    assert EventReason.WASTE not in [event.reason for event in events]
+    assert _pantry_row(seeded_session, web_user, "garlic").quantity == 0
+
+
+def test_undo_voids_the_edit_restores_the_level_and_rebuilds_the_list(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Undo Shop", "https://example.com/undo-shop")
+    assert "spaghetti" in signed_in.get("/shopping").text
+
+    spaghetti = ing(seeded_session, "spaghetti")
+    posted = signed_in.post(
+        f"/pantry/{spaghetti.id}/check", data={"quantity": "2", "shown": "0"}
+    )
+    assert "spaghetti" not in signed_in.get("/shopping").text
+    event_id = int(posted.headers["location"].rsplit("changed=", 1)[1])
+    stored = _pantry_row(seeded_session, web_user, "spaghetti")
+    assert stored.quantity == pytest.approx(
+        to_base(2, entry_unit(spaghetti, "us"), physical_of(spaghetti))
+    )
+
     undone = signed_in.post(f"/pantry/undo/{event_id}", data={"q": ""})
     assert undone.status_code == 303
     seeded_session.expire_all()
-    assert item.quantity == 200
+    assert stored.quantity == 0
+    event = seeded_session.get(InventoryEvent, event_id)
+    assert event is not None and event.voided_at is not None
+    assert "spaghetti" in signed_in.get("/shopping").text
+    stale = signed_in.get("/pantry", params={"changed": event_id})
+    assert 'class="toast"' not in stale.text
 
 
-def test_throwing_out_from_home_returns_home(
+def test_home_check_renders_the_quantity_row(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     chicken = ing(seeded_session, "chicken breast")
@@ -2486,41 +2598,124 @@ def test_throwing_out_from_home_returns_home(
     get_or_create_item(seeded_session, web_user.id, chicken).last_confirmed_at = long_ago
     seeded_session.commit()
 
-    thrown = signed_in.post(f"/pantry/{chicken.id}/discard", data={"next": "/"})
-    assert thrown.headers["location"].startswith("/?wasted=")
-    assert "Threw out chicken breast" in signed_in.get(thrown.headers["location"]).text
+    home = signed_in.get("/").text
+    assert "<span>Check</span>" in home
+    form = _check_form(home, chicken.id)
+    assert 'name="next" value="/"' in form
+    assert 'name="quantity"' in form
+    assert 'inputmode="decimal"' in form
+    assert "edit-toggle" not in home
+    assert f"/pantry/{chicken.id}/discard" not in home
+
+    shown = _input_value(form, "shown")
+    posted = signed_in.post(
+        f"/pantry/{chicken.id}/check",
+        data={"quantity": shown, "shown": shown, "next": "/"},
+    )
+    assert posted.headers["location"].startswith("/?changed=")
+    assert "Confirmed chicken breast" in signed_in.get(posted.headers["location"]).text
+    escaped = signed_in.post(
+        f"/pantry/{chicken.id}/check",
+        data={"quantity": shown, "shown": shown, "next": "https://example.com/x"},
+    )
+    assert escaped.headers["location"].startswith("/?changed=")
+    assert "example.com" not in escaped.headers["location"]
 
 
-def test_the_x_is_not_offered_on_staples(
+def test_adding_answers_with_an_undoable_toast(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
-    oil = ing(seeded_session, "olive oil")
-    record_event(seeded_session, web_user.id, oil, reason=EventReason.PURCHASE, delta=500)
+    added = signed_in.post(
+        "/pantry/add", data={"name": "black beans", "quantity": "1", "unit": "can"}
+    )
+    assert added.status_code == 303
+    assert "changed=" in added.headers["location"]
+    page = signed_in.get(added.headers["location"]).text
+    assert "Added 1 can black beans" in page
+    event_id = int(added.headers["location"].rsplit("changed=", 1)[1])
+    assert _pantry_row(seeded_session, web_user, "black beans").quantity == 1
+
+    undone = signed_in.post(f"/pantry/undo/{event_id}")
+    assert undone.status_code == 303
+    seeded_session.expire_all()
+    assert _pantry_row(seeded_session, web_user, "black beans").quantity == 0
+
+
+def test_the_audit_page_drops_a_checked_row(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    rice = ing(seeded_session, "white rice")
+    record_event(seeded_session, web_user.id, rice, reason=EventReason.PURCHASE, delta=500)
+    item = seeded_session.scalar(
+        select(PantryItem).where(PantryItem.ingredient_id == rice.id)
+    )
+    assert item is not None
+    item.belief_at = datetime.now(UTC) - timedelta(days=90)
+    save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Rice Bowl",
+            ingredients=["480 g white rice"],
+            servings=1,
+            source_url="https://example.com/rice-audit",
+        ),
+        source=RecipeSource.URL,
+    )
+    recipe = seeded_session.scalar(select(Recipe).where(Recipe.title == "Rice Bowl"))
+    assert recipe is not None
+    seeded_session.add(
+        MealPlanEntry(
+            user_id=web_user.id,
+            plan_date=date.today(),
+            slot=MealSlot.DINNER,
+            recipe_id=recipe.id,
+            servings=1,
+        )
+    )
     seeded_session.commit()
 
-    assert f"/pantry/{oil.id}/discard" not in signed_in.get("/pantry").text
+    page = signed_in.get("/audit").text
+    assert "% sure" not in page
+    assert "physical look" not in page
+    assert "Check these 1 before you shop." in page
+    form = _check_form(page, rice.id)
+    assert 'name="next" value="/audit"' in form
+    assert "need " in form
+    shown = _input_value(form, "shown")
+    posted = signed_in.post(
+        f"/pantry/{rice.id}/check",
+        data={"quantity": shown, "shown": shown, "next": "/audit"},
+    )
+    assert posted.headers["location"].startswith("/audit?changed=")
+    after = signed_in.get(posted.headers["location"]).text
+    assert f'action="/pantry/{rice.id}/check"' not in after
+    assert "Nothing to check." in after
+    assert "Confirmed white rice" in after
+    assert "Go to list" in after
+    assert "% sure" not in after
 
 
-def test_an_undo_link_for_someone_elses_discard_changes_nothing(
+def test_an_undo_of_someone_elses_event_changes_nothing(
     signed_in: TestClient, seeded_session: Session
 ) -> None:
     other = User(username="someone-else", display_name="x", password_hash="x")
     seeded_session.add(other)
     seeded_session.flush()
     eggs = ing(seeded_session, "eggs")
-    record_event(seeded_session, other.id, eggs, reason=EventReason.PURCHASE, delta=12)
-    waste = discard_item(seeded_session, other.id, eggs)
+    bought = record_event(seeded_session, other.id, eggs, reason=EventReason.PURCHASE, delta=12)
     seeded_session.commit()
 
-    signed_in.post(f"/pantry/undo/{waste.id}", data={})
+    signed_in.post(f"/pantry/undo/{bought.id}", data={})
     seeded_session.expire_all()
     theirs = seeded_session.scalar(
         select(PantryItem).where(
             PantryItem.user_id == other.id, PantryItem.ingredient_id == eggs.id
         )
     )
-    assert theirs.quantity == 0
-    notice = signed_in.get("/pantry", params={"wasted": waste.id})
+    assert theirs.quantity == 12
+    notice = signed_in.get("/pantry", params={"changed": bought.id})
+    assert 'class="toast"' not in notice.text
     assert "Threw out" not in notice.text
 
 
@@ -2724,16 +2919,31 @@ def test_confidence_mark_follows_certainty_thresholds() -> None:
     assert tier(0.0) == tier(1.0, gone=True) == "low?"
 
 
-def _amount_text(page: str, name: str) -> str:
-    start = page.index(f'class="list-row-title">{name}<')
-    match = re.search(r'class="num">(.*?)</span>', page[start:start + 800])
+def _check_form(page: str, ingredient_id: int) -> str:
+    marker = f'action="/pantry/{ingredient_id}/check"'
+    start = page.index(marker)
+    return page[start:page.index("</form>", start)]
+
+
+def _input_value(form: str, name: str) -> str:
+    match = re.search(rf'name="{name}"[^>]*value="([^"]*)"', form)
     assert match is not None, name
     return match.group(1)
 
 
+def _shown_level(page: str, ingredient_id: int) -> tuple[str, str]:
+    form = _check_form(page, ingredient_id)
+    unit = re.search(r'class="qty-unit">([^<]*)<', form)
+    assert unit is not None
+    return _input_value(form, "quantity"), unit.group(1)
+
+
 def _mark(page: str, name: str) -> str | None:
+    """The bubble on this row only. The next title starts the next row."""
     start = page.index(f'class="list-row-title">{name}<')
-    match = re.search(r'class="conf (low|med)"', page[start:start + 1400])
+    end = page.find('class="list-row-title">', start + 1)
+    window = page[start:] if end == -1 else page[start:end]
+    match = re.search(r'class="conf (low|med)"', window)
     return match.group(1) if match else None
 
 
@@ -2762,8 +2972,8 @@ def test_uncertain_levels_get_a_confidence_bubble_and_home_says_check(
 
     page = signed_in.get("/pantry").text
     assert "probably gone" not in page.casefold()
-    for name in ("spinach", "lemon", "chicken breast"):
-        assert not _amount_text(page, name).endswith("?")
+    for item in (spinach, lemon, chicken):
+        assert not _input_value(_check_form(page, item.id), "quantity").endswith("?")
     assert _mark(page, "spinach") is not None
     assert _mark(page, "lemon") is None
     assert _mark(page, "chicken breast") == "low"
@@ -2864,8 +3074,10 @@ def test_pages_follow_the_signed_in_unit_system(
     seeded_session.commit()
 
     pantry = signed_in.get("/pantry").text
-    assert '<span class="num">2 lb</span>' in pantry
-    assert "Set to… (lb)" in pantry
+    chicken_form = _check_form(pantry, chicken.id)
+    assert _input_value(chicken_form, "quantity") == "2"
+    assert ">lb<" in chicken_form
+    assert "Set to…" not in pantry
     assert "907 g" not in pantry
 
     recipe_page = signed_in.get(f"/recipes/{recipe.id}").text
@@ -2884,8 +3096,9 @@ def test_pages_follow_the_signed_in_unit_system(
     seeded_session.commit()
 
     pantry = signed_in.get("/pantry").text
-    assert '<span class="num">907 g</span>' in pantry
-    assert "Set to… (g)" in pantry
+    chicken_form = _check_form(pantry, chicken.id)
+    assert _input_value(chicken_form, "quantity") == "905"
+    assert ">g<" in chicken_form
     assert "2 lb" not in pantry
 
     recipe_page = signed_in.get(f"/recipes/{recipe.id}").text
@@ -2904,7 +3117,9 @@ def test_pantry_set_level_stores_base_grams_from_the_entry_unit(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     chicken = ing(seeded_session, "chicken thigh")
-    response = signed_in.post(f"/pantry/{chicken.id}/level", data={"quantity": "2"})
+    response = signed_in.post(
+        f"/pantry/{chicken.id}/check", data={"quantity": "2", "shown": "0"}
+    )
     assert response.status_code == 303
     stored = _pantry_row(seeded_session, web_user, "chicken thigh")
     assert stored is not None
@@ -2914,7 +3129,9 @@ def test_pantry_set_level_stores_base_grams_from_the_entry_unit(
 
     web_user.unit_system = "metric"
     seeded_session.commit()
-    response = signed_in.post(f"/pantry/{chicken.id}/level", data={"quantity": "250"})
+    response = signed_in.post(
+        f"/pantry/{chicken.id}/check", data={"quantity": "250", "shown": "0"}
+    )
     assert response.status_code == 303
     stored = _pantry_row(seeded_session, web_user, "chicken thigh")
     assert stored is not None

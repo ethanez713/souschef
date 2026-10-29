@@ -96,12 +96,19 @@ def _quantity(
     return _format_for(shown, chosen, ingredient, system, show_alt)
 
 
-@pass_context
-def _stock(context: dict, quantity: float, ingredient: CanonicalIngredient) -> str:
+def _stock_amount(
+    quantity: float, ingredient: CanonicalIngredient, system: str, show_alt: bool
+) -> str:
     """Pantry levels. A remainder below one base unit reads as out, not "0.4 g"."""
     if 0 < quantity < 1:
         return "out"
-    return _quantity(context, quantity, ingredient)
+    return _format_for(float(quantity), ingredient.base_unit, ingredient, system, show_alt)
+
+
+@pass_context
+def _stock(context: dict, quantity: float, ingredient: CanonicalIngredient) -> str:
+    system, show_alt = _user_system(context)
+    return _stock_amount(float(quantity), ingredient, system, show_alt)
 
 
 @pass_context
@@ -333,15 +340,40 @@ def request_hostname(request: Request) -> str:
     return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
 
 
-def _discard_notice(db: Session, user: User, event_id: int) -> dict | None:
-    """What the undo notice needs: the discarded item's name and the event Undo reverses."""
+def _viewer_units(user: User) -> tuple[str, bool]:
+    system = user.unit_system or "us"
+    if system not in ("us", "metric"):
+        system = "us"
+    return system, bool(user.show_alt_units)
+
+
+def _change_toast(db: Session, user: User, event_id: int) -> dict | None:
+    """The undo toast for one of this user's live stock edits.
+
+    The words come from the ledger row, never from text in the URL. A voided
+    event, or one that belongs to someone else, says nothing.
+    """
     if not event_id:
         return None
     event = db.get(InventoryEvent, event_id)
-    if event is None or event.user_id != user.id or event.reason != EventReason.WASTE:
+    if event is None or event.user_id != user.id or event.voided_at is not None:
         return None
     ingredient = db.get(CanonicalIngredient, event.ingredient_id)
-    return {"event_id": event.id, "name": ingredient.name if ingredient else "item"}
+    if ingredient is None:
+        return None
+    name = ingredient.name
+    system, show_alt = _viewer_units(user)
+    if event.reason == EventReason.CONFIRM:
+        message = f"Confirmed {name}"
+    elif event.reason == EventReason.MANUAL:
+        level = _stock_amount(event.resulting_quantity, ingredient, system, show_alt)
+        message = f"Set {name} to {level}"
+    elif event.reason == EventReason.PURCHASE:
+        added = _stock_amount(event.delta, ingredient, system, show_alt)
+        message = f"Added {added} {name}"
+    else:
+        return None
+    return {"message": message, "event_id": event.id}
 
 
 def ingredient_for_add(db: Session, name: str) -> CanonicalIngredient | None:

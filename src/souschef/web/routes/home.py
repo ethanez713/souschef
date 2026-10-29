@@ -17,7 +17,7 @@ from souschef.planning.suggest import Surface, by_surface, suggest
 from souschef.web import auth
 from souschef.web.common import (
     PAST_DAYS,
-    _discard_notice,
+    _change_toast,
     _on_hand,
     _render,
 )
@@ -25,12 +25,13 @@ from souschef.web.common import (
 router = APIRouter()
 
 
-@router.get("/", response_class=HTMLResponse)
-def dashboard(
+def render_home(
     request: Request,
-    wasted: int = 0,
-    user: User = Depends(auth.current_user),
-    db: Session = Depends(get_db),
+    db: Session,
+    user: User,
+    *,
+    changed: int = 0,
+    form_error: str = "",
 ) -> HTMLResponse:
     suggestions = suggest(db, user.id, limit=12)
     grouped = by_surface(suggestions)
@@ -80,7 +81,8 @@ def dashboard(
         today=today,
         freshness=freshness,
         stale=stale,
-        discarded=_discard_notice(db, user, wasted),
+        change=_change_toast(db, user, changed),
+        form_error=form_error,
         pantry_count=len(pantry),
         recipe_count=db.scalar(
             select(func.count())
@@ -89,3 +91,13 @@ def dashboard(
         )
         or 0,
     )
+
+
+@router.get("/", response_class=HTMLResponse)
+def dashboard(
+    request: Request,
+    changed: int = 0,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    return render_home(request, db, user, changed=changed)

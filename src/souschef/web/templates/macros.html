@@ -39,63 +39,37 @@
 {{ row(s.recipe.title, trail=chip, href='/recipes/' ~ s.recipe.id) }}
 {% endmacro %}
 
-{# A tracked pantry item: level, trust, confirm and edit. `next` makes the forms return there instead of swapping the pantry list.
-   The confidence bubble marks a level that is uncertain (certainty under 0.6) or stock that is probably gone; the words are not shown. #}
-{% macro pantry_card(v, freshness, query='', next='') %}
-{% set status = freshness.get(v.ingredient.id) %}
-<div class="item">
-  <input class="edit-toggle" type="checkbox" id="edit{{ v.ingredient.id }}" aria-label="Set {{ v.ingredient.name }} level">
-  {% set sub -%}
-    <span class="num">{{ v.quantity|stock(v.ingredient) }}</span>
-    {%- if v.item.expires_on %} · expires {{ v.item.expires_on.strftime('%-d %b') }}{% endif %}
-    {%- if status == 'use soon' %} · use soon{% endif %}
-  {%- endset %}
+{# Name, a second line, and one amount box. `shown` is the prefill string the route
+   compares, so it has to be the same text as the input. `next` returns there
+   instead of swapping the pantry list. `amount` overrides the prefill (out rows pass 0). #}
+{% macro qty_row(ingredient, shown, sub='', query='', next='') %}
+<form class="item" method="post" action="/pantry/{{ ingredient.id }}/check"
+      {% if not next %}hx-post="/pantry/{{ ingredient.id }}/check" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
+  <input type="hidden" name="shown" value="{{ shown }}">
+  <input type="hidden" name="q" value="{{ query }}">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   {% set trail %}
-    {{ confidence_mark(v.certainty, status == 'probably gone') }}
-    <form method="post" action="/pantry/{{ v.ingredient.id }}/confirm" class="inline"
-          {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/confirm" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
-      <input type="hidden" name="q" value="{{ query }}">
-      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-      <button class="iconbtn bare" type="submit" aria-label="Still right, {{ v.ingredient.name }}" title="Still right">{{ icon('check', 18) }}</button>
-    </form>
-    <label class="edit-label" for="edit{{ v.ingredient.id }}" title="Set the level" aria-hidden="true">{{ icon('pencil', 16) }}</label>
-    <form method="post" action="/pantry/{{ v.ingredient.id }}/discard" class="inline"
-          {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/discard" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
-      <input type="hidden" name="q" value="{{ query }}">
-      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-      <button class="iconbtn bare discard" type="submit" aria-label="Threw out {{ v.ingredient.name }}" title="Threw out">{{ icon('x', 18) }}</button>
-    </form>
+    <input class="qty" name="quantity" type="number" step="any" inputmode="decimal" required
+           value="{{ shown }}" aria-label="{{ ingredient.name }} ({{ ingredient|unit_label }})">
+    <span class="qty-unit">{{ ingredient|unit_label }}</span>
+    <button class="iconbtn bare" type="submit" aria-label="Save {{ ingredient.name }}">{{ icon('check', 18) }}</button>
   {% endset %}
-  {{ row(v.ingredient.name, sub=sub, trail=trail) }}
-  <form method="post" action="/pantry/{{ v.ingredient.id }}/level" class="controls set-form"
-        {% if not next %}hx-post="/pantry/{{ v.ingredient.id }}/level" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
-    <input type="hidden" name="q" value="{{ query }}">
-    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-    <div class="field">
-      <input name="quantity" type="number" step="any" inputmode="decimal" required
-             aria-label="Set {{ v.ingredient.name }} to ({{ v.ingredient|unit_label }})"
-             placeholder="Set to… ({{ v.ingredient|unit_label }})">
-    </div>
-    <button type="submit">Set</button>
-  </form>
-</div>
+  {{ row(ingredient.name, sub=sub, trail=trail) }}
+</form>
 {% endmacro %}
 
-{# Shown after an X: the item is gone from the list, and this is the way back. #}
-{% macro discard_notice(discarded, query='', next='') %}
-{% if discarded %}
-<div class="notice">
-  {{ icon('check', 16) }}
-  <div>Threw out {{ discarded.name }}.
-    <form method="post" action="/pantry/undo/{{ discarded.event_id }}" class="inline"
-          {% if not next %}hx-post="/pantry/undo/{{ discarded.event_id }}" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
-      <input type="hidden" name="q" value="{{ query }}">
-      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-      <button class="link" type="submit">Undo</button>
-    </form>
-  </div>
-</div>
-{% endif %}
+{# A tracked pantry item. The confidence bubble marks a level that is uncertain
+   (certainty under 0.6) or stock that is probably gone; the words are not shown. #}
+{% macro pantry_card(v, freshness, query='', next='', amount=none) %}
+{% set status = freshness.get(v.ingredient.id) %}
+{% set shown = (v.quantity|entry_amount(v.ingredient)) if amount is none else amount %}
+{% set show_mark = status == 'probably gone' or v.certainty < 0.6 %}
+{% set sub -%}
+{%- if v.item.expires_on -%}expires {{ v.item.expires_on.strftime('%-d %b') }}{%- endif -%}
+{%- if status == 'use soon' -%}{% if v.item.expires_on %} · {% endif %}use soon{%- endif -%}
+{%- if show_mark %}{% if v.item.expires_on or status == 'use soon' %} {% endif %}{{ confidence_mark(v.certainty, status == 'probably gone') }}{% endif -%}
+{%- endset %}
+{{ qty_row(v.ingredient, shown, sub, query, next) }}
 {% endmacro %}
 
 
@@ -143,14 +117,22 @@
 {%- if target %} hx-post="{{ action }}" hx-target="{{ target }}" hx-select="{{ target }}" hx-swap="outerHTML"{% endif -%}
 {%- endmacro %}
 
-{% macro toast(message, undo_action='', extra_label='', extra_action='', hx_target='') -%}
+{% macro _form_hx(action, target, inner) -%}
+{%- if inner %} hx-post="{{ action }}" hx-target="{{ inner }}" hx-swap="innerHTML"{% elif target %}{{ hx_post(action, target) }}{% endif -%}
+{%- endmacro %}
+
+{% macro toast(message, undo_action='', extra_label='', extra_action='', hx_target='', q='', return_to='', hx_inner='') -%}
 <div class="toast" role="status" data-toast>
   <span>{{ message }}</span>
   {%- if extra_action and extra_label %}
-  <form method="post" action="{{ extra_action }}"{{ hx_post(extra_action, hx_target) }}><button type="submit">{{ extra_label }}</button></form>
+  <form method="post" action="{{ extra_action }}"{{ _form_hx(extra_action, hx_target, hx_inner) }}><button type="submit">{{ extra_label }}</button></form>
   {%- endif %}
   {%- if undo_action %}
-  <form method="post" action="{{ undo_action }}"{{ hx_post(undo_action, hx_target) }}><button type="submit">Undo</button></form>
+  <form method="post" action="{{ undo_action }}"{{ _form_hx(undo_action, hx_target, hx_inner) }}>
+    {%- if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    {%- if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
+    <button type="submit">Undo</button>
+  </form>
   {%- endif %}
 </div>
 {%- endmacro %}

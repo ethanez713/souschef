@@ -27,7 +27,7 @@ from souschef.core.inventory import (
     rebuild_from_ledger,
     record_event,
     set_level,
-    undo_discard,
+    undo_event,
     void_events,
 )
 from souschef.models import (
@@ -195,7 +195,7 @@ def test_undo_voids_the_discard_and_restores_every_belief_field(
     before = _belief_fields(_row(seeded_session, rice))
     waste = discard_item(seeded_session, owner, rice)
 
-    undone = undo_discard(seeded_session, owner, waste.id)
+    undone = undo_event(seeded_session, owner, waste.id)
 
     assert undone is not None and undone.voided_at is not None
     assert _belief_fields(_row(seeded_session, rice)) == before
@@ -210,7 +210,7 @@ def test_undo_stays_valid_after_later_events_which_replay_on_top(
     waste = discard_item(seeded_session, owner, eggs)
     record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=6)
 
-    assert undo_discard(seeded_session, owner, waste.id) is not None
+    assert undo_event(seeded_session, owner, waste.id) is not None
     assert _row(seeded_session, eggs).quantity == 18
 
 
@@ -231,7 +231,24 @@ def test_undo_ignores_another_users_event(seeded_session: Session, owner: int) -
     record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
     waste = discard_item(seeded_session, owner, eggs)
 
-    assert undo_discard(seeded_session, owner + 1000, waste.id) is None
+    assert undo_event(seeded_session, owner + 1000, waste.id) is None
+
+
+def test_undo_event_voids_a_confirm_and_refuses_a_cook(
+    seeded_session: Session, owner: int
+) -> None:
+    eggs = ingredient(seeded_session, "eggs")
+    record_event(seeded_session, owner, eggs, reason=EventReason.PURCHASE, delta=12)
+    checked = confirm_level(seeded_session, owner, eggs)
+
+    undone = undo_event(seeded_session, owner, checked.id)
+
+    assert undone is not None and undone.voided_at is not None
+    assert _row(seeded_session, eggs).quantity == 12
+    cooked = record_event(seeded_session, owner, eggs, reason=EventReason.COOK, delta=-2)
+    assert undo_event(seeded_session, owner, cooked.id) is None
+    assert cooked.voided_at is None
+    assert _row(seeded_session, eggs).quantity == 10
 
 
 def _age_item(session: Session, ing: CanonicalIngredient, days: int) -> PantryItem:

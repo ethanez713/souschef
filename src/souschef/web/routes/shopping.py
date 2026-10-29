@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import date
 from urllib.parse import urlencode
 
@@ -11,7 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from souschef.core.audit import build_audit
-from souschef.core.inventory import physical_of, set_level
+from souschef.core.inventory import live_events, physical_of, set_level, void_events
 from souschef.core.units import NeedsPackage, UnitConversionError, to_base
 from souschef.db import get_db
 from souschef.models import (
@@ -115,12 +116,22 @@ def _shop_redirect(**params: str) -> RedirectResponse:
     return RedirectResponse("/shopping" + (f"?{query}" if query else ""), status_code=303)
 
 
-def _toast(message: str, *, undo: str = "", extra_label: str = "", extra_action: str = "") -> dict:
+def _toast(
+    message: str,
+    *,
+    undo: str = "",
+    extra_label: str = "",
+    extra_action: str = "",
+    return_to: str = "",
+    fields: list[tuple[str, str]] | None = None,
+) -> dict:
     return {
         "message": message,
         "undo": undo,
         "extra_label": extra_label,
         "extra_action": extra_action,
+        "return_to": return_to,
+        "fields": fields or [],
     }
 
 
@@ -133,31 +144,152 @@ def _pantry_added_message(names: list[str]) -> str:
     return f"Added {listed} to the pantry."
 
 
-def _toast_from_query(request: Request, db: Session, listing: ShoppingList | None) -> dict | None:
+def _parse_amount_undo(
+    qty: str, unit: str, edited: str
+) -> tuple[float | None, str, bool] | None:
+    """Previous amount fields, or None when the form is not a real undo."""
+    if edited not in {"0", "1"}:
+        return None
+    unit_text = unit.strip()
+    if len(unit_text) > 32:
+        return None
+    text = qty.strip()
+    if not text:
+        quantity: float | None = None
+    else:
+        try:
+            quantity = float(text)
+        except ValueError:
+            return None
+        if not math.isfinite(quantity) or quantity < 0:
+            return None
+    return quantity, unit_text, edited == "1"
+
+
+def _amount_undo_fields(qty: str, unit: str, edited: str) -> list[tuple[str, str]] | None:
+    restored = _parse_amount_undo(qty, unit, edited)
+    if restored is None:
+        return None
+    quantity, unit_text, flag = restored
+    return [
+        ("qty", "" if quantity is None else str(quantity)),
+        ("unit", unit_text),
+        ("amount_edited", "1" if flag else "0"),
+    ]
+
+
+def _purchase_events(db: Session, user_id: int, raw: str) -> list[InventoryEvent]:
+    """This user's live purchase events named by a comma-separated id list."""
+    wanted: list[int] = []
+    seen: set[int] = set()
+    for part in raw.split(","):
+        text = part.strip()
+        if not text.isdigit():
+            continue
+        try:
+            event_id = int(text)
+        except ValueError:
+            continue
+        if event_id in seen:
+            continue
+        seen.add(event_id)
+        wanted.append(event_id)
+    if not wanted:
+        return []
+    found = {
+        event.id: event
+        for event in db.scalars(
+            live_events(user_id).where(
+                InventoryEvent.id.in_(wanted),
+                InventoryEvent.reason == EventReason.PURCHASE,
+            )
+        )
+    }
+    return [found[event_id] for event_id in wanted if event_id in found]
+
+
+def _have_toast(db: Session, user: User, have: str, always: str) -> dict | None:
+    if not have.isdigit():
+        return None
+    event = db.get(InventoryEvent, int(have))
+    if (
+        event is None
+        or event.user_id != user.id
+        or event.voided_at is not None
+        or event.reason != EventReason.MANUAL
+        or event.note != _HAVE_IT_NOTE
+    ):
+        return None
+    ingredient = db.get(CanonicalIngredient, event.ingredient_id)
+    if ingredient is None:
+        return None
+    extra_label = ""
+    extra_action = ""
+    if always.isdigit():
+        offered = db.get(CanonicalIngredient, int(always))
+        if offered is not None and not offered.is_staple:
+            extra_label = f"Always have {offered.name}"
+            extra_action = f"/shopping/ingredient/{offered.id}/always"
+    return _toast(
+        f"Marked {ingredient.name} as on hand",
+        undo=f"/pantry/undo/{event.id}",
+        extra_label=extra_label,
+        extra_action=extra_action,
+        return_to="/shopping",
+    )
+
+
+def _edited_toast(
+    db: Session,
+    listing: ShoppingList | None,
+    edited: str,
+    prev_qty: str,
+    prev_unit: str,
+    prev_edited: str | None,
+) -> dict | None:
+    if not edited.isdigit() or listing is None:
+        return None
+    item = _item_on_list(db, listing, int(edited))
+    if item is None:
+        return None
+    fields = (
+        _amount_undo_fields(prev_qty, prev_unit, prev_edited)
+        if prev_edited is not None
+        else None
+    )
+    undo = f"/shopping/item/{item.id}/amount/undo" if fields else ""
+    return _toast(f"Updated {item.label}", undo=undo, fields=fields)
+
+
+def _added_toast(db: Session, user: User, names: list[str], stocked: str) -> dict:
+    events = _purchase_events(db, user.id, stocked)
+    fields = [("stocked", ",".join(str(event.id) for event in events))] if events else None
+    undo = "/shopping/stock/undo" if events else ""
+    return _toast(_pantry_added_message(names), undo=undo, fields=fields)
+
+
+def _toast_from_query(
+    request: Request, db: Session, user: User, listing: ShoppingList | None
+) -> dict | None:
     params = request.query_params
     removed = params.get("removed", "")
     if removed.isdigit() and listing is not None:
         item = db.get(ShoppingListItem, int(removed))
         if item is not None and item.shopping_list_id == listing.id and item.is_skipped:
             return _toast(f"Removed {item.label}", undo=f"/shopping/item/{item.id}/unskip")
-    marked = params.get("marked", "")
-    if marked:
-        extra_label = ""
-        extra_action = ""
-        always = params.get("always", "")
-        if always.isdigit():
-            ingredient = db.get(CanonicalIngredient, int(always))
-            if ingredient is not None and not ingredient.is_staple:
-                extra_label = f"Always have {ingredient.name}"
-                extra_action = f"/shopping/ingredient/{ingredient.id}/always"
-        return _toast(
-            f"Marked {marked} as on hand",
-            extra_label=extra_label,
-            extra_action=extra_action,
-        )
+    have = params.get("have", "")
+    if have:
+        return _have_toast(db, user, have, params.get("always", ""))
     edited = params.get("edited", "")
     if edited:
-        return _toast(f"Updated {edited}")
+        return _edited_toast(
+            db,
+            listing,
+            edited,
+            params.get("prev_qty", ""),
+            params.get("prev_unit", ""),
+            params.get("prev_edited") if "prev_edited" in params else None,
+        )
     staple = params.get("staple", "")
     if staple:
         return _toast(f"Always have {staple}")
@@ -166,7 +298,7 @@ def _toast_from_query(request: Request, db: Session, listing: ShoppingList | Non
         return _toast(f"Named as {named}")
     added = params.getlist("added")
     if added:
-        return _toast(_pantry_added_message(added))
+        return _added_toast(db, user, added, params.get("stocked", ""))
     listed = params.get("listed", "")
     if listed:
         return _toast(f"Added {listed} to the list")
@@ -290,7 +422,7 @@ def _render_shopping(
         unit_choices=unit_choices,
         package_caption=package_caption,
         audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
-        shop_toast=_toast_from_query(request, db, active),
+        shop_toast=_toast_from_query(request, db, user, active),
         amount_error=amount_error,
         amount_for=amount_for,
         amount_value=amount_value,
@@ -344,13 +476,55 @@ def stock_shopping(
 ) -> Response:
     listing = live_list(db, user.id) or _sync_shopping(db, user.id)
     try:
-        names = stock_ticked_items(db, user.id, listing)
+        names, event_ids = stock_ticked_items(db, user.id, listing)
     except (ShoppingError, UnitConversionError) as exc:
         db.rollback()
         return _render_shopping(request, db, user, add_error=str(exc), status_code=400)
     _sync_shopping(db, user.id)
-    query = urlencode([("added", name) for name in names])
+    pairs = [("added", name) for name in names]
+    if event_ids:
+        pairs.append(("stocked", ",".join(str(event_id) for event_id in event_ids)))
+    query = urlencode(pairs)
     return RedirectResponse("/shopping" + (f"?{query}" if query else ""), status_code=303)
+
+
+def _restore_stocked_rows(db: Session, user_id: int, ingredient_ids: set[int]) -> None:
+    """Clear the stock mark, then rebuild so a covered line can come back ticked.
+
+    Stocking rebuilds and drops a recipe row once the purchase covers it. The
+    row is gone, so the tick it had is put on the row the rebuild creates.
+    A row that is still on the list keeps whatever tick the shopper left.
+    """
+    listing = live_list(db, user_id)
+    still_there: set[int] = set()
+    if listing is not None:
+        for item in listing.items:
+            if item.ingredient_id in ingredient_ids:
+                item.is_stocked = False
+                if item.ingredient_id is not None:
+                    still_there.add(item.ingredient_id)
+        db.flush()
+    rebuilt = _sync_shopping(db, user_id)
+    for item in rebuilt.items:
+        if item.ingredient_id not in ingredient_ids or item.is_skipped:
+            continue
+        item.is_stocked = False
+        if item.ingredient_id not in still_there:
+            item.is_checked = True
+    db.flush()
+
+
+@router.post("/shopping/stock/undo")
+def undo_stock_shopping(
+    stocked: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    events = _purchase_events(db, user.id, stocked)
+    if events:
+        voided = void_events(db, user.id, [event.id for event in events])
+        _restore_stocked_rows(db, user.id, {event.ingredient_id for event in voided})
+    return RedirectResponse("/shopping", status_code=303)
 
 
 @router.post("/shopping/add")
@@ -444,11 +618,10 @@ def have_shopping_item(
             add_error=f"{item.label} isn't in the catalog.",
             status_code=400,
         )
-    name = item.label
     ingredient_id = ingredient.id
     earlier = _earlier_have_it(db, user.id, ingredient_id)
     try:
-        set_level(
+        event = set_level(
             db,
             user.id,
             ingredient,
@@ -459,7 +632,7 @@ def have_shopping_item(
         db.rollback()
         return _render_shopping(request, db, user, add_error=str(exc), status_code=400)
     _sync_shopping(db, user.id)
-    return _shop_redirect(marked=name, always=str(ingredient_id) if earlier else "")
+    return _shop_redirect(have=str(event.id), always=str(ingredient_id) if earlier else "")
 
 
 @router.post("/shopping/item/{item_id}/amount")
@@ -488,11 +661,43 @@ def edit_shopping_amount(
         return _amount_error(request, db, user, item.id, "Enter a unit.", amount, unit)
     if len(unit_text) > 32:
         return _amount_error(request, db, user, item.id, "Unit is too long.", amount, unit)
+    previous_qty = "" if item.purchase_qty is None else str(item.purchase_qty)
+    previous_unit = item.purchase_unit or ""
+    previous_edited = "1" if item.amount_edited else "0"
     item.purchase_qty = parsed
     item.purchase_unit = unit_text
     item.amount_edited = True
     db.flush()
-    return _shop_redirect(edited=item.label)
+    return _shop_redirect(
+        edited=str(item.id),
+        prev_qty=previous_qty,
+        prev_unit=previous_unit,
+        prev_edited=previous_edited,
+    )
+
+
+@router.post("/shopping/item/{item_id}/amount/undo")
+def undo_shopping_amount(
+    item_id: int,
+    qty: str = Form(""),
+    unit: str = Form(""),
+    amount_edited: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    restored = _parse_amount_undo(qty, unit, amount_edited)
+    item = _item_on_list(db, live_list(db, user.id), item_id)
+    if restored is None or item is None:
+        return RedirectResponse("/shopping", status_code=303)
+    quantity, unit_text, edited = restored
+    item.purchase_qty = quantity
+    item.purchase_unit = unit_text or None
+    item.amount_edited = edited
+    if edited:
+        db.flush()
+    else:
+        _sync_shopping(db, user.id)
+    return RedirectResponse("/shopping", status_code=303)
 
 
 @router.post("/shopping/item/{item_id}/skip")

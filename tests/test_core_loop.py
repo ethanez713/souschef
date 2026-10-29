@@ -174,7 +174,7 @@ def test_ticked_package_is_one_low_confidence_purchase_and_not_a_second(
     line.is_checked = True
     seeded_session.flush()
 
-    added = stock_ticked_items(seeded_session, owner, listing)
+    added, _event_ids = stock_ticked_items(seeded_session, owner, listing)
 
     assert added == ["chicken thigh"]
     assert line.is_stocked
@@ -186,7 +186,7 @@ def test_ticked_package_is_one_low_confidence_purchase_and_not_a_second(
     assert purchase.source_ref == f"shopping:{listing.id}"
     assert purchase.note == "added from shopping list: chicken thigh"
 
-    assert stock_ticked_items(seeded_session, owner, listing) == []
+    assert stock_ticked_items(seeded_session, owner, listing)[0] == []
     assert get_or_create_item(seeded_session, owner, chicken).quantity == pytest.approx(907)
     assert len(_events(seeded_session, owner, chicken.id)) == 1
 
@@ -290,7 +290,7 @@ def test_a_staple_cannot_be_added_or_stocked_from_the_list(
     )
     seeded_session.flush()
 
-    assert stock_ticked_items(seeded_session, owner, listing) == []
+    assert stock_ticked_items(seeded_session, owner, listing)[0] == []
     assert _events(seeded_session, owner, oil.id) == []
 
 
@@ -609,7 +609,7 @@ def test_stocking_skips_an_unnamed_recipe_row(seeded_session: Session, owner: in
     flour_row.is_checked = True
     seeded_session.flush()
 
-    added = stock_ticked_items(seeded_session, owner, listing)
+    added, _event_ids = stock_ticked_items(seeded_session, owner, listing)
 
     assert added == ["all-purpose flour"]
     assert flour_row.is_stocked

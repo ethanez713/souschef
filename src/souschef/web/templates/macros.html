@@ -121,7 +121,7 @@
 {%- if inner %} hx-post="{{ action }}" hx-target="{{ inner }}" hx-swap="innerHTML"{% elif target %}{{ hx_post(action, target) }}{% endif -%}
 {%- endmacro %}
 
-{% macro toast(message, undo_action='', extra_label='', extra_action='', hx_target='', q='', return_to='', hx_inner='') -%}
+{% macro toast(message, undo_action='', extra_label='', extra_action='', hx_target='', q='', return_to='', hx_inner='', undo_fields=none) -%}
 <div class="toast" role="status" data-toast>
   <span>{{ message }}</span>
   {%- if extra_action and extra_label %}
@@ -131,6 +131,11 @@
   <form method="post" action="{{ undo_action }}"{{ _form_hx(undo_action, hx_target, hx_inner) }}>
     {%- if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
     {%- if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
+    {%- if undo_fields %}
+    {%- for name, value in undo_fields %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {%- endfor %}
+    {%- endif %}
     <button type="submit">Undo</button>
   </form>
   {%- endif %}

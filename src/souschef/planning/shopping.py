@@ -510,14 +510,17 @@ def stockable(item: ShoppingListItem) -> bool:
     return item.ingredient_id is not None or item.source == ItemSource.MANUAL
 
 
-def stock_ticked_items(session: Session, user_id: int, shopping_list: ShoppingList) -> list[str]:
+def stock_ticked_items(
+    session: Session, user_id: int, shopping_list: ShoppingList
+) -> tuple[list[str], list[int]]:
     """Write one low-confidence purchase per ticked line that is not already stocked.
 
     Unnamed recipe lines are skipped. The amount is the package on the line.
     The line is marked stocked so a second tap, or the rebuild that follows,
-    cannot buy it again.
+    cannot buy it again. The event ids are the purchases just written.
     """
     added: list[str] = []
+    event_ids: list[int] = []
     for item in list(shopping_list.items):
         if item.is_skipped or not item.is_checked or item.is_stocked:
             continue
@@ -529,7 +532,7 @@ def stock_ticked_items(session: Session, user_id: int, shopping_list: ShoppingLi
             continue
         qty, unit = listed_purchase(ingredient, item.purchase_qty, item.purchase_unit)
         try:
-            record_event(
+            event = record_event(
                 session,
                 user_id,
                 ingredient,
@@ -546,8 +549,9 @@ def stock_ticked_items(session: Session, user_id: int, shopping_list: ShoppingLi
         if item.ingredient_id is None:
             item.ingredient_id = ingredient.id
         added.append(ingredient.name)
+        event_ids.append(event.id)
     session.flush()
-    return added
+    return added, event_ids
 
 
 def _amount_only(

@@ -1774,7 +1774,7 @@ def test_shopping_rows_lead_with_the_name_and_ticked_rows_sit_in_the_basket(
     after = signed_in.get("/shopping").text
     basket = _basket(after)
     assert basket is not None
-    assert " open" not in basket.split(">", 1)[0]
+    assert " open" in basket.split(">", 1)[0]
     assert _row_leads(after) == ["paper towels", "spaghetti"]
     assert _to_get(after) == "1"
     assert ">spaghetti<" in basket
@@ -1902,6 +1902,44 @@ def test_have_it_stocks_one_package_and_a_later_one_offers_always_have(
     assert seeded_session.get(CanonicalIngredient, sauce.id).is_staple is True
 
 
+def test_have_it_undo_restores_the_line_and_the_pantry_level(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_sauce(seeded_session, web_user)
+    sauce = ing(seeded_session, "worcestershire sauce")
+    page = signed_in.get("/shopping")
+    item_id = _shop_item_id(page.text, "worcestershire sauce")
+    seeded_session.expire_all()
+    before = _pantry_level(seeded_session, web_user.id, sauce.id)
+
+    posted = signed_in.post(f"/shopping/item/{item_id}/have")
+    assert posted.status_code == 303
+    marked = signed_in.get(posted.headers["location"])
+    assert "Marked worcestershire sauce as on hand" in marked.text
+    action, fields = _undo_form(marked.text)
+    assert action.startswith("/pantry/undo/")
+    assert fields["next"] == "/shopping"
+    assert _row_leads(marked.text) == []
+    seeded_session.expire_all()
+    assert _pantry_level(seeded_session, web_user.id, sauce.id) > before
+
+    undone = signed_in.post(action, data=fields)
+    assert undone.status_code == 303
+    assert undone.headers["location"] == "/shopping"
+    restored = signed_in.get(undone.headers["location"]).text
+    assert "worcestershire sauce" in _row_leads(restored)
+    seeded_session.expire_all()
+    assert _pantry_level(seeded_session, web_user.id, sauce.id) == pytest.approx(before)
+    event = seeded_session.get(InventoryEvent, int(action.rsplit("/", 1)[-1]))
+    assert event is not None and event.voided_at is not None
+
+    again = signed_in.post(action, data=fields)
+    assert again.status_code == 303
+    seeded_session.expire_all()
+    assert _pantry_level(seeded_session, web_user.id, sauce.id) == pytest.approx(before)
+    assert "worcestershire sauce" in _row_leads(signed_in.get("/shopping").text)
+
+
 def test_remove_then_undo_restores_the_shopping_row(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -1957,6 +1995,73 @@ def test_edited_shopping_amount_survives_a_rebuild(
     assert "3 lb" in signed_in.get("/shopping").text
 
 
+def test_edit_amount_undo_restores_the_previous_amount(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Undo Amount", "https://example.com/undo-amount")
+    page = signed_in.get("/shopping").text
+    item_id = _shop_item_id(page, "spaghetti")
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None
+    previous_qty = item.purchase_qty
+    previous_unit = item.purchase_unit
+    assert previous_qty is not None
+    assert item.amount_edited is False
+
+    edited = signed_in.post(
+        f"/shopping/item/{item_id}/amount",
+        data={"amount": "3", "unit": "lb"},
+    )
+    assert edited.status_code == 303
+    shown = signed_in.get(edited.headers["location"])
+    assert "Updated spaghetti" in shown.text
+    action, fields = _undo_form(shown.text)
+    assert action == f"/shopping/item/{item_id}/amount/undo"
+    assert fields["amount_edited"] == "0"
+    assert float(fields["qty"]) == pytest.approx(previous_qty)
+    assert fields["unit"] == (previous_unit or "")
+
+    undone = signed_in.post(action, data=fields)
+    assert undone.status_code == 303
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None
+    assert item.amount_edited is False
+    assert item.purchase_qty == pytest.approx(previous_qty)
+    assert item.purchase_unit == previous_unit
+
+    again = signed_in.post(action, data=fields)
+    assert again.status_code == 303
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None
+    assert item.amount_edited is False
+    assert item.purchase_qty == pytest.approx(previous_qty)
+    assert item.purchase_unit == previous_unit
+
+    first = signed_in.post(
+        f"/shopping/item/{item_id}/amount", data={"amount": "3", "unit": "lb"}
+    )
+    assert first.status_code == 303
+    second = signed_in.post(
+        f"/shopping/item/{item_id}/amount", data={"amount": "5", "unit": "kg"}
+    )
+    assert second.status_code == 303
+    stacked = signed_in.get(second.headers["location"])
+    undo_action, undo_fields = _undo_form(stacked.text)
+    assert undo_fields["amount_edited"] == "1"
+    assert float(undo_fields["qty"]) == pytest.approx(3)
+    assert undo_fields["unit"] == "lb"
+    assert signed_in.post(undo_action, data=undo_fields).status_code == 303
+    seeded_session.expire_all()
+    item = seeded_session.get(ShoppingListItem, item_id)
+    assert item is not None
+    assert item.purchase_qty == pytest.approx(3)
+    assert item.purchase_unit == "lb"
+    assert item.amount_edited is True
+
+
 def test_adding_an_item_answers_with_a_toast(signed_in: TestClient) -> None:
     added = signed_in.post("/shopping/add", data={"name": "onion"})
     assert added.status_code == 303
@@ -1990,6 +2095,74 @@ def test_stocking_more_than_three_lines_names_three_then_the_rest(
     assert toast is not None
     assert toast.group(1) == f"Added {', '.join(names[:3])} and 1 more to the pantry."
     assert "notice good" not in followed
+
+
+def test_stock_undo_voids_both_purchases_and_leaves_rows_ticked(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    _plan_pasta(seeded_session, web_user, "Undo Stock", "https://example.com/undo-stock")
+    assert signed_in.post("/shopping/add", data={"name": "onion"}).status_code == 303
+    page = signed_in.get("/shopping").text
+    pasta_id = _shop_item_id(page, "spaghetti")
+    onion_id = _shop_item_id(page, "yellow onion")
+    assert signed_in.post(
+        f"/shopping/item/{pasta_id}/check", data={"checked": "1"}
+    ).status_code == 303
+    assert signed_in.post(
+        f"/shopping/item/{onion_id}/check", data={"checked": "1"}
+    ).status_code == 303
+    pasta = ing(seeded_session, "spaghetti")
+    onion = ing(seeded_session, "yellow onion")
+    seeded_session.expire_all()
+    before = {
+        pasta.id: _pantry_level(seeded_session, web_user.id, pasta.id),
+        onion.id: _pantry_level(seeded_session, web_user.id, onion.id),
+    }
+
+    stocked = signed_in.post("/shopping/stock")
+    assert stocked.status_code == 303
+    followed = signed_in.get(stocked.headers["location"])
+    assert "to the pantry." in followed.text
+    action, fields = _undo_form(followed.text)
+    assert action == "/shopping/stock/undo"
+    event_ids = [int(part) for part in fields["stocked"].split(",")]
+    assert len(event_ids) == 2
+    seeded_session.expire_all()
+    assert _pantry_level(seeded_session, web_user.id, pasta.id) > before[pasta.id]
+    assert _pantry_level(seeded_session, web_user.id, onion.id) > before[onion.id]
+
+    undone = signed_in.post(action, data=fields)
+    assert undone.status_code == 303
+    seeded_session.expire_all()
+    events = seeded_session.scalars(
+        select(InventoryEvent).where(InventoryEvent.id.in_(event_ids))
+    ).all()
+    assert len(events) == 2
+    assert {event.reason for event in events} == {EventReason.PURCHASE}
+    assert all(event.voided_at is not None for event in events)
+    assert _pantry_level(seeded_session, web_user.id, pasta.id) == pytest.approx(before[pasta.id])
+    assert _pantry_level(seeded_session, web_user.id, onion.id) == pytest.approx(before[onion.id])
+    rows = [
+        row
+        for row in seeded_session.scalars(select(ShoppingListItem)).all()
+        if row.label in {"spaghetti", "yellow onion"} and not row.is_skipped
+    ]
+    assert {row.label for row in rows} == {"spaghetti", "yellow onion"}
+    assert all(row.is_checked and not row.is_stocked for row in rows)
+
+    again = signed_in.post(action, data=fields)
+    assert again.status_code == 303
+    seeded_session.expire_all()
+    events = seeded_session.scalars(
+        select(InventoryEvent).where(InventoryEvent.id.in_(event_ids))
+    ).all()
+    assert all(event.voided_at is not None for event in events)
+    rows = [
+        row
+        for row in seeded_session.scalars(select(ShoppingListItem)).all()
+        if row.label in {"spaghetti", "yellow onion"} and not row.is_skipped
+    ]
+    assert all(row.is_checked and not row.is_stocked for row in rows)
 
 
 def test_shopping_list_offers_a_copy(
@@ -2133,6 +2306,33 @@ def _undo_action(html: str) -> str:
     )
     assert match is not None
     return unescape(match.group(1))
+
+
+def _undo_form(html: str) -> tuple[str, dict[str, str]]:
+    match = re.search(
+        r'<form method="post" action="([^"]+)"[^>]*>'
+        r'((?:\s*<input type="hidden" name="[^"]*" value="[^"]*">)*)'
+        r'\s*<button type="submit">Undo</button>',
+        html,
+    )
+    assert match is not None
+    action = unescape(match.group(1))
+    fields = {
+        unescape(name): unescape(value)
+        for name, value in re.findall(r'name="([^"]*)" value="([^"]*)"', match.group(2))
+    }
+    assert action == _undo_action(html)
+    return action, fields
+
+
+def _pantry_level(session: Session, user_id: int, ingredient_id: int) -> float:
+    held = session.scalar(
+        select(PantryItem).where(
+            PantryItem.user_id == user_id,
+            PantryItem.ingredient_id == ingredient_id,
+        )
+    )
+    return 0.0 if held is None else held.quantity
 
 
 def _plan_recipe(session: Session, user: User, title: str, url: str) -> Recipe:

@@ -80,7 +80,7 @@
   </div>
 
   <div id="shop-list">
-  {% if shop_toast %}{{ toast(shop_toast.message, shop_toast.undo, shop_toast.extra_label, shop_toast.extra_action, '#shop-list') }}{% endif %}
+  {% if shop_toast %}{{ toast(shop_toast.message, shop_toast.undo, shop_toast.extra_label, shop_toast.extra_action, '#shop-list', return_to=shop_toast.return_to, undo_fields=shop_toast.fields) }}{% endif %}
   {% if add_error %}
     <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>
   {% endif %}
@@ -106,7 +106,7 @@
     {% endfor %}
 
     {% if basket %}
-      <details class="group basket">
+      <details class="group basket" open>
         <summary>{{ group_header('In basket', basket|length) }}</summary>
         {% for it in basket %}
           {{ shop_row(it, it|shop_qty) }}

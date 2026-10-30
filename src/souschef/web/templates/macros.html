@@ -36,6 +36,31 @@
 {{ 'Today' if d == today else ('Tomorrow' if (d - today).days == 1 else ('Yesterday' if (today - d).days == 1 else d.strftime('%a %-d %b'))) }}
 {%- endmacro %}
 
+{# Past planned meals still open. Cooked debits the recipe at the planned servings, dated the
+   planned day, and comes back to `next` with an Undo toast. #}
+{% macro did_you_cook(entries, today, next) -%}
+{% if entries %}
+  {{ group_header('Did you cook this?') }}
+  {% for e in entries %}
+    {% set title %}<a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>{% endset %}
+    {% set trail %}
+      <form method="post" action="/recipes/{{ e.recipe.id }}/cooked" class="inline">
+        <input type="hidden" name="entry_id" value="{{ e.id }}">
+        <input type="hidden" name="servings" value="{{ e.servings }}">
+        <input type="hidden" name="cooked_on" value="{{ e.plan_date.isoformat() }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn small" type="submit">Cooked</button>
+      </form>
+      <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
+        <input type="hidden" name="next" value="{{ next }}">
+        <button class="btn small" type="submit">Skipped</button>
+      </form>
+    {% endset %}
+    {{ row(title, sub=day_label(e.plan_date, today), trail=trail) }}
+  {% endfor %}
+{% endif %}
+{%- endmacro %}
+
 {# One recipe suggestion as a hairline row: title and a readiness chip. #}
 {% macro suggestion_card(s) %}
 {% set gaps = s.missing_count + s.unidentified %}

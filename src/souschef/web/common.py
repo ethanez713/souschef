@@ -29,7 +29,7 @@ from souschef.core.units import (
     package_caption,
     parse_input_unit,
 )
-from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, Recipe, User
+from souschef.models import CanonicalIngredient, Cook, EventReason, InventoryEvent, Recipe, User
 from souschef.models.base import Base
 from souschef.planning.next_step import recipe_readiness
 from souschef.planning.shopping import build_shopping_list, is_package_count
@@ -415,6 +415,23 @@ def _viewer_units(user: User) -> tuple[str, bool]:
     if system not in ("us", "metric"):
         system = "us"
     return system, bool(user.show_alt_units)
+
+
+def _cook_toast(db: Session, user: User, cook_id: int, return_to: str) -> dict | None:
+    """The "Cooked X" toast with its Undo, for one of this user's live cooks."""
+    if not cook_id:
+        return None
+    cook = db.get(Cook, cook_id)
+    if cook is None or cook.user_id != user.id or cook.undone_at is not None:
+        return None
+    recipe = db.get(Recipe, cook.recipe_id)
+    if recipe is None:
+        return None
+    return {
+        "message": f"Cooked {recipe.title}",
+        "undo": f"/recipes/{recipe.id}/cooks/{cook.id}/undo",
+        "return_to": return_to,
+    }
 
 
 def _change_toast(db: Session, user: User, event_id: int) -> dict | None:

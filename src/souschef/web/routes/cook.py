@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +22,7 @@ from souschef.web.common import (
     _default_servings,
     _owned,
     _render,
+    _safe_next,
     _sync_shopping,
 )
 
@@ -220,13 +221,19 @@ async def mark_cooked(
         attached = plan_entry if plan_entry.cooked_at is None else None
     else:
         attached = _open_plan_entry(db, user.id, recipe.id, cooked_on)
-    record_cook(
+    cook = record_cook(
         db, user.id, recipe, used, when=when, servings=servings, plan_entry=attached, notes=notes
     )
     if servings:
         recipe.last_servings = servings
     db.flush()
     _sync_shopping(db, user.id)
+    # Plan and Home log a past meal in one tap and stay put, with a toast to undo it.
+    back = str(form.get("next") or "").strip()
+    if back:
+        target = _safe_next(back)
+        joiner = "&" if "?" in target else "?"
+        return RedirectResponse(f"{target}{joiner}cooked_cook={cook.id}", status_code=303)
     return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
 
 
@@ -234,6 +241,7 @@ async def mark_cooked(
 def undo_marked_cook(
     recipe_id: int,
     cook_id: int,
+    next_path: str = Form("", alias="next"),
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -243,4 +251,5 @@ def undo_marked_cook(
         raise HTTPException(status_code=404, detail="No such cook")
     undo_cook(db, user.id, cook.id)
     _sync_shopping(db, user.id)
-    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
+    target = _safe_next(next_path) if next_path.strip() else f"/recipes/{recipe.id}"
+    return RedirectResponse(target, status_code=303)

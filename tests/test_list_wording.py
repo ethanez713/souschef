@@ -200,12 +200,12 @@ def test_a_recipe_row_names_what_is_missing(
     few = _recipe_row(page, "Garlic Bread")
     stew = _recipe_row(page, "Sunday Stew")
 
-    assert 'class="list-row-sub">Ready to cook<' in ready
+    assert 'class="list-row-sub"' not in ready
     assert 'class="badge good">Ready<' in ready
-    assert 'class="list-row-sub">Missing 1: garlic<' in few
+    assert 'class="list-row-sub">garlic<' in few
     assert 'class="badge warn">Missing 1<' in few
     assert (
-        'class="list-row-sub">Missing 4: garlic, yellow onion, chicken breast'
+        'class="list-row-sub">garlic, yellow onion, chicken breast'
         " +1 more · 1 needs naming<"
     ) in stew
     assert 'class="badge warn">Missing 5<' in stew

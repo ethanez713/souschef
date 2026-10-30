@@ -67,8 +67,13 @@ def readiness_line(missing: Sequence[str], unidentified: int = 0) -> Readiness:
 
 
 def recipe_readiness(suggestion: object) -> str:
-    """The recipes-list sub-line: named gaps, then unmatched lines."""
-    missing = getattr(suggestion, "missing", ()) or ()
-    names = [gap.ingredient.name for gap in missing]
-    unidentified = getattr(suggestion, "unidentified", 0) or 0
-    return readiness_line(names, int(unidentified)).text
+    """The recipes-list sub-line: the gaps by name. The row's chip already gives the count."""
+    names = [gap.ingredient.name for gap in getattr(suggestion, "missing", ()) or ()]
+    unidentified = int(getattr(suggestion, "unidentified", 0) or 0)
+    clauses = []
+    if names:
+        extra = len(names) - 3
+        clauses.append(", ".join(names[:3]) + (f" +{extra} more" if extra > 0 else ""))
+    if unidentified:
+        clauses.append(f"{unidentified} needs naming")
+    return " · ".join(clauses)

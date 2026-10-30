@@ -3133,17 +3133,21 @@ def _input_value(form: str, name: str) -> str:
 
 def _shown_level(page: str, ingredient_id: int) -> tuple[str, str]:
     form = _check_form(page, ingredient_id)
-    unit = re.search(r'class="qty-unit">([^<]*)<', form)
+    unit = re.search(r'class="qty-unit"[^>]*>([^<]*)<', form)
     assert unit is not None
     return _input_value(form, "quantity"), unit.group(1)
 
 
 def _mark(page: str, name: str) -> str | None:
     """The bubble on this row only. The next title starts the next row."""
-    start = page.index(f'class="list-row-title">{name}<')
-    end = page.find('class="list-row-title">', start + 1)
-    window = page[start:] if end == -1 else page[start:end]
-    match = re.search(r'class="conf (low|med)"', window)
+    start = page.index(f'class="list-row-title">{name}')
+    ends = [
+        i for i in (
+            page.find('class="list-row-sub"', start),
+            page.find('class="list-row-trail"', start),
+        ) if i != -1
+    ]
+    match = re.search(r'class="conf (low|med)"', page[start:min(ends)])
     return match.group(1) if match else None
 
 
@@ -3177,6 +3181,8 @@ def test_uncertain_levels_get_a_confidence_bubble_and_home_says_check(
     assert _mark(page, "spinach") is not None
     assert _mark(page, "lemon") is None
     assert _mark(page, "chicken breast") == "low"
+    sub_lines = "".join(re.findall(r'class="list-row-sub">(.*?)</span>', page))
+    assert 'class="conf' not in sub_lines
     assert "use soon" in page
     assert f"expires {soon.strftime('%-d %b')}" in page
 

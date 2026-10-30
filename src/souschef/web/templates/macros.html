@@ -41,8 +41,8 @@
 
 {# Name, a second line, and one amount box. `shown` is the prefill string the route
    compares, so it has to be the same text as the input. `next` returns there
-   instead of swapping the pantry list. `amount` overrides the prefill (out rows pass 0). #}
-{% macro qty_row(ingredient, shown, sub='', query='', next='') %}
+   instead of swapping the pantry list. `mark` follows the name on its line. #}
+{% macro qty_row(ingredient, shown, sub='', query='', next='', mark='') %}
 <form class="item" method="post" action="/pantry/{{ ingredient.id }}/check"
       {% if not next %}hx-post="/pantry/{{ ingredient.id }}/check" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
   <input type="hidden" name="shown" value="{{ shown }}">
@@ -51,10 +51,11 @@
   {% set trail %}
     <input class="qty" name="quantity" type="number" step="any" inputmode="decimal" required
            value="{{ shown }}" aria-label="{{ ingredient.name }} ({{ ingredient|unit_label }})">
-    <span class="qty-unit">{{ ingredient|unit_label }}</span>
+    <span class="qty-unit" title="{{ ingredient|unit_label }}">{{ ingredient|unit_label }}</span>
     <button class="iconbtn bare" type="submit" aria-label="Save {{ ingredient.name }}">{{ icon('check', 18) }}</button>
   {% endset %}
-  {{ row(ingredient.name, sub=sub, trail=trail) }}
+  {% set title %}{{ ingredient.name }}{% if mark %} {{ mark }}{% endif %}{% endset %}
+  {{ row(title, sub=sub, trail=trail) }}
 </form>
 {% endmacro %}
 
@@ -67,9 +68,9 @@
 {% set sub -%}
 {%- if v.item.expires_on -%}expires {{ v.item.expires_on.strftime('%-d %b') }}{%- endif -%}
 {%- if status == 'use soon' -%}{% if v.item.expires_on %} · {% endif %}use soon{%- endif -%}
-{%- if show_mark %}{% if v.item.expires_on or status == 'use soon' %} {% endif %}{{ confidence_mark(v.certainty, status == 'probably gone') }}{% endif -%}
 {%- endset %}
-{{ qty_row(v.ingredient, shown, sub, query, next) }}
+{% set mark = confidence_mark(v.certainty, status == 'probably gone') if show_mark else '' %}
+{{ qty_row(v.ingredient, shown, sub, query, next, mark) }}
 {% endmacro %}
 
 

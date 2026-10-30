@@ -261,7 +261,8 @@ details.plan .daychips { margin-top: var(--sp-2); }
 form.item { margin: 0; }
 .item .list-row { padding-top: var(--sp-1); padding-bottom: var(--sp-1); }
 .item .list-row-title {
-  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: block; overflow: visible;
+  -webkit-line-clamp: unset; -webkit-box-orient: unset;
 }
 .item .list-row-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .item .list-row-trail { gap: var(--sp-2); }
@@ -269,7 +270,10 @@ form.item { margin: 0; }
   width: 4.5em; max-width: 4.5em; flex: none;
   padding: 0 var(--sp-2); font-size: 16px; text-align: right;
 }
-.qty-unit { flex: none; font-size: 14px; color: var(--text-muted); white-space: nowrap; }
+.qty-unit {
+  flex: none; width: 5em; font-size: 14px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
+}
 .trail { display: flex; align-items: center; gap: var(--sp-3); white-space: nowrap; }
 
 /* ---------- plan ---------- */

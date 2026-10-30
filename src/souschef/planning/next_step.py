@@ -103,7 +103,7 @@ def recipe_readiness(suggestion: object) -> str:
     if names:
         clauses.append(_named(names))
     if checks:
-        clauses.append(_named(checks))
+        clauses.append("check " + _named(checks))
     if unidentified:
         clauses.append(f"{unidentified} needs naming")
     return " · ".join(clauses)

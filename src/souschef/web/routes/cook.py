@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from souschef.core.cooking import record_cook, undo_cook
-from souschef.core.inventory import pantry_view, physical_of
+from souschef.core.inventory import known_ingredient_ids, pantry_view, physical_of
 from souschef.core.recipes import recipe_requirements
 from souschef.core.units import entry_unit, format_entry_amount, resolve_entry_unit, to_base
 from souschef.db import get_db
@@ -85,11 +85,17 @@ def _cook_page(
     servings = min(max(servings, 1), MAX_SERVINGS)
     requirements = recipe_requirements(db, recipe, servings=servings)
     pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
+    known = known_ingredient_ids(db, user.id)
 
     debits: list[dict] = []
     by_id: dict[int, dict] = {}
+    # Never counted means no level to subtract from, so cooking leaves it alone.
+    uncounted: list[str] = []
     for req in requirements.requirements:
         if req.quantity <= 0 or req.is_staple:
+            continue
+        if req.ingredient.id not in known:
+            uncounted.append(req.raw_text)
             continue
         row = by_id.get(req.ingredient.id)
         if row is None:
@@ -111,7 +117,7 @@ def _cook_page(
         status_code=status_code,
         recipe=recipe,
         debits=debits,
-        not_tracked=list(requirements.unmatched),
+        not_tracked=list(requirements.unmatched) + uncounted,
         servings=servings,
         entry=plan_entry,
         cook_dates=_cook_dates(today),

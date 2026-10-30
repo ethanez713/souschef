@@ -59,6 +59,8 @@ def test_cook_screen_is_one_done_tap(
         select(CanonicalIngredient).where(CanonicalIngredient.name == "spaghetti")
     )
     assert pasta is not None
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=454.0)
+    seeded_session.commit()
 
     page = signed_in.get(f"/recipes/{recipe.id}/cook?entry={entry.id}").text
 
@@ -152,3 +154,32 @@ def test_undo_restores_the_pantry_and_a_second_undo_is_a_no_op(
     still = _levels(seeded_session, web_user.id)
     for ingredient_id, triple in restored.items():
         assert still[ingredient_id] == pytest.approx(triple, rel=1e-4, abs=1e-3)
+
+
+def test_uncounted_stock_is_listed_as_not_tracked_not_short(
+    signed_in: TestClient, seeded_session: Session, web_user
+) -> None:
+    recipe = save_imported_recipe(
+        seeded_session,
+        web_user.id,
+        RawRecipe(
+            title="Uncounted Cook",
+            ingredients=["1 pound spaghetti", "1 cup heavy cream"],
+            servings=2,
+            source_url="https://example.com/uncounted-cook",
+        ),
+        source=RecipeSource.URL,
+    )
+    cream = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "heavy cream")
+    )
+    record_event(seeded_session, web_user.id, cream, reason=EventReason.PURCHASE, delta=500.0)
+    seeded_session.commit()
+
+    page = signed_in.get(f"/recipes/{recipe.id}/cook").text
+
+    tracked = page.split("Not tracked", 1)
+    assert len(tracked) == 2
+    assert "1 pound spaghetti" in tracked[1]
+    assert "heavy cream" in tracked[0]
+    assert "short in your pantry" not in page

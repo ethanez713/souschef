@@ -169,6 +169,21 @@ def get_or_create_item(
 
 
 def _default_location(ingredient: CanonicalIngredient) -> StorageLocation:
+    # Onions, garlic, shallots, potatoes and sweet potatoes keep on a shelf.
+    # Only a new row reads this; an existing location is left where it is.
+    name = ingredient.name.strip().lower()
+    if name in {
+        "onion",
+        "onions",
+        "garlic",
+        "shallot",
+        "shallots",
+        "potato",
+        "potatoes",
+        "sweet potato",
+        "sweet potatoes",
+    } or name.endswith((" onion", " onions", " shallot", " shallots", " potato", " potatoes")):
+        return StorageLocation.PANTRY
     category = str(ingredient.category)
     if category in ("dairy", "meat", "seafood", "produce"):
         return StorageLocation.FRIDGE

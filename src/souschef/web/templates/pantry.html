@@ -20,7 +20,7 @@
     <button type="button" class="btn" data-sheet="pantry-add">+ Add</button>
   </div>
 
-  {% call sheet('pantry-add', 'Add something', open=add_open) %}
+  {% call sheet('pantry-add', 'Add something', open=add_open, modal=not change) %}
     <form method="post" action="/pantry/add" data-add-form data-unit-system="{{ user.unit_system or 'us' }}">
       <input type="hidden" name="q" value="{{ query }}">
       {% if add_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>{% endif %}
@@ -34,6 +34,7 @@
       </div>
       {{ add_units(unit_choices, 'u', add_unit or '', 'lb / cups / jar' if user.unit_system == 'us' else 'g / ml / jar') }}
       {{ package_size('pkg-qty', 'pkg-unit', package_word, package_caption, package_qty, package_unit, 'oz / lb / cups' if user.unit_system == 'us' else 'g / ml', package_word) }}
+      <button class="block" type="submit" name="again" value="1">Add another</button>
     </form>
   {% endcall %}
 

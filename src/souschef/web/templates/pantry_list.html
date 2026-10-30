@@ -1,27 +1,26 @@
 {% from "icons.html" import icon %}
 {# `with context` so the card's quantity filters see the signed-in user. A bare import does not. #}
 {% from "macros.html" import pantry_card, group_header, row, toast with context %}
-{% if change %}{{ toast(change.message, '/pantry/undo/' ~ change.event_id, q=query, hx_inner='#pantry-list') }}{% endif %}
+{% if change %}{{ toast(change.message, '/pantry/undo/' ~ change.event_id, q=query, hx_inner='#pantry-list') }}{% elif note %}{{ toast(note) }}{% endif %}
 {% if level_error %}
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>
 {% endif %}
 {# One unit column width for the whole list keeps the boxes aligned; capped so a long noun ellipsizes. #}
 {% set widest = namespace(chars=2) %}
-{% for views in by_location.values() %}{% for v in views if not v.is_staple %}{% set widest.chars = [widest.chars, v.ingredient|unit_label(v.quantity)|length]|max %}{% endfor %}{% endfor %}
+{% for views in by_location.values() %}{% for v in views %}{% set widest.chars = [widest.chars, v.ingredient|unit_label(v.quantity)|length]|max %}{% endfor %}{% endfor %}
 {% for v in out or [] %}{% set widest.chars = [widest.chars, v.ingredient|unit_label(v.quantity)|length]|max %}{% endfor %}
 {% set unit_chars = [widest.chars, 7]|min %}
 {% for location, views in by_location.items() %}
   <section class="row-group" style="--unit-chars: {{ unit_chars }}">
     {{ group_header(location.replace('_', ' ').title()) }}
     {% for v in views %}
-      {% if v.is_staple %}
-        {{ row(v.ingredient.name, sub='Always have') }}
-      {% else %}
-        {{ pantry_card(v, freshness, query) }}
-      {% endif %}
+      {{ pantry_card(v, freshness, query) }}
     {% endfor %}
   </section>
 {% endfor %}
+{% if staples %}
+  {{ row('Always have (' ~ staples ~ ')', href='/settings', cls='pantry-always') }}
+{% endif %}
 {% if out %}
   <section class="row-group" style="--unit-chars: {{ unit_chars }}">
     {{ group_header('Out') }}
@@ -30,7 +29,7 @@
     {% endfor %}
   </section>
 {% endif %}
-{% if not by_location and not out %}
+{% if not by_location and not out and not staples %}
   <div class="empty">
     {% if query %}
       <p>Nothing in the pantry matches “{{ query }}”.</p>

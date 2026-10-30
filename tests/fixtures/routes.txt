@@ -23,6 +23,9 @@ GET /shopping
 POST /pantry/add
 POST /pantry/undo/{event_id}
 POST /pantry/{ingredient_id}/check
+POST /pantry/{ingredient_id}/discard
+POST /pantry/{ingredient_id}/floor
+POST /pantry/{ingredient_id}/staple
 POST /plan/add
 POST /plan/day
 POST /plan/restore

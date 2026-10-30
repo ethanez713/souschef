@@ -291,6 +291,20 @@ form.item { margin: 0; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
 .trail { display: flex; align-items: center; gap: var(--sp-3); white-space: nowrap; }
+.floor-unit {
+  flex: none; display: inline-flex; align-items: center; min-height: 44px;
+  font-size: 14px; color: var(--text-muted);
+}
+/* Non-modal, so the add toast (z-index 25) stays visible while another item is added. */
+dialog.sheet.sheet-stay[open] {
+  position: fixed; z-index: 20; inset: auto 0 0 0; margin: 0;
+  padding-bottom: calc(var(--tabbar-h) + 3.5rem);
+}
+@media (min-width: 600px) {
+  dialog.sheet.sheet-stay[open] {
+    inset: 0; height: fit-content; max-height: 85dvh; margin: auto; padding-bottom: 0;
+  }
+}
 
 /* ---------- plan ---------- */
 
@@ -450,7 +464,8 @@ details.inline-fix .controls,
     column-gap: var(--sp-5); row-gap: var(--sp-2); align-items: start;
   }
   #pantry-list.pantry-grid > .notice,
-  #pantry-list.pantry-grid > .empty { grid-column: 1 / -1; }
+  #pantry-list.pantry-grid > .empty,
+  #pantry-list.pantry-grid > .pantry-always { grid-column: 1 / -1; }
 
   /* 2 : 3.25 is about 38% of the content well for the photo. */
   .review-layout {

@@ -132,17 +132,22 @@ def test_pantry_page_lists_stock(
 
     response = signed_in.get("/pantry")
     assert response.status_code == 200
-    assert "olive oil" in response.text
+    # A staple is one collapsed row, not an amount box.
+    assert "Always have (1)" in response.text
+    assert 'class="list-row-title">olive oil' not in response.text
 
 
 def test_adding_to_pantry_through_the_form(
-    signed_in: TestClient, seeded_session: Session
+    signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     response = signed_in.post(
         "/pantry/add", data={"name": "olive oil", "quantity": "750", "unit": "ml"}
     )
     assert response.status_code == 303
-    assert "olive oil" in signed_in.get("/pantry").text
+    assert _pantry_row(seeded_session, web_user, "olive oil") is not None
+    page = signed_in.get("/pantry").text
+    assert "Always have (1)" in page
+    assert 'class="list-row-title">olive oil' not in page
 
 
 def test_unknown_ingredient_is_added_verbatim(
@@ -185,7 +190,9 @@ def test_pantry_search_tolerates_a_typo(
     )
     seeded_session.commit()
 
-    assert "olive oil" in signed_in.get("/pantry", params={"q": "oliev"}).text
+    page = signed_in.get("/pantry", params={"q": "oliev"}).text
+    assert "Always have (1)" in page
+    assert "Nothing in the pantry matches" not in page
 
 
 def test_pantry_htmx_request_returns_only_the_list(
@@ -201,7 +208,7 @@ def test_pantry_htmx_request_returns_only_the_list(
     response = signed_in.get(
         "/pantry", params={"q": "olive"}, headers={"HX-Request": "true"}
     )
-    assert "olive oil" in response.text
+    assert "Always have (1)" in response.text
     assert "Scan receipt" not in response.text
 
 
@@ -3509,7 +3516,7 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v9" in worker
+    assert "souschef-shell-v10" in worker
 
 
 def test_pages_follow_the_signed_in_unit_system(

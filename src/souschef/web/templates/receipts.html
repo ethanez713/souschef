@@ -9,12 +9,11 @@
 
   <div class="card">
     <form method="post" action="/receipts/upload" enctype="multipart/form-data">
-      <div class="field">
-        <label for="img">Photograph a receipt</label>
-        <!-- capture= opens the camera directly on Android -->
-        <input id="img" name="image" type="file" accept="image/*" capture="environment" required>
-      </div>
-      <button class="primary" type="submit">{{ icon('camera', 16) }}Scan</button>
+      {# The label is the button: picking a photo uploads it, so scanning is one tap.
+         capture= opens the camera directly on Android. #}
+      <label class="btn primary block" for="img">{{ icon('camera', 16) }}Photograph a receipt</label>
+      <input id="img" name="image" type="file" accept="image/*" capture="environment" hidden
+             onchange="if (this.files.length) this.form.submit()">
     </form>
     <p class="note">
       Scanning runs on your own server. Nothing is sent anywhere else.

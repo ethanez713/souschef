@@ -112,10 +112,7 @@
       {% call sheet('match-' ~ loop.index, 'Change match') %}
         <form method="post" action="/recipes/{{ recipe.id }}/match">
           <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
-          <div class="field">
-            <label for="fix{{ loop.index }}">This is actually</label>
-            <input id="fix{{ loop.index }}" name="name" list="catalog" required placeholder="{{ r.ingredient.name }}">
-          </div>
+          {{ picker('name', 'This is actually', 'ingredient', submit='name', dialog='match-pick-' ~ loop.index, shown=r.ingredient.name) }}
           <button type="submit">Save</button>
         </form>
       {% endcall %}
@@ -125,18 +122,12 @@
       {% call sheet('match-' ~ loop.index, 'Needs naming') %}
         <form method="post" action="/recipes/{{ recipe.id }}/match">
           <input type="hidden" name="raw_text" value="{{ line_row.raw }}">
-          <div class="field">
-            <label for="name{{ loop.index }}">This is</label>
-            <input id="name{{ loop.index }}" name="name" list="catalog" required placeholder="the ingredient">
-          </div>
+          {{ picker('name', 'This is', 'ingredient', submit='name', dialog='match-pick-' ~ loop.index) }}
           <button type="submit">Save</button>
         </form>
       {% endcall %}
     {% endif %}
   {% endfor %}
-  <datalist id="catalog">
-    {% for name in catalog %}<option value="{{ name }}">{% endfor %}
-  </datalist>
   </section>
 
   {% if recipe.instructions %}

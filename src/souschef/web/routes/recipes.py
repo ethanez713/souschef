@@ -356,7 +356,6 @@ def _recipe_page(
     views = pantry_view(db, user.id)
     pantry = {v.ingredient.id: v for v in views}
     gone = probably_gone_ids(db, user.id, views, today)
-    catalog = db.scalars(select(CanonicalIngredient.name).order_by(CanonicalIngredient.name)).all()
     planned_on = db.scalars(
         select(MealPlanEntry.plan_date)
         .where(
@@ -382,7 +381,6 @@ def _recipe_page(
         recipe=recipe,
         rows=rows,
         unmatched=unmatched,
-        catalog=catalog,
         pantry=pantry,
         gone=gone,
         cooked=cooked,

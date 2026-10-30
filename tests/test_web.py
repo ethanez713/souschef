@@ -1637,7 +1637,7 @@ def test_skip_link_and_nav_come_before_the_page(signed_in: TestClient) -> None:
     assert text.index("Skip to content") < text.index('aria-label="Main"') < text.index("<main")
 
 
-def test_recipe_naming_inputs_share_a_catalog(
+def test_recipe_naming_uses_the_picker(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
     recipe = save_imported_recipe(
@@ -1654,8 +1654,8 @@ def test_recipe_naming_inputs_share_a_catalog(
     seeded_session.commit()
 
     page = signed_in.get(f"/recipes/{recipe.id}").text
-    assert 'id="catalog"' in page
-    assert page.count('list="catalog"') >= 2
+    assert "<datalist" not in page
+    assert page.count('data-picker-submit="name"') >= 2
 
     saved = signed_in.post(
         f"/recipes/{recipe.id}/match",

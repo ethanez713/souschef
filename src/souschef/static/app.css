@@ -211,7 +211,7 @@ input[type="checkbox"]:checked::after {
   border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg);
 }
 input[type="file"] { padding: var(--sp-3) var(--sp-4); height: auto; }
-label { display: block; margin-bottom: var(--sp-1); font-size: var(--fs-caption); color: var(--text-muted); }
+label, .field-label { display: block; margin-bottom: var(--sp-1); font-size: var(--fs-caption); color: var(--text-muted); }
 form.inline { display: inline; }
 .field { margin-bottom: var(--sp-4); }
 .controls { display: flex; gap: var(--sp-2); align-items: flex-end; }

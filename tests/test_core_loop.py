@@ -1357,13 +1357,13 @@ def test_cook_preview_warns_names_untracked_lines_and_offers_the_past_week(
     assert "Not tracked" in page.text
     assert "1 cup xyzzybroth" in page.text
     assert "These lines aren’t in the pantry, so cooking doesn’t change them." in page.text
-    assert 'id="cooked_on"' in page.text
+    assert 'role="radiogroup" aria-labelledby="cooked-on-label"' in page.text
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    assert f'value="{yesterday}" selected' in page.text
+    assert f'value="{yesterday}" checked' in page.text
 
     bare = signed_in.get(f"/recipes/{recipe.id}/cook")
     assert 'name="cooked_on"' in bare.text
-    assert f'value="{date.today().isoformat()}" selected' in bare.text
+    assert f'value="{date.today().isoformat()}" checked' in bare.text
 
 
 def test_cooking_on_a_past_day_closes_that_entry(

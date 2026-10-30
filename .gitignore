@@ -54,8 +54,7 @@ tests/fixtures/receipts/
 
 # Local working notes: kept on disk, not published
 docs/plans/
-docs/ux-journal.md
-docs/ux-journal-2.md
+docs/ux-journal*.md
 docs/ux-review.md
 docs/pantry-market-research.md
 CLAUDE.local.md

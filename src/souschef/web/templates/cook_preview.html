@@ -47,14 +47,15 @@
     </div>
     {% call sheet('adjust-amounts', 'Adjust amounts') %}
       <div class="field">
-        <label for="cooked_on">Cooked on</label>
-        <select id="cooked_on" name="cooked_on">
+        <span class="field-label" id="cooked-on-label">Cooked on</span>
+        <div class="daychips" role="radiogroup" aria-labelledby="cooked-on-label">
           {% for d in cook_dates %}
-            <option value="{{ d.isoformat() }}"{% if d == cooked_on %} selected{% endif %}>
-              {{ 'Today' if d == today else d.strftime('%a %-d %b') }}
-            </option>
+            <label>
+              <input type="radio" name="cooked_on" value="{{ d.isoformat() }}"{% if d == cooked_on %} checked{% endif %}>
+              <span>{{ 'Today' if d == today else d.strftime('%a %-d') }}</span>
+            </label>
           {% endfor %}
-        </select>
+        </div>
       </div>
       {% for d in debits %}
         {% set shown = d.quantity|entry_amount(d.ingredient) %}

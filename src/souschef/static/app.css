@@ -122,6 +122,20 @@ a.card:hover { background: var(--surface-hover); color: inherit; }
 .card.tint-orange { border-left: 2px solid var(--tint-orange); }
 .card.tint-grey { border-left: 2px solid var(--tint-grey); }
 .card.today { background: var(--surface-accent-soft); border-color: var(--orange-200); }
+.tonight { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2); }
+.tonight-title {
+  margin: 0; display: flex; align-items: center; min-height: 44px;
+  font-family: var(--font-heading); font-size: var(--fs-title-3); line-height: var(--lh-title-3);
+  font-weight: var(--fw-semibold); color: var(--text-heading); text-decoration: none;
+  overflow-wrap: anywhere;
+}
+a.tonight-title:hover { color: var(--text-heading); }
+.tonight-empty { margin: 0; font-size: var(--fs-body); line-height: var(--lh-body); }
+.tonight-ready { margin: 0; font-size: var(--fs-body); line-height: var(--lh-body); }
+.tonight-ready.good { color: var(--jade-600); }
+.tonight-ready.warn { color: var(--amber-600); }
+.tonight-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.tonight .list-row-title a { display: inline-flex; align-items: center; min-height: 44px; }
 
 /* Swipeable recipe rows: bleed to the screen edge so a half card peeks. */
 .carousel {
@@ -528,6 +542,9 @@ details.inline-fix .controls,
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
 .list-row-sub { color: var(--text-muted); font-size: var(--fs-body-sm); line-height: var(--lh-body-sm); }
+.list-row.good .list-row-sub { color: var(--jade-600); }
+.list-row.warn .list-row-sub { color: var(--amber-600); }
+.home-step .list-row-trail { color: var(--text-muted); }
 .list-row-value {
   flex: none; margin-left: auto; text-align: right; white-space: nowrap;
   color: var(--text-heading); font-variant-numeric: tabular-nums;

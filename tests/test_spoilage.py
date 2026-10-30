@@ -128,6 +128,7 @@ def test_home_and_pantry_name_what_is_probably_gone(
     assert "probably gone" not in pantry.casefold()
     assert "probably gone" not in home.casefold()
     assert "Use soon:" not in home
+    assert f'action="/pantry/{ingredient.id}/check"' not in home
     start = pantry.index(f'action="/pantry/{ingredient.id}/check"')
     form = pantry[start:pantry.index("</form>", start)]
     assert 'name="quantity"' in form
@@ -148,8 +149,8 @@ def test_home_levels_use_the_pantry_card_and_return_home(
     seeded_session.commit()
 
     home = signed_in.get("/").text
-    assert f'action="/pantry/{ingredient.id}/check"' in home
-    assert 'name="next" value="/"' in home
+    assert f'action="/pantry/{ingredient.id}/check"' not in home
+    assert 'name="next" value="/"' not in home
     assert f'id="edit{ingredient.id}"' not in home
 
     confirmed = signed_in.post(

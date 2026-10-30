@@ -92,7 +92,10 @@ def test_a_same_origin_post_is_allowed(client: TestClient) -> None:
 def test_dashboard_renders_when_empty(signed_in: TestClient) -> None:
     response = signed_in.get("/")
     assert response.status_code == 200
-    assert "No recipes yet" in response.text
+    assert "<h1>Home</h1>" in response.text
+    assert "Nothing planned tonight" in response.text
+    assert "Add your first recipe" in response.text
+    assert 'href="/recipes?import=1"' in response.text
 
 
 def test_home_lists_a_recipe_that_needs_a_shop(
@@ -111,8 +114,11 @@ def test_home_lists_a_recipe_that_needs_a_shop(
     )
     seeded_session.commit()
     page = signed_in.get("/")
-    assert "No recipes yet" not in page.text
+    assert "Nothing planned tonight" in page.text
     assert "Shop Pasta" in page.text
+    assert "Cook this" in page.text
+    assert "Missing 1–3" not in page.text
+    assert "Missing 4+" not in page.text
 
 
 def test_pantry_page_lists_stock(
@@ -3034,6 +3040,7 @@ def test_undo_voids_the_edit_restores_the_level_and_rebuilds_the_list(
 def test_home_check_renders_the_quantity_row(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
+    """Home no longer edits a level. Confirming one still returns there, toast and all."""
     chicken = ing(seeded_session, "chicken breast")
     long_ago = datetime.now(UTC) - timedelta(days=400)
     record_event(
@@ -3044,14 +3051,10 @@ def test_home_check_renders_the_quantity_row(
     seeded_session.commit()
 
     home = signed_in.get("/").text
-    assert "<span>Check</span>" in home
-    form = _check_form(home, chicken.id)
-    assert 'name="next" value="/"' in form
-    assert 'name="quantity"' in form
-    assert 'inputmode="decimal"' in form
-    assert "edit-toggle" not in home
-    assert f"/pantry/{chicken.id}/discard" not in home
-
+    assert f'action="/pantry/{chicken.id}/check"' not in home
+    assert 'name="quantity"' not in home
+    assert "<span>Check</span>" not in home
+    form = _check_form(signed_in.get("/pantry").text, chicken.id)
     shown = _input_value(form, "shown")
     posted = signed_in.post(
         f"/pantry/{chicken.id}/check",
@@ -3449,8 +3452,9 @@ def test_uncertain_levels_get_a_confidence_bubble_and_home_says_check(
     assert f"expires {soon.strftime('%-d %b')}" in page
 
     home = signed_in.get("/").text
-    assert "<span>Check</span>" in home
+    assert "<span>Check</span>" not in home
     assert "Least certain" not in home
+    assert 'action="/pantry/' not in home
 
 
 def _macros():  # noqa: ANN202
@@ -3503,7 +3507,7 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v8" in worker
+    assert "souschef-shell-v9" in worker
 
 
 def test_pages_follow_the_signed_in_unit_system(

@@ -1204,7 +1204,7 @@ def test_home_asks_about_uncooked_meals_from_the_last_week(
         seeded_session, web_user.id, "Ancient Pasta", "https://example.com/core-loop-old"
     )
     missed = _plan(seeded_session, web_user.id, yesterday, date.today() - timedelta(days=1))
-    _plan(seeded_session, web_user.id, today_recipe, date.today())
+    today_entry = _plan(seeded_session, web_user.id, today_recipe, date.today())
     too_old = _plan(seeded_session, web_user.id, ancient, date.today() - timedelta(days=8))
     _plan(
         seeded_session,
@@ -1217,6 +1217,7 @@ def test_home_asks_about_uncooked_meals_from_the_last_week(
 
     page = signed_in.get("/")
 
+    assert "<h1>Home</h1>" in page.text
     assert "Did you cook these?" in page.text
     assert "Yesterday" in page.text
     assert f'/recipes/{yesterday.id}/cook?entry={missed.id}' in page.text
@@ -1224,6 +1225,11 @@ def test_home_asks_about_uncooked_meals_from_the_last_week(
     assert f'/recipes/{ancient.id}/cook?entry={too_old.id}' not in page.text
     assert f'/plan/{too_old.id}/skip' not in page.text
     assert "Ate leftovers" not in page.text
+    assert "Ancient Pasta" not in page.text
+    assert page.text.count(f"/recipes/{today_recipe.id}/cook?entry={today_entry.id}") == 1
+    assert "Missing 1–3" not in page.text
+    assert "Missing 4+" not in page.text
+    assert "<span>Planned</span>" not in page.text
 
 
 def test_plan_keeps_the_last_week_and_hides_older_meals(

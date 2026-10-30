@@ -1,7 +1,7 @@
 // Minimal service worker. Its job is to make the app installable and to keep
 // the shell usable when the kitchen wifi drops -- not to cache application data,
 // which would risk showing stale pantry levels and defeat the whole premise.
-const SHELL = 'souschef-shell-v8';
+const SHELL = 'souschef-shell-v9';
 const ASSETS = [
   '/static/app.css', '/static/ds.css', '/static/fonts/fonts.css', '/static/htmx.min.js',
 ];

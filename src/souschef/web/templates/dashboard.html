@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Home · SousChef{% endblock %}
-{# `with context` so the card's quantity filters see the signed-in user. A bare import does not. #}
 {% from "icons.html" import icon %}
-{% from "macros.html" import pantry_card, suggestion_card, day_label, group_header, row, toast with context %}
+{% from "macros.html" import day_label, group_header, row, toast %}
 {% set active = 'home' %}
 {% block content %}
 <main id="main">
-  <h1>Tonight</h1>
+  <h1>Home</h1>
+  <p class="meta">{{ today.strftime('%A %-d %B') }}</p>
 
   {% if form_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ form_error }}</div></div>{% endif %}
   {% if change %}{{ toast(change.message, '/pantry/undo/' ~ change.event_id, return_to='/') }}{% endif %}
@@ -26,45 +26,45 @@
     {% endfor %}
   {% endif %}
 
-  {% if upcoming %}
-    {{ group_header('Planned', href='/plan', link='Plan') }}
-    {% for e in upcoming %}
-      {% set title %}{% if e.recipe %}<a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>{% else %}{{ e.freeform_title }}{% endif %}{% endset %}
-      {% set trail %}{% if e.recipe %}<a class="btn small{{ ' primary' if e.plan_date == today }}" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cook</a>{% endif %}{% endset %}
-      {{ row(title, sub=day_label(e.plan_date, today), trail=trail, cls=('today' if e.plan_date == today else '')) }}
-    {% endfor %}
-  {% endif %}
-
-  {% if cook_now %}
-    {{ group_header('Ready', href='/recipes', link='All recipes') }}
-    {% for s in cook_now %}{{ suggestion_card(s) }}{% endfor %}
-  {% endif %}
-
-  {% if nearly %}
-    {{ group_header('Missing 1–3', href='/recipes', link='All recipes') }}
-    {% for s in nearly %}{{ suggestion_card(s) }}{% endfor %}
-  {% endif %}
-
-  {% if bigger_shop %}
-    {{ group_header('Missing 4+', href='/recipes', link='All recipes') }}
-    {% for s in bigger_shop %}{{ suggestion_card(s) }}{% endfor %}
-  {% endif %}
-
-  {% if not cook_now and not nearly and not bigger_shop %}
-    <div class="empty">
-      {% if recipe_count %}
-        <p>Nothing lined up from the pantry.</p>
-        <a class="btn primary" href="/recipes">See all recipes</a>
+  <section class="card tonight" aria-label="Tonight">
+    {% if tonight %}
+      {% if tonight.recipe %}
+        <a class="tonight-title" href="/recipes/{{ tonight.recipe.id }}">{{ tonight.recipe.title }}</a>
+        <p class="tonight-ready {{ tonight_readiness.tone }}">{{ tonight_readiness.text }}</p>
+        <div class="tonight-actions">
+          <a class="btn primary" href="/recipes/{{ tonight.recipe.id }}/cook?entry={{ tonight.id }}">Cook</a>
+          <a class="btn" href="/plan">Change</a>
+        </div>
       {% else %}
-        <p>No recipes yet.</p>
-        <a class="btn primary" href="/recipes?import=1">Import a recipe</a>
+        <p class="tonight-title">{{ tonight.freeform_title }}</p>
+        <div class="tonight-actions">
+          <a class="btn" href="/plan">Change</a>
+        </div>
       {% endif %}
-    </div>
+    {% else %}
+      <p class="tonight-empty">Nothing planned tonight</p>
+      {% if offer %}
+        {% set title %}<a href="/recipes/{{ offer.recipe.id }}">{{ offer.recipe.title }}</a>{% endset %}
+        {% set trail %}<a class="btn primary" href="/recipes/{{ offer.recipe.id }}/cook">Cook this</a>{% endset %}
+        {{ row(title, sub=offer_readiness.text, trail=trail, cls=offer_readiness.tone) }}
+      {% endif %}
+      <div class="tonight-actions">
+        <a class="btn{% if not offer %} primary{% endif %}" href="/plan">Plan something</a>
+      </div>
+    {% endif %}
+  </section>
+
+  {% set lead %}{{ icon(step.icon, 18) }}{% endset %}
+  {% if step.href %}
+    {% set trail %}{{ icon('chevron-right', 18) }}{% endset %}
+    {{ row(step.label, lead=lead, trail=trail, href=step.href, cls='home-step') }}
+  {% else %}
+    {{ row(step.label, lead=lead, cls='home-step') }}
   {% endif %}
 
-  {% if stale %}
-    {{ group_header('Check', href='/pantry', link='Pantry') }}
-    {% for v in stale %}{{ pantry_card(v, freshness, '', '/') }}{% endfor %}
+  {% if tomorrow_title %}
+    {% set trail %}{{ icon('chevron-right', 18) }}{% endset %}
+    {{ row('Tomorrow · ' ~ tomorrow_title, trail=trail, href='/plan') }}
   {% endif %}
 </main>
 {% endblock %}

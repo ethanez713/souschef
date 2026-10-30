@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import date
 from urllib.parse import urlencode
 
@@ -345,6 +346,31 @@ def _list_for_page(db: Session, user_id: int):
     return active
 
 
+@dataclass(frozen=True)
+class ShopCounts:
+    to_get: int
+    in_basket: int
+    check_count: int
+
+
+def shop_counts(db: Session, user_id: int, listing: ShoppingList | None = None) -> ShopCounts:
+    """The shopping page's to-get, basket, and check counts. Home reads the same ones."""
+    if listing is None:
+        listing = _list_for_page(db, user_id)
+    start, end = _horizon()
+    visible = [item for item in listing.items if not item.is_skipped]
+    audit = build_audit(db, user_id, requirements_for_audit(db, user_id, start, end))
+    return ShopCounts(
+        to_get=sum(1 for item in visible if not item.is_checked and not item.is_stocked),
+        in_basket=sum(
+            1
+            for item in visible
+            if item.is_checked and not item.is_stocked and stockable(item)
+        ),
+        check_count=len(audit),
+    )
+
+
 def _render_shopping(
     request: Request,
     db: Session,
@@ -392,10 +418,7 @@ def _render_shopping(
         key=_aisle_sort_key,
     )
     copy_groups = _group_aisles(visible, checked_last=True)
-    pending_stock = sum(
-        1 for item in visible if item.is_checked and not item.is_stocked and stockable(item)
-    )
-    to_get = sum(1 for item in visible if not item.is_checked and not item.is_stocked)
+    counts = shop_counts(db, user.id, active)
     unit_choices, package_caption = add_form_units(
         db, add_name, add_unit, user.unit_system or "us"
     )
@@ -408,10 +431,10 @@ def _render_shopping(
         items=visible,
         by_aisle=by_aisle,
         basket=basket,
-        to_get=to_get,
+        to_get=counts.to_get,
         copy_text=_shopping_copy(copy_groups, user),
         has_plan=has_plan,
-        pending_stock=pending_stock,
+        pending_stock=counts.in_basket,
         add_error=add_error,
         add_name=add_name,
         add_amount=add_amount,
@@ -421,7 +444,7 @@ def _render_shopping(
         package_unit=package_unit,
         unit_choices=unit_choices,
         package_caption=package_caption,
-        audit_count=len(build_audit(db, user.id, requirements_for_audit(db, user.id, start, end))),
+        audit_count=counts.check_count,
         shop_toast=_toast_from_query(request, db, user, active),
         amount_error=amount_error,
         amount_for=amount_for,

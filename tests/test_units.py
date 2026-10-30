@@ -25,7 +25,9 @@ from souschef.core.units import (
     entry_amount,
     entry_label,
     entry_unit,
+    format_entry_amount,
     format_quantity,
+    resolve_entry_unit,
     humanize,
     normalize_unit,
     parse_input_unit,
@@ -278,13 +280,79 @@ def test_entry_amount_rounds_to_a_kitchen_step() -> None:
     mass = _Ingredient("g")
     volume = _Ingredient("ml")
     assert entry_amount(907, mass, "us") == pytest.approx(2)
-    assert entry_amount(200, mass, "us") == pytest.approx(7 / 16)
-    assert entry_amount(4.5, mass, "us") == pytest.approx(0.015625)
+    assert entry_amount(200, mass, "us") == pytest.approx(7)
+    assert entry_amount(4.5, mass, "us") == pytest.approx(0.25)
     assert entry_amount(4.5, mass, "metric") == pytest.approx(5)
     assert entry_amount(907, mass, "metric") == pytest.approx(905)
-    assert entry_amount(14.8, volume, "us") == pytest.approx(1 / 16, rel=0.01)
+    assert entry_amount(14.8, volume, "us") == pytest.approx(1)
     assert entry_amount(10, volume, "metric") == pytest.approx(10)
     assert entry_amount(12, _Ingredient("count"), "us") == pytest.approx(12)
+
+
+@pytest.mark.parametrize(
+    ("value", "base", "system", "unit", "label", "amount", "text"),
+    [
+        (4.5, "g", "us", "ounce", "oz", 0.25, "0.25"),
+        (21.26, "g", "us", "ounce", "oz", 0.75, "0.75"),
+        (200, "g", "us", "ounce", "oz", 7, "7"),
+        (453.592, "g", "us", "pound", "lb", 1, "1"),
+        (1105.6305, "g", "us", "pound", "lb", 2.4375, "2.44"),
+        (14, "ml", "us", "teaspoon", "tsp", 2.75, "2.75"),
+        (14.8, "ml", "us", "tablespoon", "tbsp", 1, "1"),
+        (50, "ml", "us", "tablespoon", "tbsp", 3.5, "3.5"),
+        (58, "ml", "us", "cup", "cup", 0.25, "0.25"),
+        (100, "ml", "us", "cup", "cup", 0.375, "0.38"),
+        (1419.528, "ml", "us", "cup", "cup", 6, "6"),
+        (0, "g", "us", "ounce", "oz", 0, "0"),
+        (0, "ml", "us", "teaspoon", "tsp", 0, "0"),
+        (4.5, "g", "metric", "gram", "g", 5, "5"),
+        (10, "ml", "metric", "milliliter", "ml", 10, "10"),
+        (12, "count", "us", "count", "count", 12, "12"),
+    ],
+)
+def test_entry_unit_switches_with_the_amount_and_shows_two_decimals(
+    value: float,
+    base: str,
+    system: str,
+    unit: str,
+    label: str,
+    amount: float,
+    text: str,
+) -> None:
+    ingredient = _Ingredient(base)
+    assert entry_unit(ingredient, system, value) == unit
+    assert entry_label(ingredient, system, value) == label
+    assert entry_amount(value, ingredient, system) == pytest.approx(amount, abs=1e-4)
+    assert format_entry_amount(value, ingredient, system) == text
+
+
+@pytest.mark.parametrize(
+    ("base", "system", "posted", "expected"),
+    [
+        ("g", "us", "oz", "ounce"),
+        ("g", "us", "OZ", "ounce"),
+        ("g", "us", "lbs", "pound"),
+        ("g", "us", "g", "gram"),
+        ("g", "us", "kg", "pound"),
+        ("g", "us", "cup", "pound"),
+        ("g", "us", "", "pound"),
+        ("g", "us", None, "pound"),
+        ("g", "metric", "kg", "gram"),
+        ("ml", "us", "tsp", "teaspoon"),
+        ("ml", "us", "tbsp", "tablespoon"),
+        ("ml", "us", "cups", "cup"),
+        ("ml", "us", "ml", "milliliter"),
+        ("ml", "us", "lb", "cup"),
+        ("ml", "us", "fl oz", "cup"),
+        ("ml", "metric", "gal", "milliliter"),
+        ("count", "us", "count", "count"),
+        ("count", "us", "oz", "count"),
+    ],
+)
+def test_posted_entry_unit_is_ignored_unless_this_dimension_can_produce_it(
+    base: str, system: str, posted: str | None, expected: str
+) -> None:
+    assert resolve_entry_unit(_Ingredient(base), system, posted) == expected
 
 
 def test_entry_label_names_a_counted_ingredient_by_its_noun() -> None:

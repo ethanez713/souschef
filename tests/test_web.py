@@ -980,7 +980,7 @@ def test_a_bunch_of_cilantro_uses_the_catalog_package(
     page = signed_in.get("/pantry").text
     amount, unit = _shown_level(page, cilantro.id)
     assert amount == format_entry_amount(row.quantity, cilantro, "us")
-    assert unit == entry_label(cilantro, "us")
+    assert unit == entry_label(cilantro, "us", row.quantity)
     assert "bunch" not in _check_form(page, cilantro.id)
 
 
@@ -1028,7 +1028,7 @@ def test_pantry_add_parses_packages_and_kitchen_units(
     for item, row in ((spinach, spinach_row), (chicken, chicken_row), (milk, milk_row)):
         amount, unit = _shown_level(page, item.id)
         assert amount == format_entry_amount(row.quantity, item, "us")
-        assert unit == entry_label(item, "us")
+        assert unit == entry_label(item, "us", row.quantity)
 
 
 def test_an_unknown_package_asks_then_stores_the_size(
@@ -1072,7 +1072,7 @@ def test_an_unknown_package_asks_then_stores_the_size(
     assert created is not None
     amount, unit = _shown_level(page, created.id)
     assert amount == format_entry_amount(454, created, "us")
-    assert unit == entry_label(created, "us")
+    assert unit == entry_label(created, "us", 454)
     assert created.package_qty == pytest.approx(454)
     assert created.package_unit == "g"
     assert created.base_unit == "g"
@@ -3583,6 +3583,43 @@ def test_pages_follow_the_signed_in_unit_system(
     assert "1 × 454 g" in shopping
     assert "needs 454 g" in shopping
     assert "needs 454 g" not in _outside_sheets(shopping)
+
+
+def test_a_changed_ounce_check_stores_base_grams(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    record_event(seeded_session, web_user.id, chicken, reason=EventReason.PURCHASE, delta=4.5)
+    seeded_session.commit()
+
+    form = _check_form(signed_in.get("/pantry").text, chicken.id)
+    assert _input_value(form, "quantity") == "0.25"
+    assert _input_value(form, "unit") == "oz"
+
+    posted = signed_in.post(
+        f"/pantry/{chicken.id}/check",
+        data={"quantity": "2", "shown": "0.25", "unit": "oz"},
+    )
+    assert posted.status_code == 303
+    stored = _pantry_row(seeded_session, web_user, "chicken thigh")
+    assert stored is not None
+    assert stored.quantity == pytest.approx(to_base(2, "oz", physical_of(chicken)))
+
+
+def test_a_tampered_pantry_unit_falls_back_to_the_amount_free_unit(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    posted = signed_in.post(
+        f"/pantry/{chicken.id}/check",
+        data={"quantity": "1", "shown": "0", "unit": "kg"},
+    )
+    assert posted.status_code == 303
+    stored = _pantry_row(seeded_session, web_user, "chicken thigh")
+    assert stored is not None
+    assert stored.quantity == pytest.approx(
+        to_base(1, entry_unit(chicken, "us"), physical_of(chicken))
+    )
 
 
 def test_pantry_set_level_stores_base_grams_from_the_entry_unit(

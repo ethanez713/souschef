@@ -43,8 +43,9 @@
           {% if d.over %}<span class="badge warn">Using more than you have</span>{% endif %}
         </div>
         <input type="hidden" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">
+        <input type="hidden" name="unit_{{ d.ingredient.id }}" value="{{ d.ingredient|form_unit(d.quantity) }}">
         <div class="field" style="margin:var(--sp-3) 0 0">
-          <label for="qty{{ d.ingredient.id }}">Using ({{ d.ingredient|unit_label }})</label>
+          <label for="qty{{ d.ingredient.id }}">Using ({{ d.ingredient|unit_label(d.quantity) }})</label>
           <input id="qty{{ d.ingredient.id }}" name="qty_{{ d.ingredient.id }}"
                  type="number" step="any" inputmode="decimal"
                  value="{{ d.quantity|entry_amount(d.ingredient) }}">

@@ -15,7 +15,7 @@
     <p>Check these {{ candidates|length }} before you shop.</p>
     {% for c in candidates %}
       {% set sub %}need <span class="num">{{ c.required|quantity(c.ingredient) }}</span>{% endset %}
-      {{ qty_row(c.ingredient, c.believed|entry_amount(c.ingredient), sub, next='/audit') }}
+      {{ qty_row(c.ingredient, c.believed|entry_amount(c.ingredient), sub, next='/audit', level=c.believed) }}
     {% endfor %}
   {% else %}
     <p>Nothing to check.</p>

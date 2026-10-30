@@ -21,6 +21,7 @@ from souschef.core.units import (
     add_unit_choices,
     base_unit_for,
     dimension_of,
+    entry_form_unit,
     entry_label,
     format_entry_amount,
     format_quantity,
@@ -112,10 +113,22 @@ def _stock(context: dict, quantity: float, ingredient: CanonicalIngredient) -> s
     return _stock_amount(float(quantity), ingredient, system, show_alt)
 
 
+def _entry_value(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
 @pass_context
-def _unit_label(context: dict, ingredient: CanonicalIngredient) -> str:
+def _unit_label(context: dict, ingredient: CanonicalIngredient, value: float | None = None) -> str:
     system, _show_alt = _user_system(context)
-    return entry_label(ingredient, system)
+    return entry_label(ingredient, system, _entry_value(value))
+
+
+@pass_context
+def _form_unit(context: dict, ingredient: CanonicalIngredient, value: float | None = None) -> str:
+    system, _show_alt = _user_system(context)
+    return entry_form_unit(ingredient, system, _entry_value(value))
 
 
 @pass_context
@@ -252,6 +265,7 @@ templates.env.globals["static_url"] = _static_url
 templates.env.filters["quantity"] = _quantity
 templates.env.filters["stock"] = _stock
 templates.env.filters["unit_label"] = _unit_label
+templates.env.filters["form_unit"] = _form_unit
 templates.env.filters["entry_amount"] = _entry_amount
 templates.env.filters["shop_qty"] = _shop_qty
 templates.env.filters["shop_need"] = _shop_need

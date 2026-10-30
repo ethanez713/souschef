@@ -42,16 +42,18 @@
 {# Name, a second line, and one amount box. `shown` is the prefill string the route
    compares, so it has to be the same text as the input. `next` returns there
    instead of swapping the pantry list. `mark` follows the name on its line. #}
-{% macro qty_row(ingredient, shown, sub='', query='', next='', mark='') %}
+{% macro qty_row(ingredient, shown, sub='', query='', next='', mark='', level=none) %}
+{% set label = ingredient|unit_label(level) %}
 <form class="item" method="post" action="/pantry/{{ ingredient.id }}/check"
       {% if not next %}hx-post="/pantry/{{ ingredient.id }}/check" hx-target="#pantry-list" hx-swap="innerHTML"{% endif %}>
   <input type="hidden" name="shown" value="{{ shown }}">
+  <input type="hidden" name="unit" value="{{ ingredient|form_unit(level) }}">
   <input type="hidden" name="q" value="{{ query }}">
   {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   {% set trail %}
     <input class="qty" name="quantity" type="number" step="any" inputmode="decimal" required
-           value="{{ shown }}" aria-label="{{ ingredient.name }} ({{ ingredient|unit_label }})">
-    <span class="qty-unit" title="{{ ingredient|unit_label }}">{{ ingredient|unit_label }}</span>
+           value="{{ shown }}" aria-label="{{ ingredient.name }} ({{ label }})">
+    <span class="qty-unit" title="{{ label }}">{{ label }}</span>
     <button class="iconbtn bare" type="submit" aria-label="Save {{ ingredient.name }}">{{ icon('check', 18) }}</button>
   {% endset %}
   {% set title %}{{ ingredient.name }}{% if mark %} {{ mark }}{% endif %}{% endset %}
@@ -70,7 +72,7 @@
 {%- if status == 'use soon' -%}{% if v.item.expires_on %} · {% endif %}use soon{%- endif -%}
 {%- endset %}
 {% set mark = confidence_mark(v.certainty, status == 'probably gone') if show_mark else '' %}
-{{ qty_row(v.ingredient, shown, sub, query, next, mark) }}
+{{ qty_row(v.ingredient, shown, sub, query, next, mark, v.quantity) }}
 {% endmacro %}
 
 

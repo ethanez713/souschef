@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from souschef.core.cooking import record_cook
 from souschef.core.inventory import pantry_view, physical_of
 from souschef.core.recipes import recipe_requirements
-from souschef.core.units import entry_unit, format_entry_amount, to_base
+from souschef.core.units import entry_unit, format_entry_amount, resolve_entry_unit, to_base
 from souschef.db import get_db
 from souschef.models import CanonicalIngredient, MealPlanEntry, Recipe, User
 from souschef.web import auth
@@ -172,6 +172,7 @@ async def mark_cooked(
 
     proposed: dict[int, float] = {}
     posted: dict[int, float] = {}
+    posted_units: dict[int, str] = {}
     for key, raw in form.items():
         value = str(raw).strip()
         if not value:
@@ -180,27 +181,33 @@ async def mark_cooked(
             proposed[int(key.removeprefix("proposed_"))] = float(value)
         elif key.startswith("qty_"):
             posted[int(key.removeprefix("qty_"))] = float(value)
+        elif key.startswith("unit_"):
+            posted_units[int(key.removeprefix("unit_"))] = value
 
     system = user.unit_system or "us"
     if not posted:
         used = recipe_requirements(db, recipe, servings=servings or None).as_map()
         notes: dict[int, str] = {}
     else:
-        # The box shows the entry unit. proposed_* stays in base units, so an
-        # edit is a posted number that is not the rounded entry amount.
+        # The box shows one entry unit. proposed_* stays in base units, so an
+        # edit is a posted number that is not that same unit's rounded amount.
         used = {}
         notes = {}
         for ingredient_id, amount in posted.items():
             ingredient = db.get(CanonicalIngredient, ingredient_id)
             if ingredient is None:
                 continue
-            base = to_base(amount, entry_unit(ingredient, system), physical_of(ingredient))
+            parse_unit = resolve_entry_unit(
+                ingredient, system, posted_units.get(ingredient_id)
+            )
+            base = to_base(amount, parse_unit, physical_of(ingredient))
             used[ingredient_id] = base
             if ingredient_id not in proposed:
                 continue
             posted_text = f"{amount:.6f}".rstrip("0").rstrip(".") or "0"
             shown = format_entry_amount(proposed[ingredient_id], ingredient, system)
-            if posted_text != shown:
+            shown_unit = entry_unit(ingredient, system, proposed[ingredient_id])
+            if posted_text != shown or parse_unit != shown_unit:
                 notes[ingredient_id] = (
                     f"cook adjust: proposed {proposed[ingredient_id]:g}, used {base:g}"
                 )

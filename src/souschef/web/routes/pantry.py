@@ -25,8 +25,8 @@ from souschef.core.units import (
     NeedsPackage,
     UnitConversionError,
     count_noun_measure,
-    entry_unit,
     parse_input_unit,
+    resolve_entry_unit,
     parse_package_answer,
     resolve_entry,
 )
@@ -177,6 +177,7 @@ def _record_check(
     ingredient: CanonicalIngredient,
     quantity: str,
     shown: str,
+    unit: str | None = None,
 ) -> InventoryEvent:
     text = quantity.strip()
     if not text:
@@ -199,7 +200,7 @@ def _record_check(
         user.id,
         ingredient,
         value,
-        unit=entry_unit(ingredient, user.unit_system or "us"),
+        unit=resolve_entry_unit(ingredient, user.unit_system or "us", unit),
     )
 
 
@@ -236,6 +237,7 @@ def check_item(
     ingredient_id: int,
     quantity: str = Form(""),
     shown: str = Form(""),
+    unit: str = Form(""),
     q: str = Form(""),
     next_path: str = Form("", alias="next"),
     user: User = Depends(auth.current_user),
@@ -245,7 +247,7 @@ def check_item(
     if ingredient is None:
         raise HTTPException(status_code=404, detail="No such ingredient")
     try:
-        event = _record_check(db, user, ingredient, quantity, shown)
+        event = _record_check(db, user, ingredient, quantity, shown, unit)
     except (UnitConversionError, ValueError) as exc:
         return _check_error(request, db, user, q, next_path, str(exc))
     _sync_shopping(db, user.id)

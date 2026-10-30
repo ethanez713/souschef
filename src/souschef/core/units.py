@@ -595,11 +595,13 @@ def format_quantity(
     return f"{primary} ({alternate})" if show_alt else primary
 
 
-def entry_unit(ingredient: object, system: str) -> str:
+def entry_unit(ingredient: object, system: str, value: float | None = None) -> str:
     """The unit a number box is labelled in and parsed from.
 
-    US mass is pounds and US volume is cups; metric stays in grams or milliliters.
-    Counts stay counts. Stored levels remain in the ingredient's base unit.
+    Without ``value``, US mass is pounds and US volume is cups — the amount-free
+    fallback. With a base-unit ``value``, US mass under a rounded pound is ounces
+    and US volume is teaspoons, tablespoons, or cups. Metric stays in grams or
+    milliliters. Counts stay counts. Stored levels remain in the base unit.
     """
     base = normalize_unit(getattr(ingredient, "base_unit", None))
     dimension = dimension_of(base)
@@ -607,25 +609,63 @@ def entry_unit(ingredient: object, system: str) -> str:
         return BASE_COUNT
     if system == "metric":
         return "gram" if dimension == Dimension.MASS else "milliliter"
-    return "pound" if dimension == Dimension.MASS else "cup"
+    if value is None:
+        return "pound" if dimension == Dimension.MASS else "cup"
+    return _entry_measure(float(value), ingredient, system)[0]
 
 
 _ENTRY_LABELS = {
+    "ounce": "oz",
     "pound": "lb",
+    "teaspoon": "tsp",
+    "tablespoon": "tbsp",
     "cup": "cup",
     "gram": "g",
     "milliliter": "ml",
     "count": "count",
 }
 
+# Units an entry box can produce for a dimension, in either system. A posted
+# unit outside this set is not a box unit, whatever its dimension.
+_ENTRY_UNITS = {
+    Dimension.MASS: frozenset({"ounce", "pound", "gram"}),
+    Dimension.VOLUME: frozenset({"teaspoon", "tablespoon", "cup", "milliliter"}),
+    Dimension.COUNT: frozenset({BASE_COUNT}),
+}
 
-def entry_label(ingredient: object, system: str) -> str:
-    """Short label for an entry box, such as ``lb``, ``g`` or ``cans``."""
-    unit = entry_unit(ingredient, system)
+
+def entry_label(ingredient: object, system: str, value: float | None = None) -> str:
+    """Short label for an entry box, such as ``oz``, ``tbsp`` or ``cans``."""
+    unit = entry_unit(ingredient, system, value)
     noun = getattr(ingredient, "count_noun", None)
     if unit == "count" and noun:
         return _plural_noun(noun, 2)
     return _ENTRY_LABELS[unit]
+
+
+def entry_form_unit(ingredient: object, system: str, value: float | None = None) -> str:
+    """The ``unit`` value posted with an entry box, such as ``oz`` or ``count``."""
+    return _ENTRY_LABELS[entry_unit(ingredient, system, value)]
+
+
+def resolve_entry_unit(ingredient: object, system: str, posted: str | None) -> str:
+    """A posted box unit, or the amount-free entry unit when it cannot be trusted.
+
+    The posted spelling counts only when it is a unit the entry boxes can produce
+    for this ingredient's dimension. Missing, unknown, and other-dimension values
+    fall back, so a tampered field cannot change the dimension of the number.
+    """
+    fallback = entry_unit(ingredient, system)
+    if posted is None or not str(posted).strip():
+        return fallback
+    normalized = normalize_unit(str(posted))
+    try:
+        dimension = dimension_of(normalize_unit(getattr(ingredient, "base_unit", None)))
+    except UnitConversionError:
+        return fallback
+    if normalized in _ENTRY_UNITS[dimension]:
+        return normalized
+    return fallback
 
 
 def _nearest(value: float) -> int:
@@ -675,33 +715,67 @@ def _rounded_ml(ml: float) -> float:
     return _nearest(ml / _US_GAL_ML * 10) / 10 * _US_GAL_ML
 
 
-def entry_amount(value: float, ingredient: object, system: str) -> float:
-    """A base-unit quantity as a number in ``entry_unit``, rounded for the kitchen.
+def _us_mass_entry(grams: float) -> tuple[str, float]:
+    """Ounces below a rounded pound; pounds from a rounded pound up."""
+    if grams <= 0:
+        return "ounce", 0.0
+    ounces = _rounded_ounces(grams)
+    if ounces >= _OUNCES_PER_POUND:
+        return "pound", ounces / _OUNCES_PER_POUND
+    return "ounce", ounces
 
-    Metric mass and volume use whole units under 10 and steps of 5 above that.
-    US amounts use the same ounce and cup steps as ``format_quantity``.
+
+def _us_volume_entry(ml: float) -> tuple[str, float]:
+    """Teaspoons, tablespoons, or cups at the same steps as a US volume.
+
+    Quarts and gallons stay cups: the box has one unit, not a second field.
     """
+    if ml <= 0:
+        return "teaspoon", 0.0
+    rounded = _rounded_ml(ml)
+    if ml < _US_TBSP_ML * _SWITCH:
+        return "teaspoon", rounded / _US_TSP_ML
+    if ml < _US_CUP_ML / 4 * _SWITCH:
+        return "tablespoon", rounded / _US_TBSP_ML
+    return "cup", rounded / _US_CUP_ML
+
+
+def _entry_measure(value: float, ingredient: object, system: str) -> tuple[str, float]:
     base = normalize_unit(getattr(ingredient, "base_unit", None))
     dimension = dimension_of(base)
     if dimension == Dimension.COUNT:
         if value <= 0:
-            return 0.0
-        return float(max(_nearest(value), 1))
+            return BASE_COUNT, 0.0
+        return BASE_COUNT, float(max(_nearest(value), 1))
     if dimension == Dimension.MASS:
         grams = float(_ureg.Quantity(value, base).to("gram").magnitude)
         if system == "metric":
-            return _round_metric(grams)
-        return _rounded_ounces(grams) / _OUNCES_PER_POUND
+            return "gram", _round_metric(grams)
+        return _us_mass_entry(grams)
     ml = float(_ureg.Quantity(value, base).to("milliliter").magnitude)
     if system == "metric":
-        return _round_metric(ml)
-    return _rounded_ml(ml) / _US_CUP_ML
+        return "milliliter", _round_metric(ml)
+    return _us_volume_entry(ml)
+
+
+def entry_amount(value: float, ingredient: object, system: str) -> float:
+    """A base-unit quantity as a number in ``entry_unit``, rounded for the kitchen.
+
+    Metric mass and volume use whole units under 10 and steps of 5 above that.
+    US amounts use the same ounce and volume steps as ``format_quantity``,
+    expressed in ounces, pounds, teaspoons, tablespoons, or cups.
+    """
+    return _entry_measure(float(value), ingredient, system)[1]
 
 
 def format_entry_amount(value: float, ingredient: object, system: str) -> str:
-    """``entry_amount`` as a number an ``<input type="number">`` can round-trip."""
+    """``entry_amount`` with at most two decimals and trailing zeros stripped.
+
+    ``6`` stays ``6``, ``2.4375`` pounds is ``2.44``, and ``0.375`` cups is
+    ``0.38``. The result round-trips through ``<input type="number" step="any">``.
+    """
     amount = entry_amount(value, ingredient, system)
-    return f"{amount:.6f}".rstrip("0").rstrip(".") or "0"
+    return f"{amount:.2f}".rstrip("0").rstrip(".") or "0"
 
 
 def count_noun_measure(unit: str | None, count_noun: str | None) -> str | None:

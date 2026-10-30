@@ -318,9 +318,10 @@ def test_cook_preview_shows_what_will_be_subtracted(
 
     page = signed_in.get(f"/recipes/{recipe.id}/cook")
     assert page.status_code == 200
-    assert "About to cook" in page.text
+    assert ">Done — update pantry</button>" in page.text
     assert "spaghetti" in page.text
-    assert "Subtract from pantry" in page.text
+    assert "About to cook" not in page.text
+    assert "Subtract from pantry" not in page.text
 
 
 def test_cook_preview_logs_an_edit(
@@ -3687,6 +3688,7 @@ def test_recipe_page_agrees_with_the_list_about_spoiled_stock(
     assert "Wrong match" not in page
     assert "have none" in page
     assert 'class="badge good"' not in page
+    assert 'have <span class="num">2 lb</span>?' in page
 
 
 def _row_titles(page: str) -> list[str]:

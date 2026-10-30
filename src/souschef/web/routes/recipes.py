@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -26,6 +26,7 @@ from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.ingest.recipes.paste import parse_pasted_recipe
 from souschef.models import (
     CanonicalIngredient,
+    Cook,
     MealPlanEntry,
     Recipe,
     RecipeIngredient,
@@ -38,6 +39,7 @@ from souschef.web import auth
 from souschef.web.common import (
     MAX_SERVINGS,
     PLAN_DAYS,
+    _default_servings,
     _horizon,
     _is_htmx,
     _kitchen_unit_message,
@@ -304,6 +306,37 @@ def _recipe_rows(recipe: Recipe, requirements) -> tuple[list[dict], int]:  # noq
     return rows, unmatched
 
 
+def _aware(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+def _latest_cook(db: Session, user_id: int, recipe_id: int) -> Cook | None:
+    """The recipe's newest cook, undone or not. An undone latest row hides older ones."""
+    return db.scalar(
+        select(Cook)
+        .where(Cook.user_id == user_id, Cook.recipe_id == recipe_id)
+        .order_by(Cook.cooked_at.desc(), Cook.id.desc())
+    )
+
+
+def _planned_message(raw: str) -> str:
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if not parts or len(parts) > PLAN_DAYS:
+        return ""
+    days: list[date] = []
+    for part in parts:
+        if len(part) != 10:
+            return ""
+        try:
+            days.append(date.fromisoformat(part))
+        except ValueError:
+            return ""
+    labels = [day.strftime("%a %-d") for day in days]
+    return "Planned for " + ", ".join(labels)
+
+
 def _recipe_page(
     request: Request,
     db: Session,
@@ -335,6 +368,12 @@ def _recipe_page(
         )
         .order_by(MealPlanEntry.plan_date)
     ).all()
+    latest = _latest_cook(db, user.id, recipe.id)
+    live_cook = latest if latest is not None and latest.undone_at is None else None
+    show_cooked_today = False
+    if live_cook is not None:
+        age = datetime.now(UTC) - _aware(live_cook.cooked_at)
+        show_cooked_today = age < timedelta(days=1)
     return _render(
         request,
         "recipe_detail.html",
@@ -353,6 +392,10 @@ def _recipe_page(
         toast_message=toast_message,
         today=today,
         days=[today + timedelta(days=offset) for offset in range(PLAN_DAYS)],
+        cook_servings=_default_servings(recipe),
+        max_servings=MAX_SERVINGS,
+        live_cook=live_cook,
+        show_cooked_today=show_cooked_today,
     )
 
 
@@ -374,10 +417,19 @@ def recipe_detail(
     notice: str = "",
     saved: str = "",
     toast: str = "",
+    planned: str = "",
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    if toast == "Saved":
+        toast_message = "Saved"
+    elif toast == "Ignored":
+        toast_message = "Ignored"
+    elif planned:
+        toast_message = _planned_message(planned)
+    else:
+        toast_message = ""
     return _recipe_page(
         request,
         db,
@@ -386,7 +438,7 @@ def recipe_detail(
         cooked=bool(cooked),
         notice=notice,
         saved=saved.strip()[:80],
-        toast_message="Saved" if toast == "Saved" else "",
+        toast_message=toast_message,
     )
 
 
@@ -569,6 +621,38 @@ def correct_recipe_match(
     return RedirectResponse(
         f"/recipes/{recipe.id}?saved={quote(name.strip())}", status_code=303
     )
+
+
+@router.post("/recipes/{recipe_id}/servings")
+def remember_servings(
+    recipe_id: int,
+    servings: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    count = _whole_number(servings)
+    if count is not None and 1 <= count <= MAX_SERVINGS:
+        recipe.last_servings = count
+    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
+
+
+@router.post("/recipes/{recipe_id}/ignore")
+def ignore_recipe_line(
+    recipe_id: int,
+    raw_text: str = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    lines = [line for line in recipe.ingredients if line.raw_text == raw_text]
+    if not lines:
+        raise HTTPException(status_code=404, detail="No such line")
+    for line in lines:
+        line.is_ignored = True
+    db.flush()
+    _sync_shopping(db, user.id)
+    return RedirectResponse(f"/recipes/{recipe.id}?toast=Ignored", status_code=303)
 
 
 @router.get("/recipes/{recipe_id}/edit", response_class=HTMLResponse)

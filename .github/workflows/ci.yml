@@ -31,6 +31,9 @@ jobs:
       - name: Test
         run: .venv/bin/python -m pytest
 
+      - name: JavaScript
+        run: node --test tests/js/
+
       - name: Ruff
         run: .venv/bin/ruff check .
 

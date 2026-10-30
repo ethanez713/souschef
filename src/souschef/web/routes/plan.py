@@ -330,22 +330,35 @@ async def add_to_plan(
     ) or _default_servings(recipe)
     skipped = False
     added_entry: MealPlanEntry | None = None
+    added_days: list[date] = []
     for raw in form.getlist("plan_date"):
         value = str(raw).strip()
         if not value:
             continue
-        entry = _plan_recipe(db, user.id, recipe_id, date.fromisoformat(value), servings)
+        day = date.fromisoformat(value)
+        entry = _plan_recipe(db, user.id, recipe_id, day, servings)
         if entry is None:
             skipped = True
-        elif added_entry is None:
-            added_entry = entry
+        else:
+            added_days.append(day)
+            if added_entry is None:
+                added_entry = entry
+    # The recipe page asks to come back with a toast. Everywhere else stays on the plan.
+    nxt = _safe_next(str(form.get("next") or ""))
+    path = nxt.split("?", 1)[0].split("#", 1)[0].rstrip("/")
+    back = path == f"/recipes/{recipe.id}"
     if added_entry is not None:
         db.flush()
         _sync_shopping(db, user.id)
+        if back:
+            planned = ",".join(day.isoformat() for day in added_days)
+            return RedirectResponse(f"/recipes/{recipe.id}?planned={planned}", status_code=303)
         location = f"/plan?added={added_entry.id}"
         if skipped:
             location += "&skipped=1"
         return RedirectResponse(location, status_code=303)
+    if back:
+        return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)
     return RedirectResponse("/plan?skipped=1" if skipped else "/plan", status_code=303)
 
 

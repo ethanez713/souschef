@@ -1,59 +1,68 @@
 {% extends "base.html" %}
+{% from "macros.html" import row, sheet, sticky_bar %}
 {% set active = 'recipes' %}
 {% block title %}Cook {{ recipe.title }} · SousChef{% endblock %}
 {% block content %}
-<main id="main">
-  <h1>About to cook</h1>
-  <p class="muted">
-    {{ recipe.title }}. Edit anything that doesn’t match what you actually used — those edits are logged.
-  </p>
-
-  <form method="get" action="/recipes/{{ recipe.id }}/cook" class="field">
-    {% if entry %}<input type="hidden" name="entry" value="{{ entry.id }}">{% endif %}
-    <label for="servings">Servings</label>
-    <input id="servings" name="servings" type="number" min="1" max="50" inputmode="numeric"
-           value="{{ servings }}" onchange="this.form.requestSubmit()">
-    <noscript><button class="small" type="submit">Update amounts</button></noscript>
-  </form>
+<main id="main" data-cook>
+  <h1>{{ recipe.title }}</h1>
+  {% set prev = servings - 1 if servings > 1 else 1 %}
+  {% set nxt = servings + 1 if servings < max_servings else servings %}
+  <div class="stepper" role="group" aria-label="Servings">
+    <a class="btn stepper-btn" data-step="-1" aria-label="Fewer servings"
+       href="/recipes/{{ recipe.id }}/cook?servings={{ prev }}{% if entry %}&entry={{ entry.id }}{% endif %}">−</a>
+    <span class="num" data-servings>{{ servings }}</span>
+    <a class="btn stepper-btn" data-step="1" aria-label="More servings"
+       href="/recipes/{{ recipe.id }}/cook?servings={{ nxt }}{% if entry %}&entry={{ entry.id }}{% endif %}">+</a>
+  </div>
 
   {% if error %}
     <div class="notice bad spaced">{{ error }}</div>
   {% endif %}
+  {% if short_count == 1 %}
+    <p class="shortfall">1 item is short in your pantry.</p>
+  {% elif short_count > 1 %}
+    <p class="shortfall">{{ short_count }} items are short in your pantry.</p>
+  {% endif %}
 
-  <form method="post" action="/recipes/{{ recipe.id }}/cooked" class="spaced">
-    <input type="hidden" name="servings" value="{{ servings }}">
+  <form id="cook-form" method="post" action="/recipes/{{ recipe.id }}/cooked">
+    <input type="hidden" name="servings" value="{{ servings }}" data-servings-input>
     {% if entry %}<input type="hidden" name="entry_id" value="{{ entry.id }}">{% endif %}
 
-    <div class="field">
-      <label for="cooked_on">Cooked on</label>
-      <select id="cooked_on" name="cooked_on">
-        {% for d in cook_dates %}
-          <option value="{{ d.isoformat() }}" {{ 'selected' if d == cooked_on }}>
-            {{ 'Today' if d == today else d.strftime('%a %-d %b') }}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-
     {% for d in debits %}
-      <div class="card tight">
-        <div class="stack">
-          <strong>{{ d.ingredient.name }}</strong>
-          <span class="meta">{% if d.have > 0 %}have <span class="num">{{ d.have|stock(d.ingredient) }}</span>{% else %}have none{% endif %}</span>
-          {% if d.over %}<span class="badge warn">Using more than you have</span>{% endif %}
-        </div>
-        <input type="hidden" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">
-        <input type="hidden" name="unit_{{ d.ingredient.id }}" value="{{ d.ingredient|form_unit(d.quantity) }}">
-        <div class="field" style="margin:var(--sp-3) 0 0">
-          <label for="qty{{ d.ingredient.id }}">Using ({{ d.ingredient|unit_label(d.quantity) }})</label>
-          <input id="qty{{ d.ingredient.id }}" name="qty_{{ d.ingredient.id }}"
-                 type="number" step="any" inputmode="decimal"
-                 value="{{ d.quantity|entry_amount(d.ingredient) }}">
-        </div>
-      </div>
+      {% set shown = d.quantity|entry_amount(d.ingredient) %}
+      {% set amount -%}
+      <span class="num" data-line="{{ d.ingredient.id }}" data-amount="{{ shown }}" data-per="{{ (shown|float) / servings }}">{{ shown }}</span> {{ d.ingredient|unit_label(d.quantity) }}
+      {%- endset %}
+      {{ row(d.ingredient.name, value=amount, cls='cook-line') }}
     {% else %}
-      <div class="empty">Nothing to subtract — this recipe has no matched amounts.</div>
+      <p class="empty-line">No amounts to update.</p>
     {% endfor %}
+
+    <div class="actions">
+      <button type="button" class="btn" data-sheet="adjust-amounts">Adjust amounts</button>
+    </div>
+    {% call sheet('adjust-amounts', 'Adjust amounts') %}
+      <div class="field">
+        <label for="cooked_on">Cooked on</label>
+        <select id="cooked_on" name="cooked_on">
+          {% for d in cook_dates %}
+            <option value="{{ d.isoformat() }}"{% if d == cooked_on %} selected{% endif %}>
+              {{ 'Today' if d == today else d.strftime('%a %-d %b') }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      {% for d in debits %}
+        {% set shown = d.quantity|entry_amount(d.ingredient) %}
+        <input type="hidden" data-proposed="{{ d.ingredient.id }}" name="proposed_{{ d.ingredient.id }}" value="{{ d.quantity }}">
+        <input type="hidden" name="unit_{{ d.ingredient.id }}" value="{{ d.ingredient|form_unit(d.quantity) }}">
+        <div class="field">
+          <label for="qty{{ d.ingredient.id }}">{{ d.ingredient.name }} ({{ d.ingredient|unit_label(d.quantity) }})</label>
+          <input id="qty{{ d.ingredient.id }}" name="qty_{{ d.ingredient.id }}" data-qty="{{ d.ingredient.id }}"
+                 type="number" step="any" inputmode="decimal" value="{{ shown }}">
+        </div>
+      {% endfor %}
+    {% endcall %}
 
     {% if not_tracked %}
       <h2>Not tracked</h2>
@@ -65,10 +74,19 @@
       <p class="meta">These lines aren’t in the pantry, so cooking doesn’t change them.</p>
     {% endif %}
 
-    <div class="actions">
-      <button class="primary" type="submit">Subtract from pantry</button>
-      <a class="btn ghost" href="/recipes/{{ recipe.id }}">Cancel</a>
-    </div>
+    {% if recipe.instructions %}
+    <h2>Method</h2>
+    <ol class="method">
+      {% for step in recipe.instructions.split('\n\n') %}
+        {% if step.strip() %}<li>{{ step }}</li>{% endif %}
+      {% endfor %}
+    </ol>
+    {% endif %}
+
+    {% call sticky_bar() %}
+      <button class="primary" type="submit">Done — update pantry</button>
+    {% endcall %}
   </form>
 </main>
+<script type="module" src="{{ static_url('cook.mjs') }}"></script>
 {% endblock %}

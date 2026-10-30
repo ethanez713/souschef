@@ -43,8 +43,11 @@ POST /recipes/paste
 POST /recipes/{recipe_id}
 POST /recipes/{recipe_id}/archive
 POST /recipes/{recipe_id}/cooked
+POST /recipes/{recipe_id}/cooks/{cook_id}/undo
+POST /recipes/{recipe_id}/ignore
 POST /recipes/{recipe_id}/match
 POST /recipes/{recipe_id}/restore
+POST /recipes/{recipe_id}/servings
 POST /settings/nyt-cookie
 POST /settings/nyt-cookie/delete
 POST /settings/staples

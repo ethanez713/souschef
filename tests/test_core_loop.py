@@ -1309,7 +1309,8 @@ def test_cook_preview_warns_names_untracked_lines_and_offers_the_past_week(
     page = signed_in.get(f"/recipes/{recipe.id}/cook?entry={entry.id}")
 
     assert page.status_code == 200
-    assert "Using more than you have" in page.text
+    assert "1 item is short in your pantry." in page.text
+    assert "Using more than you have" not in page.text
     assert "Not tracked" in page.text
     assert "1 cup xyzzybroth" in page.text
     assert "These lines aren’t in the pantry, so cooking doesn’t change them." in page.text

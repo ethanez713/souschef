@@ -9,12 +9,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from souschef.core.cooking import record_cook
+from souschef.core.cooking import record_cook, undo_cook
 from souschef.core.inventory import pantry_view, physical_of
 from souschef.core.recipes import recipe_requirements
 from souschef.core.units import entry_unit, format_entry_amount, resolve_entry_unit, to_base
 from souschef.db import get_db
-from souschef.models import CanonicalIngredient, MealPlanEntry, Recipe, User
+from souschef.models import CanonicalIngredient, Cook, MealPlanEntry, Recipe, User
 from souschef.web import auth
 from souschef.web.common import (
     MAX_SERVINGS,
@@ -81,7 +81,7 @@ def _cook_page(
     status_code: int = 200,
 ) -> HTMLResponse:
     servings = servings or (plan_entry.servings if plan_entry else 0) or _default_servings(recipe)
-    servings = min(servings, MAX_SERVINGS)
+    servings = min(max(servings, 1), MAX_SERVINGS)
     requirements = recipe_requirements(db, recipe, servings=servings)
     pantry = {v.ingredient.id: v for v in pantry_view(db, user.id)}
 
@@ -117,6 +117,8 @@ def _cook_page(
         cooked_on=cooked_on,
         today=today,
         error=error,
+        short_count=sum(1 for row in debits if row["over"]),
+        max_servings=MAX_SERVINGS,
     )
 
 
@@ -226,3 +228,19 @@ async def mark_cooked(
     db.flush()
     _sync_shopping(db, user.id)
     return RedirectResponse(f"/recipes/{recipe.id}?cooked=1", status_code=303)
+
+
+@router.post("/recipes/{recipe_id}/cooks/{cook_id}/undo")
+def undo_marked_cook(
+    recipe_id: int,
+    cook_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    recipe = _owned(db, Recipe, recipe_id, user, "recipe")
+    cook = db.get(Cook, cook_id)
+    if cook is None or cook.user_id != user.id or cook.recipe_id != recipe.id:
+        raise HTTPException(status_code=404, detail="No such cook")
+    undo_cook(db, user.id, cook.id)
+    _sync_shopping(db, user.id)
+    return RedirectResponse(f"/recipes/{recipe.id}", status_code=303)

@@ -402,6 +402,30 @@ details.basket > summary::after { font-size: var(--fs-micro); }
 code { background: var(--ink-wash); padding: 1px 5px; border-radius: var(--r-xs); color: var(--text-heading); overflow-wrap: anywhere; }
 .method p { margin-bottom: var(--sp-3); max-width: var(--prose-max); }
 .method p:last-child { margin-bottom: 0; }
+ol.method { margin: var(--sp-2) 0 0; padding-left: 1.5em; }
+ol.method li { margin: 0 0 var(--sp-4); padding-left: var(--sp-2); max-width: var(--prose-max); }
+ol.method li:last-child { margin-bottom: 0; }
+.stepper { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0; }
+.stepper .num {
+  min-width: 2.5rem; text-align: center;
+  font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-heading);
+}
+.stepper .stepper-btn { width: 44px; min-width: 44px; padding: 0; }
+.cooked-today { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0 0; }
+.cooked-today form { margin: 0; }
+button.notice {
+  width: 100%; justify-content: flex-start; text-align: left; white-space: normal;
+  border: 0; box-shadow: none; background: var(--warning-soft); color: var(--text-body);
+  font-weight: var(--fw-regular); border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4); gap: var(--sp-3);
+}
+button.notice:hover,
+button.notice:active { background: var(--warning-soft); color: var(--text-body); transform: none; }
+.shortfall { margin: var(--sp-2) 0 var(--sp-3); }
+.plan-days { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-3); }
+.name-step { margin-top: var(--sp-4); }
+.name-step form { margin: var(--sp-2) 0 0; }
+.name-step .picker { margin-bottom: var(--sp-2); }
 table { border-collapse: collapse; }
 td { padding: var(--sp-2) 0; border-top: 1px solid var(--border-subtle); vertical-align: middle; }
 
@@ -553,6 +577,11 @@ details.inline-fix .controls,
 .list-row.ingredient-row { align-items: flex-start; }
 .list-row.ingredient-row .list-row-sub { font-size: var(--fs-caption); }
 .list-row.ingredient-row .list-row-trail { align-self: flex-start; margin-top: 1px; }
+.list-row.cook-line { align-items: center; min-height: 48px; }
+.list-row.cook-line .list-row-title {
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  -webkit-line-clamp: 1;
+}
 
 .list-row.plan-day {
   align-items: flex-start; padding-top: 5px; padding-bottom: 5px; gap: var(--sp-2);

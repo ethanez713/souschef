@@ -98,7 +98,7 @@ def store_upload(data: bytes, filename: str) -> tuple[str, str]:
             # Re-encoding through a fresh image drops every metadata block,
             # including GPS, rather than trusting a targeted EXIF removal.
             clean = Image.new(image.mode, image.size)
-            clean.putdata(list(image.getdata()))
+            clean.putdata(image.get_flattened_data())
             buffer = io.BytesIO()
             clean.save(buffer, format="PNG")
     except Exception as exc:  # noqa: BLE001 - any decode failure is user-facing

@@ -5,8 +5,13 @@
 {% if level_error %}
   <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ level_error }}</div></div>
 {% endif %}
+{# One unit column width for the whole list keeps the boxes aligned; capped so a long noun ellipsizes. #}
+{% set widest = namespace(chars=2) %}
+{% for views in by_location.values() %}{% for v in views if not v.is_staple %}{% set widest.chars = [widest.chars, v.ingredient|unit_label|length]|max %}{% endfor %}{% endfor %}
+{% for v in out or [] %}{% set widest.chars = [widest.chars, v.ingredient|unit_label|length]|max %}{% endfor %}
+{% set unit_chars = [widest.chars, 7]|min %}
 {% for location, views in by_location.items() %}
-  <section class="row-group">
+  <section class="row-group" style="--unit-chars: {{ unit_chars }}">
     {{ group_header(location.replace('_', ' ').title()) }}
     {% for v in views %}
       {% if v.is_staple %}
@@ -18,7 +23,7 @@
   </section>
 {% endfor %}
 {% if out %}
-  <section class="row-group">
+  <section class="row-group" style="--unit-chars: {{ unit_chars }}">
     {{ group_header('Out') }}
     {% for v in out %}
       {{ pantry_card(v, freshness, query, amount='0') }}

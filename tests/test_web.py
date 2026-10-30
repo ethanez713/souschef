@@ -3396,6 +3396,23 @@ def _mark(page: str, name: str) -> str | None:
     return match.group(1) if match else None
 
 
+def test_pantry_unit_column_is_as_wide_as_the_longest_unit_on_the_page(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    for name in ("spinach", "lemon"):
+        record_event(
+            seeded_session, web_user.id, ing(seeded_session, name),
+            reason=EventReason.PURCHASE, delta=2,
+        )
+    seeded_session.commit()
+
+    page = signed_in.get("/pantry").text
+    widths = {int(w) for w in re.findall(r"--unit-chars: (\d+)", page)}
+    labels = re.findall(r'class="qty-unit"[^>]*>([^<]*)<', page)
+    assert len(widths) == 1
+    assert widths.pop() == min(max(len(label) for label in labels), 7)
+
+
 def test_uncertain_levels_get_a_confidence_bubble_and_home_says_check(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:

@@ -265,13 +265,14 @@ form.item { margin: 0; }
   -webkit-line-clamp: unset; -webkit-box-orient: unset;
 }
 .item .list-row-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.item .list-row-trail { gap: var(--sp-2); }
+.item .list-row-trail { gap: var(--sp-1); }
+.item .list-row-trail .iconbtn { margin-left: -6px; }
 .item input.qty {
   width: 4.5em; max-width: 4.5em; flex: none;
   padding: 0 var(--sp-2); font-size: 16px; text-align: right;
 }
 .qty-unit {
-  flex: none; width: 5em; font-size: 14px; color: var(--text-muted);
+  flex: none; width: calc(var(--unit-chars, 8) * 0.62em); font-size: 14px; color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left;
 }
 .trail { display: flex; align-items: center; gap: var(--sp-3); white-space: nowrap; }

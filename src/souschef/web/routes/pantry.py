@@ -26,9 +26,9 @@ from souschef.core.units import (
     UnitConversionError,
     count_noun_measure,
     parse_input_unit,
-    resolve_entry_unit,
     parse_package_answer,
     resolve_entry,
+    resolve_entry_unit,
 )
 from souschef.db import get_db
 from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, User

@@ -305,7 +305,7 @@ form.item { margin: 0; }
 
 .shop-row {
   display: flex; align-items: stretch; margin: 0;
-  border-bottom: 1px solid var(--ink-rule);
+  border-bottom: 1px solid var(--border-default);
 }
 .shop-row .shop-item { flex: 1; margin: 0; min-width: 0; }
 /* 4px of padding keeps the 44px checkbox inside a 48–56px row. */

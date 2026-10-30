@@ -122,7 +122,8 @@ a.card:hover { background: var(--surface-hover); color: inherit; }
 .card.tint-orange { border-left: 2px solid var(--tint-orange); }
 .card.tint-grey { border-left: 2px solid var(--tint-grey); }
 .card.today { background: var(--surface-accent-soft); border-color: var(--orange-200); }
-.tonight { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2); }
+.tonight { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2); margin-top: var(--sp-4); }
+.tonight .tonight-label { margin: 0; }
 .tonight-title {
   margin: 0; display: flex; align-items: center; min-height: 44px;
   font-family: var(--font-heading); font-size: var(--fs-title-3); line-height: var(--lh-title-3);

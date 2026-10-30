@@ -65,14 +65,14 @@ def _state(
             _state(2, 1, 1, 4, 3),
             "Check 1 level before you shop",
             "/audit",
-            "check",
+            "search",
             id="one level to check wins over shop and basket",
         ),
         pytest.param(
             _state(2, 1, 4, 2, 9),
             "Check 4 levels before you shop",
             "/audit",
-            "check",
+            "search",
             id="several levels to check",
         ),
         pytest.param(

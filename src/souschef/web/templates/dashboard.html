@@ -26,7 +26,8 @@
     {% endfor %}
   {% endif %}
 
-  <section class="card tonight" aria-label="Tonight">
+  <section class="card tonight" aria-labelledby="tonight-label">
+    <h2 class="tonight-label" id="tonight-label">Tonight</h2>
     {% if tonight %}
       {% if tonight.recipe %}
         <a class="tonight-title" href="/recipes/{{ tonight.recipe.id }}">{{ tonight.recipe.title }}</a>
@@ -64,7 +65,8 @@
 
   {% if tomorrow_title %}
     {% set trail %}{{ icon('chevron-right', 18) }}{% endset %}
-    {{ row('Tomorrow · ' ~ tomorrow_title, trail=trail, href='/plan') }}
+    {% set lead %}{{ icon('calendar-days', 18) }}{% endset %}
+    {{ row('Tomorrow · ' ~ tomorrow_title, lead=lead, trail=trail, href='/plan', cls='home-step') }}
   {% endif %}
 </main>
 {% endblock %}

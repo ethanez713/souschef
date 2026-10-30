@@ -36,7 +36,7 @@ def next_step(state: NextStepState) -> NextStep:
     if state.check_count > 0 and state.to_get > 0:
         noun = "level" if state.check_count == 1 else "levels"
         label = f"Check {state.check_count} {noun} before you shop"
-        return NextStep(label, "/audit", "check")
+        return NextStep(label, "/audit", "search")
     if state.to_get > 0:
         return NextStep(f"Shop: {state.to_get} to get", "/shopping", "shopping-basket")
     if state.in_basket > 0:

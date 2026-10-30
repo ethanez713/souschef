@@ -8,6 +8,20 @@ function formatAmount(value) {
   return String(Math.round(number * 100) / 100);
 }
 
+var EIGHTHS = ["", "⅛", "¼", "⅜", "½", "⅝", "¾", "⅞"];
+
+// Reads like the server's quantities: "1½ cups", "¼ oz", "2 onions".
+function kitchenText(amount, node) {
+  var whole = Math.floor(amount + 1e-9);
+  var eighths = Math.round((amount - whole) * 8);
+  if (eighths === 8) { whole += 1; eighths = 0; }
+  var number = Math.abs(amount - (whole + eighths / 8)) < 0.02
+    ? (whole || !eighths ? String(whole) : "") + EIGHTHS[eighths]
+    : formatAmount(amount);
+  var unit = node.getAttribute(amount > 1 ? "data-many" : "data-one") || "";
+  return (number + " " + unit).trim();
+}
+
 function readState() {
   var input = document.querySelector("[data-servings-input]");
   var lines = [];
@@ -30,7 +44,7 @@ function writeState(state, keep) {
   state.lines.forEach(function (line) {
     var node = document.querySelector('[data-line="' + line.id + '"]');
     if (node) {
-      node.textContent = formatAmount(line.amount);
+      node.textContent = kitchenText(line.amount, node);
       node.setAttribute("data-amount", String(line.amount));
       if (typeof line.perServing === "number") node.setAttribute("data-per", String(line.perServing));
       if (line.edited) node.setAttribute("data-edited", "1");

@@ -47,6 +47,7 @@
     <button class="stepper-btn" type="submit" name="servings" value="{{ cook_servings - 1 }}" aria-label="Fewer servings"{% if cook_servings <= 1 %} disabled{% endif %}>−</button>
     <span class="num">{{ cook_servings }}</span>
     <button class="stepper-btn" type="submit" name="servings" value="{{ cook_servings + 1 }}" aria-label="More servings"{% if cook_servings >= max_servings %} disabled{% endif %}>+</button>
+    <span class="stepper-label">servings</span>
   </form>
 
   {% if unmatched %}

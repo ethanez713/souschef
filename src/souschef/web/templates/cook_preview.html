@@ -13,6 +13,7 @@
     <span class="num" data-servings>{{ servings }}</span>
     <a class="btn stepper-btn" data-step="1" aria-label="More servings"
        href="/recipes/{{ recipe.id }}/cook?servings={{ nxt }}{% if entry %}&entry={{ entry.id }}{% endif %}">+</a>
+    <span class="stepper-label">servings</span>
   </div>
 
   {% if error %}
@@ -30,8 +31,11 @@
 
     {% for d in debits %}
       {% set shown = d.quantity|entry_amount(d.ingredient) %}
+      {% set many = d.ingredient|unit_label(d.quantity) %}
+      {% set one = d.ingredient.count_noun if (d.ingredient|form_unit(d.quantity)) == 'count' and d.ingredient.count_noun else many %}
       {% set amount -%}
-      <span class="num" data-line="{{ d.ingredient.id }}" data-amount="{{ shown }}" data-per="{{ (shown|float) / servings }}">{{ shown }}</span> {{ d.ingredient|unit_label(d.quantity) }}
+      <span class="num" data-line="{{ d.ingredient.id }}" data-amount="{{ shown }}" data-per="{{ (shown|float) / servings }}"
+            data-one="{{ one }}" data-many="{{ 'cups' if many == 'cup' else many }}">{{ d.quantity|quantity(d.ingredient) }}</span>
       {%- endset %}
       {{ row(d.ingredient.name, value=amount, cls='cook-line') }}
     {% else %}

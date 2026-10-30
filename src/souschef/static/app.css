@@ -411,6 +411,7 @@ ol.method li:last-child { margin-bottom: 0; }
   font-variant-numeric: tabular-nums; font-size: var(--fs-body); color: var(--text-heading);
 }
 .stepper .stepper-btn { width: 44px; min-width: 44px; padding: 0; }
+.stepper-label { color: var(--text-muted); }
 .cooked-today { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-2) 0 0; }
 .cooked-today form { margin: 0; }
 button.notice {

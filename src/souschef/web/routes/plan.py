@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from souschef.db import get_db
 from souschef.models import MealPlanEntry, MealSlot, Recipe, User
@@ -130,8 +131,12 @@ def _restore_params(params: Mapping[str, str]) -> dict[str, str] | None:
     return fields
 
 
-def _toast(message: str, undo: str = "") -> dict[str, str]:
-    return {"message": message, "undo": undo}
+def _toast(
+    message: str,
+    undo: str = "",
+    fields: list[tuple[str, str]] | None = None,
+) -> dict[str, str | list[tuple[str, str]]]:
+    return {"message": message, "undo": undo, "fields": fields or []}
 
 
 def _plan_location(**params: str) -> str:
@@ -139,8 +144,16 @@ def _plan_location(**params: str) -> str:
     return "/plan" + (f"?{query}" if query else "")
 
 
-def _plan_toast(request: Request, db: Session, user: User) -> dict[str, str] | None:
-    """Toast copy from the database. The freeform title is the one string from the URL."""
+def _entry_title(entry: MealPlanEntry) -> str:
+    if entry.recipe is not None:
+        return entry.recipe.title
+    return entry.freeform_title or "Meal"
+
+
+def _plan_toast(
+    request: Request, db: Session, user: User
+) -> dict[str, str | list[tuple[str, str]]] | None:
+    """Toast copy from the database. A removed note's title is the one string from the URL."""
     params = request.query_params
     added = params.get("added", "")
     if added:
@@ -149,13 +162,22 @@ def _plan_toast(request: Request, db: Session, user: User) -> dict[str, str] | N
         entry = db.get(MealPlanEntry, int(added))
         if entry is None or entry.user_id != user.id:
             return None
-        title = (
-            entry.recipe.title
-            if entry.recipe is not None
-            else (entry.freeform_title or "Meal")
-        )
         when = entry.plan_date.strftime("%a %-d %b")
-        return _toast(f"Added {title} to {when}", f"/plan/{entry.id}/remove")
+        return _toast(f"Added {_entry_title(entry)} to {when}", f"/plan/{entry.id}/remove")
+    moved = params.get("moved", "")
+    if moved:
+        if not moved.isdigit():
+            return None
+        entry = db.get(MealPlanEntry, int(moved))
+        origin = _parse_day(params.get("from", ""))
+        if entry is None or entry.user_id != user.id or origin is None:
+            return None
+        when = entry.plan_date.strftime("%a %-d %b")
+        return _toast(
+            f"Moved {_entry_title(entry)} to {when}",
+            f"/plan/{entry.id}/move",
+            [("plan_date", origin.isoformat())],
+        )
     fields = _restore_params(params)
     if fields is None:
         return None
@@ -173,6 +195,7 @@ def _plan_toast(request: Request, db: Session, user: User) -> dict[str, str] | N
 def plan_page(
     request: Request,
     skipped: int = 0,
+    blocked: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -207,6 +230,7 @@ def plan_page(
         show_recipe_filter=sum(len(options) for _, options in groups) > _FILTER_AFTER,
         week_end=week_end,
         skipped=bool(skipped),
+        blocked=bool(blocked),
         plan_toast=_plan_toast(request, db, user),
     )
 
@@ -273,6 +297,19 @@ def _plan_note(
         entry.servings = servings
     db.add(entry)
     return entry
+
+
+def _conflicts(db: Session, entry: MealPlanEntry, day: date) -> bool:
+    query = select(MealPlanEntry.id).where(
+        MealPlanEntry.user_id == entry.user_id,
+        MealPlanEntry.plan_date == day,
+        MealPlanEntry.id != entry.id,
+    )
+    if entry.recipe_id is not None:
+        query = query.where(MealPlanEntry.recipe_id == entry.recipe_id)
+    else:
+        query = query.where(MealPlanEntry.freeform_title == entry.freeform_title)
+    return db.scalar(query) is not None
 
 
 @router.post("/plan/add")
@@ -362,6 +399,34 @@ def restore_plan_entry(
     db.flush()
     _sync_shopping(db, user.id)
     return RedirectResponse(f"/plan?added={entry.id}", status_code=303)
+
+
+@router.post("/plan/{entry_id}/move")
+def move_plan_entry(
+    entry_id: int,
+    plan_date: date = Form(...),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    entry = _owned(db, MealPlanEntry, entry_id, user, "plan entry")
+    if entry.cooked_at is not None or entry.skipped_at is not None:
+        raise HTTPException(status_code=404, detail="No such plan entry")
+    today, week_end = _horizon()
+    if (
+        plan_date == entry.plan_date
+        or plan_date < today - timedelta(days=PAST_DAYS)
+        or plan_date > week_end
+    ):
+        return RedirectResponse("/plan", status_code=303)
+    if _conflicts(db, entry, plan_date):
+        return RedirectResponse("/plan?blocked=1", status_code=303)
+    origin = entry.plan_date.isoformat()
+    entry.plan_date = plan_date
+    # Keep updated_at. The recipe picker treats it as "recently planned".
+    flag_modified(entry, "updated_at")
+    db.flush()
+    _sync_shopping(db, user.id)
+    return RedirectResponse(f"/plan?moved={entry.id}&from={origin}", status_code=303)
 
 
 @router.post("/plan/{entry_id}/servings")

@@ -26,6 +26,7 @@ POST /pantry/{ingredient_id}/check
 POST /plan/add
 POST /plan/day
 POST /plan/restore
+POST /plan/{entry_id}/move
 POST /plan/{entry_id}/remove
 POST /plan/{entry_id}/servings
 POST /plan/{entry_id}/skip

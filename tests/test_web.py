@@ -42,7 +42,7 @@ from souschef.models import (
     StoredCredential,
     User,
 )
-from souschef.web.common import PLAN_DAYS
+from souschef.web.common import PAST_DAYS, PLAN_DAYS
 
 
 def ing(session: Session, name: str) -> CanonicalIngredient:
@@ -2603,6 +2603,251 @@ def test_the_day_sheet_filters_only_after_eight_recipes(
     page = signed_in.get("/plan").text
     assert page.count('class="dayadd-filter"') == PLAN_DAYS
     assert "autofocus" not in page
+
+
+def test_moving_a_meal_to_another_day_can_be_undone(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(seeded_session, web_user, "Move Meal", "https://example.com/move-meal")
+    origin = date.today()
+    target = origin + timedelta(days=1)
+    entry = MealPlanEntry(
+        user_id=web_user.id,
+        plan_date=origin,
+        slot=MealSlot.LUNCH,
+        recipe_id=recipe.id,
+        servings=6,
+    )
+    note = MealPlanEntry(
+        user_id=web_user.id,
+        plan_date=target,
+        slot=MealSlot.DINNER,
+        freeform_title="Eating out",
+    )
+    seeded_session.add_all([entry, note])
+    seeded_session.commit()
+    seeded_session.refresh(entry)
+    stamped = entry.updated_at
+
+    moved = signed_in.post(f"/plan/{entry.id}/move", data={"plan_date": target.isoformat()})
+    assert moved.status_code == 303
+    assert moved.headers["location"] == f"/plan?moved={entry.id}&from={origin.isoformat()}"
+    seeded_session.expire_all()
+    seeded_session.refresh(entry)
+    assert entry.plan_date == target
+    assert entry.servings == 6
+    assert entry.slot == MealSlot.LUNCH
+    assert entry.updated_at == stamped
+    assert seeded_session.scalars(select(ShoppingListItem)).all() != []
+
+    page = signed_in.get(moved.headers["location"]).text
+    when = target.strftime("%a %-d %b")
+    assert f"Moved {recipe.title} to {when}" in page
+    action, fields = _undo_form(page)
+    assert action == f"/plan/{entry.id}/move"
+    assert fields == {"plan_date": origin.isoformat()}
+
+    undone = signed_in.post(action, data=fields)
+    assert undone.status_code == 303
+    seeded_session.expire_all()
+    seeded_session.refresh(entry)
+    assert entry.plan_date == origin
+    assert entry.servings == 6
+    assert entry.slot == MealSlot.LUNCH
+
+    note_move = signed_in.post(f"/plan/{note.id}/move", data={"plan_date": origin.isoformat()})
+    assert "title=" not in note_move.headers["location"]
+    note_page = signed_in.get(note_move.headers["location"]).text
+    assert f"Moved Eating out to {origin.strftime('%a %-d %b')}" in note_page
+    seeded_session.expire_all()
+    seeded_session.refresh(note)
+    assert note.plan_date == origin
+    assert note.freeform_title == "Eating out"
+
+
+def test_moving_onto_a_day_that_already_has_that_meal_is_blocked(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(
+        seeded_session, web_user, "Blocked Meal", "https://example.com/blocked-meal"
+    )
+    today = date.today()
+    other = today + timedelta(days=2)
+    first = MealPlanEntry(
+        user_id=web_user.id, plan_date=today, slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2,
+    )
+    second = MealPlanEntry(
+        user_id=web_user.id, plan_date=other, slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2,
+    )
+    eating = MealPlanEntry(
+        user_id=web_user.id, plan_date=today, slot=MealSlot.DINNER, freeform_title="Eating out",
+    )
+    again = MealPlanEntry(
+        user_id=web_user.id, plan_date=other, slot=MealSlot.DINNER, freeform_title="Eating out",
+    )
+    seeded_session.add_all([first, second, eating, again])
+    seeded_session.commit()
+
+    blocked = signed_in.post(f"/plan/{first.id}/move", data={"plan_date": other.isoformat()})
+    assert blocked.status_code == 303
+    assert blocked.headers["location"] == "/plan?blocked=1"
+    page = signed_in.get(blocked.headers["location"]).text
+    assert "That meal is already on that day, so it stayed where it was." in page
+    assert 'class="toast"' not in page
+    seeded_session.expire_all()
+    seeded_session.refresh(first)
+    assert first.plan_date == today
+
+    note_blocked = signed_in.post(
+        f"/plan/{eating.id}/move", data={"plan_date": other.isoformat()}
+    )
+    assert note_blocked.headers["location"] == "/plan?blocked=1"
+    seeded_session.expire_all()
+    seeded_session.refresh(eating)
+    assert eating.plan_date == today
+
+
+def test_a_cooked_or_skipped_meal_cannot_be_moved(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(seeded_session, web_user, "Closed Meal", "https://example.com/closed-meal")
+    today = date.today()
+    cooked = MealPlanEntry(
+        user_id=web_user.id, plan_date=today, slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2, cooked_at=datetime.now(UTC),
+    )
+    skipped = MealPlanEntry(
+        user_id=web_user.id, plan_date=today + timedelta(days=1), slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2, skipped_at=datetime.now(UTC),
+    )
+    seeded_session.add_all([cooked, skipped])
+    seeded_session.commit()
+    target = (today + timedelta(days=3)).isoformat()
+
+    assert signed_in.post(f"/plan/{cooked.id}/move", data={"plan_date": target}).status_code == 404
+    assert signed_in.post(f"/plan/{skipped.id}/move", data={"plan_date": target}).status_code == 404
+    seeded_session.expire_all()
+    seeded_session.refresh(cooked)
+    seeded_session.refresh(skipped)
+    assert cooked.plan_date == today
+    assert skipped.plan_date == today + timedelta(days=1)
+
+
+def test_a_move_outside_the_shown_window_leaves_the_meal(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(seeded_session, web_user, "Window Meal", "https://example.com/window-meal")
+    today = date.today()
+    home = today + timedelta(days=1)
+    entry = MealPlanEntry(
+        user_id=web_user.id, plan_date=home, slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=4,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+    past_start = today - timedelta(days=PAST_DAYS)
+    week_end = today + timedelta(days=PLAN_DAYS - 1)
+
+    kept = signed_in.post(f"/plan/{entry.id}/move", data={"plan_date": week_end.isoformat()})
+    assert kept.headers["location"] == f"/plan?moved={entry.id}&from={home.isoformat()}"
+    back = signed_in.post(f"/plan/{entry.id}/move", data={"plan_date": past_start.isoformat()})
+    assert back.headers["location"] == f"/plan?moved={entry.id}&from={week_end.isoformat()}"
+    seeded_session.expire_all()
+    seeded_session.refresh(entry)
+    assert entry.plan_date == past_start
+
+    for day in (past_start - timedelta(days=1), week_end + timedelta(days=1), past_start):
+        response = signed_in.post(
+            f"/plan/{entry.id}/move", data={"plan_date": day.isoformat()}
+        )
+        assert response.status_code == 303
+        assert response.headers["location"] == "/plan"
+    seeded_session.expire_all()
+    seeded_session.refresh(entry)
+    assert entry.plan_date == past_start
+    assert entry.servings == 4
+
+
+def test_the_plan_page_offers_a_move_handle_only_for_an_open_meal(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    recipe = _plan_recipe(seeded_session, web_user, "Handle Meal", "https://example.com/handle-meal")
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    open_entry = MealPlanEntry(
+        user_id=web_user.id, plan_date=today, slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2,
+    )
+    cooked = MealPlanEntry(
+        user_id=web_user.id, plan_date=today + timedelta(days=1), slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2, cooked_at=datetime.now(UTC),
+    )
+    past = MealPlanEntry(
+        user_id=web_user.id, plan_date=yesterday, slot=MealSlot.DINNER,
+        freeform_title="Eating out",
+    )
+    seeded_session.add_all([open_entry, cooked, past])
+    seeded_session.commit()
+
+    page = signed_in.get("/plan").text
+    assert f'data-move="{open_entry.id}"' in page
+    assert f'data-move="{past.id}"' in page
+    assert f'data-move="{cooked.id}"' not in page
+    assert f'aria-label="Move {recipe.title}"' in page
+    assert 'aria-label="Move Eating out"' in page
+    assert page.count("data-drop") == PLAN_DAYS
+    assert "plan.js" in page
+    yesterday_row = re.search(
+        rf'<div class="list-row plan-day" id="d-{yesterday.isoformat()}"[^>]*>', page
+    )
+    today_row = re.search(
+        rf'<div class="list-row plan-day today" id="d-{today.isoformat()}"[^>]*>', page
+    )
+    assert yesterday_row is not None and "data-drop" not in yesterday_row.group(0)
+    assert today_row is not None and "data-drop" in today_row.group(0)
+    assert 'class="plan-spacer"' in page
+
+
+def test_a_move_toast_ignores_a_bad_or_foreign_entry(
+    signed_in: TestClient, seeded_session: Session
+) -> None:
+    other = User(username="someone-else", display_name="x", password_hash="x")
+    seeded_session.add(other)
+    seeded_session.flush()
+    recipe = save_imported_recipe(
+        seeded_session,
+        other.id,
+        RawRecipe(
+            title="Hidden Move",
+            ingredients=["1 pound spaghetti"],
+            servings=2,
+            source_url="https://example.com/hidden-move",
+        ),
+        source=RecipeSource.URL,
+    )
+    entry = MealPlanEntry(
+        user_id=other.id, plan_date=date.today(), slot=MealSlot.DINNER,
+        recipe_id=recipe.id, servings=2,
+    )
+    seeded_session.add(entry)
+    seeded_session.commit()
+
+    hidden = signed_in.get(
+        "/plan", params={"moved": str(entry.id), "from": date.today().isoformat()}
+    )
+    assert "Hidden Move" not in hidden.text
+    assert 'class="toast"' not in hidden.text
+    garbled = signed_in.get("/plan", params={"moved": "nope", "from": "yesterday"})
+    assert 'class="toast"' not in garbled.text
+    denied = signed_in.post(
+        f"/plan/{entry.id}/move",
+        data={"plan_date": (date.today() + timedelta(days=1)).isoformat()},
+    )
+    assert denied.status_code == 404
+    seeded_session.expire_all()
+    assert seeded_session.get(MealPlanEntry, entry.id).plan_date == date.today()
 
 
 def test_a_recipe_that_is_not_yours_cannot_be_planned_by_day(

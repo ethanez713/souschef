@@ -5,11 +5,27 @@
 {% set active = 'plan' %}
 
 {% macro day_row(day, today, entries) %}
-<div class="list-row plan-day{{ ' today' if day == today }}" id="d-{{ day.isoformat() }}">
+<div class="list-row plan-day{{ ' today' if day == today }}" id="d-{{ day.isoformat() }}" data-plan-day="{{ day.isoformat() }}"{% if day >= today %} data-drop{% endif %}>
   <span class="list-row-main">
     <span class="list-row-title">{{ day.strftime('%a %-d %b') }}{% if day == today %} <span class="rel">Today</span>{% elif (day - today).days == 1 %} <span class="rel">Tomorrow</span>{% endif %}</span>
   </span>
-  <button type="button" class="plan-slot{{ ' add' if not entries }}" data-sheet="day-{{ day.isoformat() }}">{% if entries %}{% for e in entries %}{{ e.recipe.title if e.recipe else e.freeform_title }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}+ Add{% endif %}</button>
+  {% if entries %}
+  <div class="plan-meals">
+    {% for e in entries %}
+    {% set title = e.recipe.title if e.recipe else e.freeform_title %}
+    <div class="plan-meal">
+      <button type="button" class="plan-slot" data-sheet="day-{{ day.isoformat() }}"><span class="plan-slot-title">{{ title }}</span></button>
+      {% if not e.cooked_at and not e.skipped_at %}
+      <button type="button" class="plan-handle" data-move="{{ e.id }}" aria-label="Move {{ title }}" title="Drag to another day">{{ icon('grip-vertical', 16) }}</button>
+      {% else %}
+      <span class="plan-spacer" aria-hidden="true"></span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <button type="button" class="plan-slot add" data-sheet="day-{{ day.isoformat() }}">+ Add</button>
+  {% endif %}
 </div>
 {% endmacro %}
 
@@ -51,7 +67,7 @@
 
 {% block content %}
 <main id="main">
-  {% if plan_toast %}{{ toast(plan_toast.message, plan_toast.undo) }}{% endif %}
+  {% if plan_toast %}{{ toast(plan_toast.message, plan_toast.undo, undo_fields=plan_toast.fields) }}{% endif %}
   <div class="page-head">
     <h1>Plan</h1>
     {% if has_meals %}
@@ -61,6 +77,9 @@
 
   {% if skipped %}
     <div class="notice spaced">That meal is already on one of the days you picked, so it wasn't added again.</div>
+  {% endif %}
+  {% if blocked %}
+    <div class="notice spaced">That meal is already on that day, so it stayed where it was.</div>
   {% endif %}
 
   {% if past_days %}
@@ -132,4 +151,5 @@
 })();
 </script>
 {% endif %}
+<script src="{{ static_url('plan.js') }}" defer></script>
 {% endblock %}

@@ -22,9 +22,11 @@ from souschef.models import (
     MealSlot,
     PantryItem,
     RecipeSource,
+    ShoppingListItem,
     User,
 )
-from souschef.planning.shopping import check_first_rows
+from souschef.models.planning import ItemSource
+from souschef.planning.shopping import check_first_rows, live_list
 from souschef.web.common import _horizon
 
 
@@ -88,7 +90,7 @@ def test_have_it_on_an_unknown_writes_one_manual_and_drops_the_row(
     )
 
     page = signed_in.get("/shopping").text
-    assert "Check first (1)" in page
+    assert '<span>Check first</span><span class="group-side"><span class="count">1</span>' in page
     assert f'action="/shopping/check/{chicken.id}/have"' in page
     assert 'action="/shopping/item/' not in page
 
@@ -163,7 +165,7 @@ def test_still_right_on_an_audit_row_writes_confirm_and_drops_it(
     assert rows[0].kind.value == "audit"
 
     page = signed_in.get("/shopping").text
-    assert "Check first (1)" in page
+    assert '<span>Check first</span><span class="group-side"><span class="count">1</span>' in page
     assert f'action="/shopping/check/{rice.id}/still"' in page
     assert "Still right" in page
 
@@ -182,3 +184,26 @@ def test_still_right_on_an_audit_row_writes_confirm_and_drops_it(
 
 def test_the_audit_page_is_gone(signed_in: TestClient) -> None:
     assert signed_in.get("/audit").status_code == 404
+
+
+def test_a_stale_buy_line_for_unknown_stock_is_not_shown_or_counted(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    _plan(seeded_session, web_user, "Stale", ["200 g chicken thigh"], "https://example.com/stale")
+    signed_in.get("/shopping")
+    listing = live_list(seeded_session, web_user.id)
+    assert listing is not None
+    seeded_session.add(
+        ShoppingListItem(
+            shopping_list_id=listing.id, ingredient_id=chicken.id, label="chicken thigh",
+            needed_qty=200, needed_unit="g", source=ItemSource.RECIPE,
+        )
+    )
+    seeded_session.commit()
+
+    page = signed_in.get("/shopping").text
+
+    assert f'action="/shopping/check/{chicken.id}/need"' in page
+    assert 'action="/shopping/item/' not in page
+    assert '<span class="num">0</span> to get' in page

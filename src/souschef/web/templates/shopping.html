@@ -84,8 +84,26 @@
   {% set shown_amount = check.believed|entry_amount(ingredient) %}
   {% set shown_unit = ingredient|form_unit(check.believed) %}
 {% endif %}
-<div class="shop-row">
-  {{ row(ingredient.name|fractions, sub=('for ' ~ for_recipes) if for_recipes else '', name_sheet='check-' ~ ingredient.id) }}
+{% set trail %}
+  {% if unknown %}
+  <form method="post" action="/shopping/check/{{ ingredient.id }}/have" class="inline"
+        hx-post="/shopping/check/{{ ingredient.id }}/have" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+    <button class="btn small" type="submit">Have it</button>
+  </form>
+  <form method="post" action="/shopping/check/{{ ingredient.id }}/need" class="inline"
+        hx-post="/shopping/check/{{ ingredient.id }}/need" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+    <button class="btn small" type="submit">Need it</button>
+  </form>
+  {% else %}
+  <form method="post" action="/shopping/check/{{ ingredient.id }}/still" class="inline"
+        hx-post="/shopping/check/{{ ingredient.id }}/still" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+    <button class="btn small" type="submit">Still right</button>
+  </form>
+  {% endif %}
+{% endset %}
+{% set sub %}{% if not unknown %}have <span class="num">{{ check.believed|stock(ingredient) }}</span>?{% if for_recipes %} · {% endif %}{% endif %}{% if for_recipes %}for {{ for_recipes }}{% endif %}{% endset %}
+<div class="shop-row check-row">
+  {{ row(ingredient.name|fractions, sub=sub, trail=trail, name_sheet=('' if unknown else 'check-' ~ ingredient.id)) }}
 </div>
 {% call sheet('check-' ~ ingredient.id, ingredient.name, open=(check_for == ingredient.id)) %}
   {% if check_error and check_for == ingredient.id %}
@@ -143,7 +161,7 @@
 
     {% if check_rows %}
     <section id="check-first">
-      <h2 class="group-head"><a href="#check-first">Check first ({{ check_rows|length }})</a></h2>
+      {{ group_header('Check first', check_rows|length) }}
       {% for check in check_rows %}
         {{ check_row(check) }}
       {% endfor %}

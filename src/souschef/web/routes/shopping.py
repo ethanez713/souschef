@@ -423,6 +423,25 @@ def _current_checks(db: Session, user_id: int) -> list[CheckRow]:
     return check_first_rows(db, user_id, covers_from=start, covers_to=end)
 
 
+def _buy_lines(listing: ShoppingList, checks: list[CheckRow]) -> list[ShoppingListItem]:
+    """The list's rows, less any recipe line for stock that is waiting on a check.
+
+    A list stored before that stock became unknown still carries its buy line
+    until the next rebuild, and an item cannot be both asked about and bought.
+    """
+    asking = {check.ingredient.id for check in checks if check.kind == CheckKind.UNKNOWN}
+    return [
+        item
+        for item in listing.items
+        if not item.is_skipped
+        and not (
+            item.source == ItemSource.RECIPE
+            and not item.is_checked
+            and item.ingredient_id in asking
+        )
+    ]
+
+
 def shop_counts(
     db: Session,
     user_id: int,
@@ -435,7 +454,7 @@ def shop_counts(
         listing = _list_for_page(db, user_id)
     if checks is None:
         checks = _current_checks(db, user_id)
-    visible = [item for item in listing.items if not item.is_skipped]
+    visible = _buy_lines(listing, checks)
     return ShopCounts(
         to_get=sum(1 for item in visible if not item.is_checked and not item.is_stocked),
         in_basket=sum(
@@ -490,7 +509,7 @@ def _render_shopping(
         or 0
     ) > 0
 
-    visible = [item for item in active.items if not item.is_skipped]
+    visible = _buy_lines(active, check_rows)
     # Checked rows leave their aisle for the basket. The copy still lists every row,
     # including ones that still need a name.
     by_aisle = _group_aisles([item for item in visible if not item.is_checked])

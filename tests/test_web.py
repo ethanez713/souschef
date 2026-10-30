@@ -3484,14 +3484,14 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v11" in worker
+    assert "souschef-shell-v12" in worker
 
 
 def test_service_worker_is_served_at_the_site_root(client: TestClient) -> None:
     response = client.get("/sw.js")
     assert response.status_code == 200
     assert "javascript" in response.headers["content-type"]
-    assert "souschef-shell-v11" in response.text
+    assert "souschef-shell-v12" in response.text
     base = (Path(__file__).parent.parent / "src/souschef/web/templates/base.html").read_text()
     assert "register('/sw.js')" in base
 

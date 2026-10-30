@@ -1,8 +1,8 @@
-// Shell assets stay cache-first. Navigations to /shopping and /pantry are
+// Shell assets are fetched first and kept for offline. Navigations to /shopping and /pantry are
 // network-first, and the latest response is kept, so the installed app can
 // open that list and a read-only pantry when the server is unreachable.
 // No other page is cached.
-const SHELL = 'souschef-shell-v11';
+const SHELL = 'souschef-shell-v12';
 const ASSETS = [
   '/static/app.css', '/static/ds.css', '/static/fonts/fonts.css', '/static/htmx.min.js',
   '/static/list-sync.js', '/static/list-page.js',
@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (url.pathname.startsWith('/static/')) {
-    event.respondWith(caches.match(request).then((hit) => hit || fetch(request)));
+    event.respondWith(staticAsset(request));
     return;
   }
 
@@ -43,6 +43,27 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request, listPath));
   }
 });
+
+// Pages link assets as app.css?v=<mtime>. Fetch first so a new version is never
+// shadowed, keep each response, and offline fall back to any cached version.
+async function staticAsset(request) {
+  const cache = await caches.open(SHELL);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      try {
+        await cache.put(request, response.clone());
+      } catch {
+        // A response the cache refuses must still be shown.
+      }
+    }
+    return response;
+  } catch (err) {
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    throw err;
+  }
+}
 
 function listPathOf(url) {
   let path = url.pathname;

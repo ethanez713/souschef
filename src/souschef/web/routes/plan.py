@@ -14,6 +14,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from souschef.db import get_db
 from souschef.models import MealPlanEntry, MealSlot, Recipe, User
+from souschef.planning.next_step import readiness_chip
 from souschef.planning.suggest import Surface, by_surface, suggest
 from souschef.web import auth
 from souschef.web.common import (
@@ -52,14 +53,25 @@ def _recipe_groups(
     return [
         (
             label,
-            [
-                (s.recipe, f" · planned {planned[s.recipe.id]}" if s.recipe.id in planned else "")
-                for s in grouped[surface]
-            ],
+            [(s.recipe, _picker_note(s, planned)) for s in grouped[surface]],
         )
         for surface, label in _RECIPE_GROUPS
         if grouped[surface]
     ]
+
+
+def _picker_note(suggestion: object, planned: dict[int, str]) -> str:
+    """Chip, then the days this recipe is already on."""
+    recipe = suggestion.recipe  # type: ignore[attr-defined]
+    bits: list[str] = []
+    chip = readiness_chip(suggestion)
+    if chip != "Ready":
+        bits.append(chip)
+    if recipe.id in planned:
+        bits.append(f"planned {planned[recipe.id]}")
+    if not bits:
+        return ""
+    return " · " + " · ".join(bits)
 
 
 def _planned_days(entries: list[MealPlanEntry], today: date) -> dict[int, str]:

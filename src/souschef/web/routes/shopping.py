@@ -12,9 +12,20 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from souschef.core.audit import build_audit
-from souschef.core.inventory import live_events, physical_of, set_level, void_events
-from souschef.core.units import InputUnitError, NeedsPackage, UnitConversionError, to_base
+from souschef.core.inventory import (
+    confirm_level,
+    live_events,
+    physical_of,
+    set_level,
+    void_events,
+)
+from souschef.core.units import (
+    InputUnitError,
+    NeedsPackage,
+    UnitConversionError,
+    resolve_entry_unit,
+    to_base,
+)
 from souschef.db import get_db
 from souschef.models import (
     CanonicalIngredient,
@@ -30,11 +41,13 @@ from souschef.models import (
 from souschef.models.planning import ItemSource
 from souschef.planning.shopping import (
     NEEDS_NAMING_AISLE,
+    CheckKind,
+    CheckRow,
     ShoppingError,
     add_manual_item,
+    check_first_rows,
     edited_purchase,
     live_list,
-    requirements_for_audit,
     stock_ticked_items,
     stockable,
 )
@@ -91,6 +104,8 @@ def _group_aisles(
 
 _NOT_ON_LIST = "That item is no longer on the list"
 _HAVE_IT_NOTE = "have it"
+_NEED_IT_NOTE = "need it"
+_SET_AMOUNT_NOTE = "set amount"
 
 
 def _missing_item(request: Request) -> HTMLResponse:
@@ -241,6 +256,37 @@ def _have_toast(db: Session, user: User, have: str, always: str) -> dict | None:
     )
 
 
+def _ledger_toast(
+    db: Session,
+    user: User,
+    raw: str,
+    *,
+    reason: EventReason,
+    note: str | None,
+    message: str,
+) -> dict | None:
+    """Undo toast for one check-first edit, named by the ledger row rather than the URL."""
+    if not raw.isdigit():
+        return None
+    event = db.get(InventoryEvent, int(raw))
+    if (
+        event is None
+        or event.user_id != user.id
+        or event.voided_at is not None
+        or event.reason != reason
+        or (note is not None and event.note != note)
+    ):
+        return None
+    ingredient = db.get(CanonicalIngredient, event.ingredient_id)
+    if ingredient is None:
+        return None
+    return _toast(
+        message.format(name=ingredient.name),
+        undo=f"/pantry/undo/{event.id}",
+        return_to="/shopping",
+    )
+
+
 def _edited_toast(
     db: Session,
     listing: ShoppingList | None,
@@ -282,6 +328,24 @@ def _toast_from_query(
     have = params.get("have", "")
     if have:
         return _have_toast(db, user, have, params.get("always", ""))
+    need = params.get("need", "")
+    if need:
+        return _ledger_toast(
+            db, user, need, reason=EventReason.MANUAL, note=_NEED_IT_NOTE,
+            message="Marked {name} as none",
+        )
+    still = params.get("still", "")
+    if still:
+        return _ledger_toast(
+            db, user, still, reason=EventReason.CONFIRM, note=None,
+            message="Confirmed {name}",
+        )
+    amount_set = params.get("amount_set", "")
+    if amount_set:
+        return _ledger_toast(
+            db, user, amount_set, reason=EventReason.MANUAL, note=_SET_AMOUNT_NOTE,
+            message="Set {name}",
+        )
     edited = params.get("edited", "")
     if edited:
         return _edited_toast(
@@ -354,13 +418,24 @@ class ShopCounts:
     check_count: int
 
 
-def shop_counts(db: Session, user_id: int, listing: ShoppingList | None = None) -> ShopCounts:
+def _current_checks(db: Session, user_id: int) -> list[CheckRow]:
+    start, end = _horizon()
+    return check_first_rows(db, user_id, covers_from=start, covers_to=end)
+
+
+def shop_counts(
+    db: Session,
+    user_id: int,
+    listing: ShoppingList | None = None,
+    *,
+    checks: list[CheckRow] | None = None,
+) -> ShopCounts:
     """The shopping page's to-get, basket, and check counts. Home reads the same ones."""
     if listing is None:
         listing = _list_for_page(db, user_id)
-    start, end = _horizon()
+    if checks is None:
+        checks = _current_checks(db, user_id)
     visible = [item for item in listing.items if not item.is_skipped]
-    audit = build_audit(db, user_id, requirements_for_audit(db, user_id, start, end))
     return ShopCounts(
         to_get=sum(1 for item in visible if not item.is_checked and not item.is_stocked),
         in_basket=sum(
@@ -368,7 +443,7 @@ def shop_counts(db: Session, user_id: int, listing: ShoppingList | None = None) 
             for item in visible
             if item.is_checked and not item.is_stocked and stockable(item)
         ),
-        check_count=len(audit),
+        check_count=len(checks),
     )
 
 
@@ -390,10 +465,15 @@ def _render_shopping(
     amount_unit: str = "",
     name_error: str = "",
     name_for: int = 0,
+    check_error: str = "",
+    check_for: int = 0,
+    check_amount: str = "",
+    check_unit: str = "",
     status_code: int = 200,
 ) -> HTMLResponse:
     start, end = _horizon()
     active = _list_for_page(db, user.id)
+    check_rows = _current_checks(db, user.id)
     has_plan = (
         db.scalar(
             select(func.count())
@@ -419,7 +499,7 @@ def _render_shopping(
         key=_aisle_sort_key,
     )
     copy_groups = _group_aisles(visible, checked_last=True)
-    counts = shop_counts(db, user.id, active)
+    counts = shop_counts(db, user.id, active, checks=check_rows)
     unit_choices, package_caption = add_form_units(
         db, add_name, add_unit, user.unit_system or "us"
     )
@@ -436,6 +516,11 @@ def _render_shopping(
         copy_text=_shopping_copy(copy_groups, user),
         has_plan=has_plan,
         pending_stock=counts.in_basket,
+        check_rows=check_rows,
+        check_error=check_error,
+        check_for=check_for,
+        check_amount=check_amount,
+        check_unit=check_unit,
         add_error=add_error,
         add_name=add_name,
         add_amount=add_amount,
@@ -445,7 +530,6 @@ def _render_shopping(
         package_unit=package_unit,
         unit_choices=unit_choices,
         package_caption=package_caption,
-        audit_count=counts.check_count,
         shop_toast=_toast_from_query(request, db, user, active),
         amount_error=amount_error,
         amount_for=amount_for,
@@ -657,6 +741,145 @@ def have_shopping_item(
         return _render_shopping(request, db, user, add_error=str(exc), status_code=400)
     _sync_shopping(db, user.id)
     return _shop_redirect(have=str(event.id), always=str(ingredient_id) if earlier else "")
+
+
+def _check_of(
+    db: Session, user_id: int, ingredient_id: int, kind: CheckKind
+) -> CheckRow | None:
+    for row in _current_checks(db, user_id):
+        if row.ingredient.id == ingredient_id and row.kind == kind:
+            return row
+    return None
+
+
+def _check_amount_error(
+    request: Request,
+    db: Session,
+    user: User,
+    ingredient_id: int,
+    message: str,
+    amount: str,
+    unit: str,
+) -> HTMLResponse:
+    return _render_shopping(
+        request,
+        db,
+        user,
+        check_error=message,
+        check_for=ingredient_id,
+        check_amount=amount,
+        check_unit=unit,
+        status_code=400,
+    )
+
+
+@router.post("/shopping/check/{ingredient_id}/have")
+def have_check(
+    request: Request,
+    ingredient_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = _check_of(db, user.id, ingredient_id, CheckKind.UNKNOWN)
+    if row is None:
+        return _missing_item(request)
+    ingredient = row.ingredient
+    earlier = _earlier_have_it(db, user.id, ingredient.id)
+    try:
+        event = set_level(
+            db,
+            user.id,
+            ingredient,
+            _on_hand_level(ingredient, row.needed),
+            note=_HAVE_IT_NOTE,
+        )
+    except (UnitConversionError, ValueError) as exc:
+        db.rollback()
+        return _render_shopping(
+            request,
+            db,
+            user,
+            check_error=str(exc),
+            check_for=ingredient.id,
+            status_code=400,
+        )
+    _sync_shopping(db, user.id)
+    return _shop_redirect(have=str(event.id), always=str(ingredient.id) if earlier else "")
+
+
+@router.post("/shopping/check/{ingredient_id}/need")
+def need_check(
+    request: Request,
+    ingredient_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = _check_of(db, user.id, ingredient_id, CheckKind.UNKNOWN)
+    if row is None:
+        return _missing_item(request)
+    try:
+        event = set_level(db, user.id, row.ingredient, 0, note=_NEED_IT_NOTE)
+    except (UnitConversionError, ValueError) as exc:
+        db.rollback()
+        return _render_shopping(
+            request, db, user, check_error=str(exc), check_for=row.ingredient.id, status_code=400
+        )
+    _sync_shopping(db, user.id)
+    return _shop_redirect(need=str(event.id))
+
+
+@router.post("/shopping/check/{ingredient_id}/still")
+def still_check(
+    request: Request,
+    ingredient_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = _check_of(db, user.id, ingredient_id, CheckKind.AUDIT)
+    if row is None:
+        return _missing_item(request)
+    event = confirm_level(db, user.id, row.ingredient)
+    _sync_shopping(db, user.id)
+    return _shop_redirect(still=str(event.id))
+
+
+@router.post("/shopping/check/{ingredient_id}/amount")
+def amount_check(
+    request: Request,
+    ingredient_id: int,
+    amount: str = Form(""),
+    unit: str = Form(""),
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    row = _check_of(db, user.id, ingredient_id, CheckKind.AUDIT)
+    if row is None:
+        return _missing_item(request)
+    text = amount.strip()
+    try:
+        parsed = float(text)
+    except ValueError:
+        return _check_amount_error(
+            request, db, user, ingredient_id, "Enter a number.", amount, unit
+        )
+    if not math.isfinite(parsed) or parsed < 0:
+        return _check_amount_error(
+            request, db, user, ingredient_id, "Amount has to be zero or more.", amount, unit
+        )
+    try:
+        event = set_level(
+            db,
+            user.id,
+            row.ingredient,
+            parsed,
+            unit=resolve_entry_unit(row.ingredient, user.unit_system or "us", unit),
+            note=_SET_AMOUNT_NOTE,
+        )
+    except (UnitConversionError, ValueError) as exc:
+        db.rollback()
+        return _check_amount_error(request, db, user, ingredient_id, str(exc), amount, unit)
+    _sync_shopping(db, user.id)
+    return _shop_redirect(amount_set=str(event.id))
 
 
 @router.post("/shopping/item/{item_id}/amount")

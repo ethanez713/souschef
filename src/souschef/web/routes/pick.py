@@ -27,6 +27,7 @@ from souschef.models import (
     Recipe,
     User,
 )
+from souschef.planning.next_step import readiness_chip
 from souschef.planning.suggest import probably_gone_ids, score_recipe
 from souschef.web import auth
 from souschef.web.common import _render
@@ -202,12 +203,11 @@ def _recipe_rows(db: Session, user_id: int, recipes: list[Recipe]) -> list[PickR
     rows: list[PickRow] = []
     for recipe in recipes:
         suggestion = score_recipe(db, recipe, pantry, today=today)
-        gaps = suggestion.missing_count + suggestion.unidentified
         rows.append(
             PickRow(
                 id=recipe.id,
                 name=recipe.title,
-                chip="Ready" if gaps == 0 else f"Missing {gaps}",
+                chip=readiness_chip(suggestion),
             )
         )
     return rows

@@ -4,8 +4,8 @@
   {% if items %}
     {{ group_header(labels.get(surface|string, surface), items|length) }}
     {% for s in items %}
-      {% set gaps = s.missing_count + s.unidentified %}
-      {% set chip %}<span class="badge {{ 'good' if gaps == 0 else 'warn' }}">{{ 'Ready' if gaps == 0 else 'Missing ' ~ gaps }}</span>{% endset %}
+      {% set chip_text = readiness_chip(s) %}
+      {% set chip %}<span class="badge {{ 'good' if chip_text == 'Ready' else 'warn' }}">{{ chip_text }}</span>{% endset %}
       {{ row(s.recipe.title, sub=recipe_readiness(s), value=(s.recipe.total_minutes ~ ' min') if s.recipe.total_minutes else '', trail=chip, href='/recipes/' ~ s.recipe.id) }}
     {% endfor %}
   {% endif %}

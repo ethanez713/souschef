@@ -533,6 +533,8 @@ def _plan_pasta(session: Session, user: User, title: str, url: str) -> MealPlanE
         servings=1,
     )
     session.add(entry)
+    pasta = next(line.ingredient for line in recipe.ingredients if line.ingredient is not None)
+    record_event(session, user.id, pasta, reason=EventReason.MANUAL, level=0)
     session.commit()
     return entry
 
@@ -701,14 +703,6 @@ def test_correcting_a_recipe_match_puts_the_ingredient_on_the_next_shop_page(
     )
     assert corrected.status_code == 303
     assert "spaghetti" in signed_in.get("/shopping").text
-
-
-def test_audit_page_renders_with_nothing_planned(signed_in: TestClient) -> None:
-    response = signed_in.get("/audit")
-    assert response.status_code == 200
-    assert "Nothing to check." in response.text
-    assert "Go to list" in response.text
-    assert "% sure" not in response.text
 
 
 def test_receipts_page_renders(signed_in: TestClient) -> None:
@@ -1394,6 +1388,13 @@ def test_the_same_meal_is_not_planned_twice_in_one_day(
         ),
         source=RecipeSource.URL,
     )
+    record_event(
+        seeded_session,
+        web_user.id,
+        ing(seeded_session, "spaghetti"),
+        reason=EventReason.MANUAL,
+        level=0,
+    )
     seeded_session.commit()
     payload = {"recipe_id": recipe.id, "servings": 2, "plan_date": date.today().isoformat()}
     first = signed_in.post("/plan/add", data=payload)
@@ -1764,6 +1765,13 @@ def test_shopping_rows_lead_with_the_name_and_ticked_rows_sit_in_the_basket(
             servings=1,
         )
     )
+    record_event(
+        seeded_session,
+        web_user.id,
+        ing(seeded_session, "spaghetti"),
+        reason=EventReason.MANUAL,
+        level=0,
+    )
     seeded_session.commit()
     signed_in.get("/shopping")
     assert signed_in.post("/shopping/add", data={"name": "paper towels"}).status_code == 303
@@ -1829,6 +1837,7 @@ def _plan_sauce(session: Session, user: User) -> None:
         source=RecipeSource.URL,
     )
     sauce = ing(session, "worcestershire sauce")
+    record_event(session, user.id, sauce, reason=EventReason.MANUAL, level=0)
     line = recipe.ingredients[0]
     line.ingredient_id = sauce.id
     line.quantity = 9
@@ -1887,12 +1896,12 @@ def test_have_it_stocks_one_package_and_a_later_one_offers_always_have(
             InventoryEvent.ingredient_id == sauce.id,
         )
     ).all()
-    assert len(events) == 1
-    assert events[0].reason == EventReason.MANUAL
-    assert events[0].note == "have it"
-    assert events[0].resulting_quantity == pytest.approx(296)
+    have_it = [event for event in events if event.note == "have it"]
+    assert len(have_it) == 1
+    assert have_it[0].reason == EventReason.MANUAL
+    assert have_it[0].resulting_quantity == pytest.approx(296)
 
-    events[0].occurred_at = datetime.now(UTC) - timedelta(days=1)
+    have_it[0].occurred_at = datetime.now(UTC) - timedelta(days=1)
     record_event(
         seeded_session,
         web_user.id,
@@ -2293,6 +2302,13 @@ def test_the_plan_lists_every_day_with_a_picker_and_plans_a_recipe_once(
         ),
         source=RecipeSource.URL,
     )
+    record_event(
+        seeded_session,
+        web_user.id,
+        ing(seeded_session, "spaghetti"),
+        reason=EventReason.MANUAL,
+        level=0,
+    )
     seeded_session.commit()
     day = date.today().isoformat()
     page = signed_in.get("/plan")
@@ -2363,6 +2379,8 @@ def _plan_recipe(session: Session, user: User, title: str, url: str) -> Recipe:
         ),
         source=RecipeSource.URL,
     )
+    pasta = next(line.ingredient for line in recipe.ingredients if line.ingredient is not None)
+    record_event(session, user.id, pasta, reason=EventReason.MANUAL, level=0)
     session.commit()
     return recipe
 
@@ -3099,61 +3117,6 @@ def test_adding_answers_with_an_undoable_toast(
     assert _pantry_row(seeded_session, web_user, "black beans").quantity == 0
 
 
-def test_the_audit_page_drops_a_checked_row(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    rice = ing(seeded_session, "white rice")
-    record_event(seeded_session, web_user.id, rice, reason=EventReason.PURCHASE, delta=500)
-    item = seeded_session.scalar(
-        select(PantryItem).where(PantryItem.ingredient_id == rice.id)
-    )
-    assert item is not None
-    item.belief_at = datetime.now(UTC) - timedelta(days=90)
-    save_imported_recipe(
-        seeded_session,
-        web_user.id,
-        RawRecipe(
-            title="Rice Bowl",
-            ingredients=["480 g white rice"],
-            servings=1,
-            source_url="https://example.com/rice-audit",
-        ),
-        source=RecipeSource.URL,
-    )
-    recipe = seeded_session.scalar(select(Recipe).where(Recipe.title == "Rice Bowl"))
-    assert recipe is not None
-    seeded_session.add(
-        MealPlanEntry(
-            user_id=web_user.id,
-            plan_date=date.today(),
-            slot=MealSlot.DINNER,
-            recipe_id=recipe.id,
-            servings=1,
-        )
-    )
-    seeded_session.commit()
-
-    page = signed_in.get("/audit").text
-    assert "% sure" not in page
-    assert "physical look" not in page
-    assert "Check these 1 before you shop." in page
-    form = _check_form(page, rice.id)
-    assert 'name="next" value="/audit"' in form
-    assert "need " in form
-    shown = _input_value(form, "shown")
-    posted = signed_in.post(
-        f"/pantry/{rice.id}/check",
-        data={"quantity": shown, "shown": shown, "next": "/audit"},
-    )
-    assert posted.headers["location"].startswith("/audit?changed=")
-    after = signed_in.get(posted.headers["location"]).text
-    assert f'action="/pantry/{rice.id}/check"' not in after
-    assert "Nothing to check." in after
-    assert "Confirmed white rice" in after
-    assert "Go to list" in after
-    assert "% sure" not in after
-
-
 def test_an_undo_of_someone_elses_event_changes_nothing(
     signed_in: TestClient, seeded_session: Session
 ) -> None:
@@ -3206,6 +3169,7 @@ def test_editing_a_planned_meals_servings_rescales_the_list_and_is_remembered(
 ) -> None:
     recipe = _pasta_recipe(seeded_session, web_user)
     pasta = ing(seeded_session, "spaghetti")
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.MANUAL, level=0)
     day = date.today() + timedelta(days=1)
     entry = MealPlanEntry(
         user_id=web_user.id, plan_date=day, slot=MealSlot.DINNER,
@@ -3678,6 +3642,13 @@ def test_recipe_page_agrees_with_the_list_about_spoiled_stock(
         reason=EventReason.PURCHASE,
         delta=907,
         occurred_at=datetime.now(UTC) - timedelta(days=60),
+    )
+    record_event(
+        seeded_session,
+        web_user.id,
+        ing(seeded_session, "spaghetti"),
+        reason=EventReason.MANUAL,
+        level=0,
     )
     seeded_session.commit()
 

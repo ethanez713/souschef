@@ -72,6 +72,59 @@
 {% endcall %}
 {% endmacro %}
 
+{% macro check_row(check) %}
+{% set ingredient = check.ingredient %}
+{% set why = check.driven_by|join(', ') %}
+{% set for_recipes = '' if why in ['added by you', 'running low'] else why %}
+{% set unknown = check.kind.value == 'unknown' %}
+{% if check_for == ingredient.id and check_amount != '' %}
+  {% set shown_amount = check_amount %}
+  {% set shown_unit = check_unit %}
+{% else %}
+  {% set shown_amount = check.believed|entry_amount(ingredient) %}
+  {% set shown_unit = ingredient|form_unit(check.believed) %}
+{% endif %}
+<div class="shop-row">
+  {{ row(ingredient.name|fractions, sub=('for ' ~ for_recipes) if for_recipes else '', name_sheet='check-' ~ ingredient.id) }}
+</div>
+{% call sheet('check-' ~ ingredient.id, ingredient.name, open=(check_for == ingredient.id)) %}
+  {% if check_error and check_for == ingredient.id %}
+    <div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ check_error }}</div></div>
+  {% endif %}
+  <div class="sheet-actions">
+    {% if unknown %}
+    <form method="post" action="/shopping/check/{{ ingredient.id }}/have"
+          hx-post="/shopping/check/{{ ingredient.id }}/have" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <button class="block primary" type="submit">Have it</button>
+    </form>
+    <form method="post" action="/shopping/check/{{ ingredient.id }}/need"
+          hx-post="/shopping/check/{{ ingredient.id }}/need" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <button class="block" type="submit">Need it</button>
+    </form>
+    {% else %}
+    <form method="post" action="/shopping/check/{{ ingredient.id }}/still"
+          hx-post="/shopping/check/{{ ingredient.id }}/still" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <button class="block primary" type="submit">Still right</button>
+    </form>
+    <form method="post" action="/shopping/check/{{ ingredient.id }}/amount"
+          hx-post="/shopping/check/{{ ingredient.id }}/amount" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
+      <div class="controls">
+        <div class="field">
+          <label for="check-amt-{{ ingredient.id }}">Amount</label>
+          <input id="check-amt-{{ ingredient.id }}" name="amount" type="number" step="any" inputmode="decimal" value="{{ shown_amount }}">
+        </div>
+        <div class="field">
+          <label for="check-unit-{{ ingredient.id }}">Unit</label>
+          <input id="check-unit-{{ ingredient.id }}" name="unit" value="{{ shown_unit }}" autocomplete="off">
+        </div>
+      </div>
+      <button class="block" type="submit">Set amount</button>
+    </form>
+    {% endif %}
+  </div>
+{% endcall %}
+{% endmacro %}
+
 {% block content %}
 <main id="main">
   <div class="page-head">
@@ -85,19 +138,19 @@
     <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ add_error }}</div></div>
   {% endif %}
 
-  {% if items %}
+  {% if items or check_rows %}
     <p class="meta">Shopping · {{ shopping_list.covers_from.strftime('%-d %b') }}–{{ shopping_list.covers_to.strftime('%-d %b') }} · <span class="num">{{ to_get }}</span> to get</p>
 
-    {% if audit_count and to_get > 0 %}
-      <a class="notice spaced" href="/audit" style="text-decoration:none;color:inherit">
-        {{ icon('triangle-alert', 16) }}
-        <div>
-          <strong>{{ audit_count }} level{{ '' if audit_count == 1 else 's' }} worth a look before you shop.</strong>
-          <span class="meta"> A quick check can shorten this list.</span>
-        </div>
-      </a>
+    {% if check_rows %}
+    <section id="check-first">
+      <h2 class="group-head"><a href="#check-first">Check first ({{ check_rows|length }})</a></h2>
+      {% for check in check_rows %}
+        {{ check_row(check) }}
+      {% endfor %}
+    </section>
     {% endif %}
 
+    {% if items %}
     {% for aisle, aisle_items in by_aisle.items() %}
       {{ group_header(aisle, aisle_items|length) }}
       {% for it in aisle_items %}
@@ -122,6 +175,8 @@
         </button>
       </form>
       {% endcall %}
+    {% endif %}
+
     {% endif %}
 
     <pre id="shop-plain" class="shop-plain" hidden>{{ copy_text }}</pre>

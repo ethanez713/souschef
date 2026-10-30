@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, timedelta
+from html import unescape
 from pathlib import Path
 
 import pytest
@@ -64,14 +65,14 @@ def _state(
         pytest.param(
             _state(2, 1, 1, 4, 3),
             "Check 1 level before you shop",
-            "/audit",
+            "/shopping#check-first",
             "search",
             id="one level to check wins over shop and basket",
         ),
         pytest.param(
             _state(2, 1, 4, 2, 9),
             "Check 4 levels before you shop",
-            "/audit",
+            "/shopping#check-first",
             "search",
             id="several levels to check",
         ),
@@ -128,27 +129,30 @@ def test_next_step_first_match(
 
 
 @pytest.mark.parametrize(
-    ("missing", "unidentified", "text", "tone"),
+    ("missing", "unidentified", "to_check", "text", "tone"),
     [
-        ([], 0, "Ready to cook", "good"),
-        ([], 1, "Ready to cook · 1 needs naming", "good"),
-        ([], 2, "Ready to cook · 2 needs naming", "good"),
-        (["garlic"], 0, "Missing 1: garlic", "warn"),
-        (["garlic", "onion"], 1, "Missing 2: garlic, onion · 1 needs naming", "warn"),
-        (["a", "b", "c"], 0, "Missing 3: a, b, c", "warn"),
-        (["a", "b", "c", "d"], 0, "Missing 4: a, b, c +1 more", "warn"),
+        ([], 0, [], "Ready to cook", "good"),
+        ([], 1, [], "Ready to cook · 1 needs naming", "good"),
+        ([], 2, [], "Ready to cook · 2 needs naming", "good"),
+        (["garlic"], 0, [], "Missing 1: garlic", "warn"),
+        (["garlic", "onion"], 1, [], "Missing 2: garlic, onion · 1 needs naming", "warn"),
+        (["a", "b", "c"], 0, [], "Missing 3: a, b, c", "warn"),
+        (["a", "b", "c", "d"], 0, [], "Missing 4: a, b, c +1 more", "warn"),
         (
             ["a", "b", "c", "d", "e"],
             2,
+            [],
             "Missing 5: a, b, c +2 more · 2 needs naming",
             "warn",
         ),
+        ([], 0, ["rice", "cream"], "Check 2: rice, cream", "warn"),
+        (["garlic"], 0, ["rice"], "Missing 1: garlic · Check 1: rice", "warn"),
     ],
 )
 def test_readiness_line_names_up_to_three(
-    missing: list[str], unidentified: int, text: str, tone: str
+    missing: list[str], unidentified: int, to_check: list[str], text: str, tone: str
 ) -> None:
-    got = readiness_line(missing, unidentified)
+    got = readiness_line(missing, unidentified, to_check)
     assert (got.text, got.tone) == (text, tone)
 
 
@@ -218,7 +222,7 @@ def test_a_planned_recipe_shows_one_cook_link_and_what_is_missing(
     assert "<h1>Home</h1>" in page
     assert date.today().strftime("%A %-d %B") in page
     assert _cook_anchors(page) == [(f"/recipes/{recipe.id}/cook?entry={entry.id}", "Cook")]
-    assert "Missing 1: spaghetti" in page
+    assert "Check 1: spaghetti" in page
     assert 'class="tonight-ready warn"' in page
     assert page.count("Tonight Pasta") == 1
     assert "Cook this" not in page
@@ -230,7 +234,7 @@ def test_a_planned_recipe_shows_one_cook_link_and_what_is_missing(
     shop = signed_in.get("/shopping").text
     expected = _step_from_shopping(shop)
     assert expected is not None
-    assert f'class="list-row-title">{expected}</span>' in page
+    assert f'class="list-row-title">{expected}</span>' in unescape(page)
 
 
 def test_nothing_planned_says_so(
@@ -256,7 +260,7 @@ def test_nothing_planned_offers_the_best_nearly_ready_recipe(
 
     assert "Nothing planned tonight" in page
     assert _cook_anchors(page) == [(f"/recipes/{recipe.id}/cook", "Cook this")]
-    assert "Missing 1: spaghetti" in page
+    assert "Check 1: spaghetti" in page
     assert "Plan something" in page
     assert "Tomorrow ·" not in page
     _no_old_home(page)
@@ -284,7 +288,7 @@ def test_nothing_planned_offers_a_recipe_that_is_ready(
 def test_a_recipe_that_needs_a_real_shop_is_not_offered(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
-    _recipe(
+    recipe = _recipe(
         seeded_session,
         web_user,
         "Far From Ready",
@@ -296,6 +300,12 @@ def test_a_recipe_that_needs_a_real_shop_is_not_offered(
             "1 pound chicken breast",
         ],
     )
+    for line in recipe.ingredients:
+        ingredient = line.ingredient
+        if ingredient is not None and not ingredient.is_staple:
+            record_event(
+                seeded_session, web_user.id, ingredient, reason=EventReason.MANUAL, level=0
+            )
     seeded_session.commit()
 
     page = signed_in.get("/").text
@@ -374,7 +384,7 @@ def _step_from_shopping(shop_html: str) -> str | None:
     if counted is None:
         return None
     to_get = int(counted.group(1))
-    audit = re.search(r"<strong>(\d+) levels? worth a look", shop_html)
+    audit = re.search(r"Check first \((\d+)\)", shop_html)
     if audit and to_get:
         n = int(audit.group(1))
         noun = "level" if n == 1 else "levels"

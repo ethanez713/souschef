@@ -22,7 +22,6 @@ from souschef.web.common import (
     request_hostname,
 )
 from souschef.web.routes import (
-    audit,
     cook,
     home,
     meta,
@@ -195,7 +194,6 @@ app.include_router(pick.router)
 app.include_router(recipes.router)
 app.include_router(cook.router)
 app.include_router(plan.router)
-app.include_router(audit.router)
 app.include_router(shopping.router)
 app.include_router(receipts.router)
 app.include_router(settings.router)

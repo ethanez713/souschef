@@ -20,13 +20,17 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from enum import StrEnum
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from souschef.core.audit import AuditReason, build_audit
 from souschef.core.inventory import (
     INFERRED_PURCHASE_CONFIDENCE,
+    known_ingredient_ids,
     live_events,
+    pantry_view,
     physical_of,
     record_event,
     save_package_size,
@@ -89,6 +93,9 @@ class NeedLine:
     # A matched line whose recipe gave no amount. Cleared if any line for the
     # same ingredient does state one — that number is the shortfall.
     unknown_amount: bool = False
+    # False until something other than a cook has counted this ingredient.
+    # Unknown is not the same as a level of zero.
+    known: bool = False
 
     @property
     def shortfall(self) -> float:
@@ -133,17 +140,26 @@ def collect_requirements(
 def apply_pantry(
     session: Session, user_id: int, needs: dict[int, NeedLine]
 ) -> dict[int, NeedLine]:
-    """Fill in believed pantry levels for each needed ingredient."""
+    """Fill in believed pantry levels for each needed ingredient.
+
+    A level is only filled in once the ingredient is known. An untouched
+    ingredient stays unknown, so a later step can ask instead of buying it.
+    """
     if not needs:
         return needs
-    rows = session.scalars(
-        select(PantryItem).where(
-            PantryItem.user_id == user_id,
-            PantryItem.ingredient_id.in_(needs.keys()),
-        )
-    ).all()
-    for item in rows:
-        needs[item.ingredient_id].have = item.quantity
+    views = {
+        view.ingredient.id: view
+        for view in pantry_view(session, user_id, include_empty=True)
+        if view.ingredient.id in needs
+    }
+    for ingredient_id, line in needs.items():
+        view = views.get(ingredient_id)
+        if view is not None and view.is_known:
+            line.have = view.quantity
+            line.known = True
+        else:
+            line.have = 0.0
+            line.known = False
     return needs
 
 
@@ -157,8 +173,9 @@ def add_restock_candidates(
         .where(PantryItem.user_id == user_id, PantryItem.restock_threshold.isnot(None))
     ).all()
 
+    known = known_ingredient_ids(session, user_id)
     for item, ingredient in rows:
-        if ingredient.id in needs:
+        if ingredient.id in needs or ingredient.id not in known:
             continue
         if item.quantity >= (item.restock_threshold or 0):
             continue
@@ -168,6 +185,7 @@ def add_restock_candidates(
             have=item.quantity,
             driven_by=["running low"],
             source=ItemSource.RESTOCK,
+            known=True,
         )
     return needs
 
@@ -217,6 +235,9 @@ def _one_package(ingredient: CanonicalIngredient) -> tuple[float, str, str]:
 
 
 def _on_the_list(line: NeedLine) -> bool:
+    """A buy line. Unknown stock is a check, not a purchase."""
+    if not line.known:
+        return False
     if line.shortfall > 0:
         return True
     return line.unknown_amount and line.have <= 0 and line.needed <= 0
@@ -285,6 +306,102 @@ def _unnamed_needs(
     return list(grouped.values())
 
 
+def _planned_entries(
+    session: Session, user_id: int, covers_from: date, covers_to: date
+) -> list[MealPlanEntry]:
+    return list(
+        session.scalars(
+            select(MealPlanEntry)
+            .options(selectinload(MealPlanEntry.recipe).selectinload(Recipe.ingredients))
+            .where(
+                MealPlanEntry.user_id == user_id,
+                MealPlanEntry.plan_date >= covers_from,
+                MealPlanEntry.plan_date <= covers_to,
+            )
+            .order_by(MealPlanEntry.plan_date)
+        ).all()
+    )
+
+
+class CheckKind(StrEnum):
+    UNKNOWN = "unknown"
+    AUDIT = "audit"
+
+
+@dataclass(frozen=True)
+class CheckRow:
+    """One thing to ask about before treating it as a purchase."""
+
+    ingredient: CanonicalIngredient
+    needed: float
+    kind: CheckKind
+    driven_by: tuple[str, ...] = ()
+    believed: float = 0.0
+
+
+def check_first_rows(
+    session: Session,
+    user_id: int,
+    *,
+    covers_from: date,
+    covers_to: date,
+) -> list[CheckRow]:
+    """Unknown needs, then known levels whose range straddles the requirement.
+
+    Unknown rows are every planned ingredient nobody has counted. Audit rows
+    are capped the way ``build_audit`` caps them. Neither is a buy line.
+    """
+    needs = apply_pantry(
+        session,
+        user_id,
+        collect_requirements(session, _planned_entries(session, user_id, covers_from, covers_to)),
+    )
+    unknown: list[CheckRow] = []
+    for line in needs.values():
+        if line.known:
+            continue
+        if line.needed <= 0 and not line.unknown_amount:
+            continue
+        unknown.append(
+            CheckRow(
+                ingredient=line.ingredient,
+                needed=line.needed,
+                kind=CheckKind.UNKNOWN,
+                driven_by=tuple(line.driven_by),
+            )
+        )
+    unknown.sort(key=lambda row: row.ingredient.name)
+    unknown_ids = {row.ingredient.id for row in unknown}
+
+    requirements = {ingredient_id: line.needed for ingredient_id, line in needs.items()}
+    views = {
+        view.ingredient.id: view
+        for view in pantry_view(session, user_id, include_empty=True)
+    }
+    audit: list[CheckRow] = []
+    for candidate in build_audit(session, user_id, requirements):
+        if candidate.ingredient.id in unknown_ids:
+            continue
+        view = views.get(candidate.ingredient.id)
+        if view is None or not view.is_known:
+            continue
+        if candidate.reason == AuditReason.NEAR_RESTOCK:
+            driven = ("running low",)
+        else:
+            planned = needs.get(candidate.ingredient.id)
+            driven = tuple(planned.driven_by) if planned is not None else ()
+        audit.append(
+            CheckRow(
+                ingredient=candidate.ingredient,
+                needed=candidate.required,
+                kind=CheckKind.AUDIT,
+                driven_by=driven,
+                believed=candidate.believed,
+            )
+        )
+    return unknown + audit
+
+
 def build_shopping_list(
     session: Session,
     user_id: int,
@@ -301,18 +418,8 @@ def build_shopping_list(
     survive a rebuild. A planned line the matcher could not name is one of
     those label rows, grouped under Needs naming.
     """
-    entries = session.scalars(
-        select(MealPlanEntry)
-        .options(selectinload(MealPlanEntry.recipe).selectinload(Recipe.ingredients))
-        .where(
-            MealPlanEntry.user_id == user_id,
-            MealPlanEntry.plan_date >= covers_from,
-            MealPlanEntry.plan_date <= covers_to,
-        )
-        .order_by(MealPlanEntry.plan_date)
-    ).all()
-
-    needs = collect_requirements(session, entries)  # type: ignore[arg-type]
+    entries = _planned_entries(session, user_id, covers_from, covers_to)
+    needs = collect_requirements(session, entries)
     needs = apply_pantry(session, user_id, needs)
     if include_restock:
         needs = add_restock_candidates(session, user_id, needs)
@@ -810,14 +917,7 @@ def requirements_for_audit(
     to decide which *beliefs* to verify, and an item we think we have plenty of
     is exactly the kind of belief that can be wrong.
     """
-    entries = session.scalars(
-        select(MealPlanEntry)
-        .options(selectinload(MealPlanEntry.recipe).selectinload(Recipe.ingredients))
-        .where(
-            MealPlanEntry.user_id == user_id,
-            MealPlanEntry.plan_date >= covers_from,
-            MealPlanEntry.plan_date <= covers_to,
-        )
-    ).all()
-    needs = collect_requirements(session, entries)  # type: ignore[arg-type]
+    needs = collect_requirements(
+        session, _planned_entries(session, user_id, covers_from, covers_to)
+    )
     return {ingredient_id: line.needed for ingredient_id, line in needs.items()}

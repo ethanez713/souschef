@@ -96,6 +96,22 @@ def live_events(user_id: int) -> Select[tuple[InventoryEvent]]:
     )
 
 
+def known_ingredient_ids(session: Session, user_id: int) -> set[int]:
+    """Ingredients with a non-voided event other than COOK.
+
+    A cook alone is not a count: it shows the ingredient was used, not that
+    anyone has said how much is there. Known includes a level of zero.
+    """
+    return set(
+        session.scalars(
+            live_events(user_id)
+            .with_only_columns(InventoryEvent.ingredient_id)
+            .where(InventoryEvent.reason != EventReason.COOK)
+            .distinct()
+        )
+    )
+
+
 def half_life_days(mode: TrackingMode, settings: Settings | None = None) -> float:
     settings = settings or get_settings()
     if mode == TrackingMode.DISCRETE:
@@ -442,14 +458,17 @@ def consume_for_recipe(
 
     ``requirements`` maps ingredient id to a quantity already in base units.
     Staples are skipped: they are assumed always stocked, so cooking never
-    debits them. ``notes`` is per-ingredient, for when the cook preview was edited.
+    debits them. An ingredient nobody has counted is neither debited nor
+    treated as short — there is no level to subtract from. ``notes`` is
+    per-ingredient, for when the cook preview was edited.
     """
     events: list[InventoryEvent] = []
+    known = known_ingredient_ids(session, user_id)
     for ingredient_id, amount in requirements.items():
         if amount <= 0:
             continue
         ingredient = session.get(CanonicalIngredient, ingredient_id)
-        if ingredient is None or ingredient.is_staple:
+        if ingredient is None or ingredient.is_staple or ingredient_id not in known:
             continue
         events.append(
             record_event(
@@ -477,14 +496,7 @@ def pantry_view(
         .where(PantryItem.user_id == user_id)
         .order_by(CanonicalIngredient.name)
     ).all()
-    known = set(
-        session.scalars(
-            live_events(user_id)
-            .with_only_columns(InventoryEvent.ingredient_id)
-            .where(InventoryEvent.reason != EventReason.COOK)
-            .distinct()
-        )
-    )
+    known = known_ingredient_ids(session, user_id)
 
     now = datetime.now(UTC)
     views = []

@@ -590,7 +590,8 @@ def test_partially_stocked_recipe_lists_what_is_missing(
 
     top = suggest(seeded_session, owner)[0]
     assert top.surface == Surface.NEARLY_THERE
-    assert {m.ingredient.name for m in top.missing} == {
+    assert top.missing == []
+    assert {item.name for item in top.to_check} == {
         "chicken thigh", "canned crushed tomatoes", "spaghetti"
     }
 
@@ -678,6 +679,9 @@ def test_shopping_list_covers_the_gap_only(
     stock(seeded_session, owner, "yellow onion", 3)
     stock(seeded_session, owner, "garlic", 10)
     stock(seeded_session, owner, "heavy cream", 400)
+    stock(seeded_session, owner, "chicken thigh", 0)
+    stock(seeded_session, owner, "canned crushed tomatoes", 0)
+    stock(seeded_session, owner, "spaghetti", 0)
 
     today = date.today()
     seeded_session.add(
@@ -706,6 +710,7 @@ def test_a_matched_line_with_no_amount_asks_for_one_package(
     seeded_session: Session, owner: int
 ) -> None:
     fish_sauce = ing(seeded_session, "fish sauce")
+    stock(seeded_session, owner, "fish sauce", 0)
     parsley = ing(seeded_session, "fresh parsley")
     recipe = Recipe(user_id=owner, title="Sauce", source=RecipeSource.MANUAL, servings=2)
     seeded_session.add(recipe)
@@ -743,6 +748,7 @@ def test_a_real_quantity_wins_over_an_unspecified_one(
     seeded_session: Session, owner: int
 ) -> None:
     fish_sauce = ing(seeded_session, "fish sauce")
+    stock(seeded_session, owner, "fish sauce", 0)
     recipe = Recipe(user_id=owner, title="Two lines", source=RecipeSource.MANUAL, servings=1)
     seeded_session.add(recipe)
     seeded_session.flush()
@@ -786,11 +792,21 @@ def test_shopping_list_records_why_each_item_is_there(
             servings=4,
         )
     )
+    for line in imported.ingredients:
+        if line.ingredient is not None and not line.ingredient.is_staple:
+            record_event(
+                seeded_session,
+                owner,
+                line.ingredient,
+                reason=EventReason.MANUAL,
+                level=0,
+            )
     seeded_session.flush()
 
     shopping = build_shopping_list(
         seeded_session, owner, covers_from=today, covers_to=today + timedelta(days=7)
     )
+    assert shopping.items
     assert all(item.driven_by == imported.title for item in shopping.items)
     assert all(item.aisle for item in shopping.items)
 

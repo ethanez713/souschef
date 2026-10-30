@@ -30,7 +30,7 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from souschef.core.inventory import PantryView, pantry_view
+from souschef.core.inventory import PantryView, known_ingredient_ids, pantry_view
 from souschef.core.recipes import RequirementSet, recipe_requirements
 from souschef.core.spoilage import Freshness, freshness_by_ingredient
 from souschef.models import CanonicalIngredient, Recipe
@@ -88,6 +88,8 @@ class Suggestion:
     availability: float = 0.0
     # Non-optional recipe lines that never resolved to a catalog ingredient.
     unidentified: int = 0
+    # Ingredients nobody has counted. Not on hand, and not missing.
+    to_check: list[CanonicalIngredient] = field(default_factory=list)
 
     @property
     def missing_count(self) -> int:
@@ -101,6 +103,11 @@ class Suggestion:
             base = f"Uses {names} before it goes off"
         elif self.surface == Surface.COOK_NOW:
             base = "You have everything"
+        elif self.to_check and not self.missing:
+            if len(self.to_check) == 1:
+                base = f"Check {self.to_check[0].name}"
+            else:
+                base = f"Check {len(self.to_check)} things"
         elif not self.missing:
             base = "You have everything named"
         elif self.missing_count == 1:
@@ -161,14 +168,23 @@ def score_recipe(
     *,
     today: date | None = None,
     servings: int | None = None,
+    known_ids: set[int] | None = None,
 ) -> Suggestion:
-    """Score one recipe against the current pantry."""
+    """Score one recipe against the current pantry.
+
+    An ingredient with no count is neither on hand nor missing. ``pantry`` may
+    omit empty rows; a known level of zero is still missing, not a check.
+    """
     today = today or datetime.now(UTC).date()
     requirements = recipe_requirements(session, recipe, servings=servings)
+    if known_ids is None:
+        known_ids = known_ingredient_ids(session, recipe.user_id)
 
     considered = 0
     satisfied = 0.0
     missing: list[MissingIngredient] = []
+    to_check: list[CanonicalIngredient] = []
+    seen_checks: set[int] = set()
     uses_expiring: list[CanonicalIngredient] = []
 
     for req in requirements.requirements:
@@ -177,11 +193,24 @@ def score_recipe(
         if req.is_staple or req.is_optional:
             continue
 
-        considered += 1
         view = pantry.get(req.ingredient.id)
-        have = view.quantity if view else 0.0
-        low = view.low if view else 0.0
-        high = view.high if view else 0.0
+        if view is not None and not view.is_known:
+            counted = False
+        elif view is not None or req.ingredient.id in known_ids:
+            counted = True
+        else:
+            counted = False
+
+        if not counted:
+            if req.ingredient.id not in seen_checks:
+                seen_checks.add(req.ingredient.id)
+                to_check.append(req.ingredient)
+            continue
+
+        considered += 1
+        have = view.quantity if view is not None else 0.0
+        low = view.low if view is not None else 0.0
+        high = view.high if view is not None else 0.0
 
         if view is not None and _expiring_soon(view, today):
             uses_expiring.append(req.ingredient)
@@ -232,9 +261,9 @@ def score_recipe(
         if days_ago < RECENCY_WINDOW_DAYS:
             score -= W_RECENCY_PENALTY * (1 - days_ago / RECENCY_WINDOW_DAYS)
 
-    if not considered:
+    if not considered and not to_check:
         surface = Surface.REACH
-    elif not missing and not unmatched:
+    elif not missing and not unmatched and not to_check:
         surface = Surface.COOK_NOW
     elif len(missing) + len(unmatched) <= 3:
         surface = Surface.NEARLY_THERE
@@ -249,6 +278,7 @@ def score_recipe(
         uses_expiring=uses_expiring,
         availability=round(availability, 4),
         unidentified=len(unmatched),
+        to_check=to_check,
     )
 
 
@@ -277,6 +307,7 @@ def suggest(
     views = pantry_view(session, user_id)
     gone = probably_gone_ids(session, user_id, views, today or date.today())
     pantry = {v.ingredient.id: v for v in views if v.ingredient.id not in gone}
+    known = known_ingredient_ids(session, user_id)
 
     query = (
         select(Recipe)
@@ -287,7 +318,7 @@ def suggest(
         query = query.where(Recipe.is_archived.is_(False))
 
     suggestions = [
-        score_recipe(session, recipe, pantry, today=today)
+        score_recipe(session, recipe, pantry, today=today, known_ids=known)
         for recipe in session.scalars(query)
     ]
     suggestions.sort(key=lambda s: s.score, reverse=True)

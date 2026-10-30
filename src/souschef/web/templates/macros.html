@@ -63,8 +63,8 @@
 
 {# One recipe suggestion as a hairline row: title and a readiness chip. #}
 {% macro suggestion_card(s) %}
-{% set gaps = s.missing_count + s.unidentified %}
-{% set chip %}<span class="badge {{ 'good' if gaps == 0 else 'warn' }}">{{ 'Ready' if gaps == 0 else 'Missing ' ~ gaps }}</span>{% endset %}
+{% set chip_text = readiness_chip(s) %}
+{% set chip %}<span class="badge {{ 'good' if chip_text == 'Ready' else 'warn' }}">{{ chip_text }}</span>{% endset %}
 {{ row(s.recipe.title, trail=chip, href='/recipes/' ~ s.recipe.id) }}
 {% endmacro %}
 

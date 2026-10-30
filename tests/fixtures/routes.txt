@@ -1,5 +1,4 @@
 GET /
-GET /audit
 GET /healthz
 GET /manifest.webmanifest
 GET /pantry
@@ -55,6 +54,10 @@ POST /settings/staples/{ingredient_id}/clear
 POST /settings/theme
 POST /settings/units
 POST /shopping/add
+POST /shopping/check/{ingredient_id}/amount
+POST /shopping/check/{ingredient_id}/have
+POST /shopping/check/{ingredient_id}/need
+POST /shopping/check/{ingredient_id}/still
 POST /shopping/generate
 POST /shopping/ingredient/{ingredient_id}/always
 POST /shopping/item/{item_id}/amount

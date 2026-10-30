@@ -31,7 +31,7 @@ from souschef.core.units import (
 )
 from souschef.models import CanonicalIngredient, Cook, EventReason, InventoryEvent, Recipe, User
 from souschef.models.base import Base
-from souschef.planning.next_step import recipe_readiness
+from souschef.planning.next_step import readiness_chip, recipe_readiness
 from souschef.planning.shopping import build_shopping_list, is_package_count
 
 PLAN_DAYS = 10
@@ -305,6 +305,7 @@ templates.env.filters["shop_qty"] = _shop_qty
 templates.env.filters["shop_need"] = _shop_need
 templates.env.filters["shop_unit"] = purchase_form_unit
 templates.env.globals["recipe_readiness"] = recipe_readiness
+templates.env.globals["readiness_chip"] = readiness_chip
 templates.env.filters["receipt_label"] = _receipt_label
 templates.env.filters["fractions"] = _fractions
 

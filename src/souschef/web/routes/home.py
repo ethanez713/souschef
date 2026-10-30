@@ -129,14 +129,20 @@ def render_home(
     offer_readiness = None
     if tonight is not None and tonight.recipe is not None:
         scored = _score_planned(db, user.id, tonight.recipe, tonight.servings, today)
-        names = [gap.ingredient.name for gap in scored.missing]
-        tonight_readiness = readiness_line(names, scored.unidentified)
+        tonight_readiness = readiness_line(
+            [gap.ingredient.name for gap in scored.missing],
+            scored.unidentified,
+            [item.name for item in scored.to_check],
+        )
     elif tonight is None:
         ranked = suggest(db, user.id, limit=1, today=today)
         if ranked and ranked[0].surface in (Surface.COOK_NOW, Surface.NEARLY_THERE):
             offer = ranked[0]
-            names = [gap.ingredient.name for gap in offer.missing]
-            offer_readiness = readiness_line(names, offer.unidentified)
+            offer_readiness = readiness_line(
+                [gap.ingredient.name for gap in offer.missing],
+                offer.unidentified,
+                [item.name for item in offer.to_check],
+            )
 
     return _render(
         request,

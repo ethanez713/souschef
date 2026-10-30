@@ -456,7 +456,7 @@ def test_an_item_is_known_only_after_something_other_than_a_cook(
     seeded_session: Session, owner: int
 ) -> None:
     rice = ingredient(seeded_session, "white rice")
-    consume_for_recipe(seeded_session, owner, {rice.id: 100}, recipe_id=1)
+    record_event(seeded_session, owner, rice, reason=EventReason.COOK, delta=-100)
     view = next(
         v
         for v in pantry_view(seeded_session, owner, include_empty=True)

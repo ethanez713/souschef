@@ -48,6 +48,11 @@ def _save(session: Session, user: User, title: str, ingredients: list[str]):
 
 def _plan(session: Session, user: User, title: str, ingredients: list[str]) -> None:
     recipe = _save(session, user, title, ingredients)
+    for line in recipe.ingredients:
+        if line.ingredient is not None:
+            record_event(
+                session, user.id, line.ingredient, reason=EventReason.MANUAL, level=0
+            )
     session.add(
         MealPlanEntry(
             user_id=user.id,
@@ -96,7 +101,7 @@ def _library(session: Session, user: User) -> None:
         delta=2000,
     )
     _save(session, user, "Garlic Bread", ["3 cloves garlic"])
-    _save(
+    stew = _save(
         session,
         user,
         "Sunday Stew",
@@ -108,6 +113,11 @@ def _library(session: Session, user: User) -> None:
             "1 cup xyzzybroth",
         ],
     )
+    for line in stew.ingredients:
+        if line.ingredient is not None:
+            record_event(
+                session, user.id, line.ingredient, reason=EventReason.MANUAL, level=0
+            )
     session.commit()
 
 

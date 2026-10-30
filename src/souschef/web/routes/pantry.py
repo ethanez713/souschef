@@ -321,12 +321,6 @@ def _check_error(
 ) -> HTMLResponse:
     target = _safe_next(next_path) if next_path.strip() else ""
     path = target.split("?", 1)[0].split("#", 1)[0] if target else ""
-    if path == "/audit":
-        from souschef.web.routes.audit import render_audit
-
-        page = render_audit(request, db, user, form_error=message)
-        page.status_code = 400
-        return page
     if path == "/":
         from souschef.web.routes.home import render_home
 

@@ -42,9 +42,11 @@ from souschef.models import (
 )
 from souschef.models.planning import ItemSource
 from souschef.planning.shopping import (
+    CheckKind,
     ShoppingError,
     add_manual_item,
     build_shopping_list,
+    check_first_rows,
     ingredients_stocked_since,
     stock_ticked_items,
     to_purchase_quantity,
@@ -146,6 +148,11 @@ def _item_id(html: str, label: str) -> int:
     return int(found[-1])
 
 
+def _counted(session: Session, user_id: int, ingredient: CanonicalIngredient) -> None:
+    """A level of zero: known, so a later plan still buys it."""
+    record_event(session, user_id, ingredient, reason=EventReason.MANUAL, level=0)
+
+
 def _imported_pasta(session: Session, user_id: int, title: str, url: str) -> Recipe:
     return save_imported_recipe(
         session,
@@ -164,6 +171,7 @@ def test_ticked_package_is_one_low_confidence_purchase_and_not_a_second(
     seeded_session: Session, owner: int
 ) -> None:
     chicken = ing(seeded_session, "chicken thigh")
+    _counted(seeded_session, owner, chicken)
     today, end = _week()
     recipe = _recipe(
         seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
@@ -179,8 +187,11 @@ def test_ticked_package_is_one_low_confidence_purchase_and_not_a_second(
     assert added == ["chicken thigh"]
     assert line.is_stocked
     assert get_or_create_item(seeded_session, owner, chicken).quantity == pytest.approx(907)
-    purchase = _events(seeded_session, owner, chicken.id)[0]
-    assert purchase.reason == EventReason.PURCHASE
+    purchase = next(
+        event
+        for event in _events(seeded_session, owner, chicken.id)
+        if event.reason == EventReason.PURCHASE
+    )
     assert purchase.event_confidence == INFERRED_PURCHASE_CONFIDENCE
     assert purchase.event_confidence < 0.5
     assert purchase.source_ref == f"shopping:{listing.id}"
@@ -188,13 +199,16 @@ def test_ticked_package_is_one_low_confidence_purchase_and_not_a_second(
 
     assert stock_ticked_items(seeded_session, owner, listing)[0] == []
     assert get_or_create_item(seeded_session, owner, chicken).quantity == pytest.approx(907)
-    assert len(_events(seeded_session, owner, chicken.id)) == 1
+    assert [
+        event.reason for event in _events(seeded_session, owner, chicken.id)
+    ] == [EventReason.MANUAL, EventReason.PURCHASE]
 
 
 def test_rebuild_keeps_when_the_list_was_built_and_drops_a_covered_item(
     seeded_session: Session, owner: int
 ) -> None:
     chicken = ing(seeded_session, "chicken thigh")
+    _counted(seeded_session, owner, chicken)
     today, end = _week()
     recipe = _recipe(
         seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
@@ -298,6 +312,7 @@ def test_skip_survives_rebuild_and_re_adding_clears_it(
     seeded_session: Session, owner: int
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
+    _counted(seeded_session, owner, pasta)
     today, end = _week()
     recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
     _plan(seeded_session, owner, recipe, today)
@@ -321,6 +336,8 @@ def test_skip_survives_rebuild_and_re_adding_clears_it(
 def test_two_rebuilds_keep_every_item_id(seeded_session: Session, owner: int) -> None:
     pasta = ing(seeded_session, "spaghetti")
     chicken = ing(seeded_session, "chicken thigh")
+    _counted(seeded_session, owner, pasta)
+    _counted(seeded_session, owner, chicken)
     today, end = _week()
     recipe = _recipe(
         seeded_session,
@@ -349,6 +366,7 @@ def test_a_tick_survives_a_plan_change_that_still_needs_the_ingredient(
     seeded_session: Session, owner: int
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
+    _counted(seeded_session, owner, pasta)
     today, end = _week()
     recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
     entry = _plan(seeded_session, owner, recipe, today)
@@ -371,6 +389,7 @@ def test_removing_the_only_meal_keeps_a_ticked_row(
     seeded_session: Session, owner: int
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
+    _counted(seeded_session, owner, pasta)
     today, end = _week()
     recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
     entry = _plan(seeded_session, owner, recipe, today)
@@ -394,6 +413,7 @@ def test_a_stocked_row_drops_off_and_comes_back_unticked(
     seeded_session: Session, owner: int
 ) -> None:
     chicken = ing(seeded_session, "chicken thigh")
+    _counted(seeded_session, owner, chicken)
     today, end = _week()
     recipe = _recipe(
         seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
@@ -424,6 +444,7 @@ def test_a_skipped_row_is_deleted_once_its_key_is_not_generated(
     seeded_session: Session, owner: int
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
+    _counted(seeded_session, owner, pasta)
     today, end = _week()
     recipe = _recipe(seeded_session, owner, "Noodles", [("200 g spaghetti", pasta, False)])
     entry = _plan(seeded_session, owner, recipe, today)
@@ -558,6 +579,7 @@ def test_a_matched_line_drops_its_unnamed_row_even_when_ticked(
     seeded_session: Session, owner: int
 ) -> None:
     beef = ing(seeded_session, "ground beef")
+    _counted(seeded_session, owner, beef)
     today, end = _week()
     recipe = _recipe(seeded_session, owner, "Mystery stew", [("1 cup xyzzybroth", None, False)])
     _plan(seeded_session, owner, recipe, today)
@@ -594,6 +616,7 @@ def test_a_matched_line_drops_its_unnamed_row_even_when_ticked(
 
 def test_stocking_skips_an_unnamed_recipe_row(seeded_session: Session, owner: int) -> None:
     flour = ing(seeded_session, "all-purpose flour")
+    _counted(seeded_session, owner, flour)
     today, end = _week()
     recipe = _recipe(
         seeded_session,
@@ -631,6 +654,7 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
     pasta = ing(seeded_session, "spaghetti")
     chicken = ing(seeded_session, "chicken thigh")
     record_event(seeded_session, owner, pasta, reason=EventReason.PURCHASE, delta=500)
+    _counted(seeded_session, owner, chicken)
     pantry = _pantry(seeded_session, owner)
 
     stocked = _recipe(
@@ -729,6 +753,7 @@ def test_a_staple_is_not_debited(
 def test_shopping_page_adds_ticked_items_at_package_size(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
+    _counted(seeded_session, web_user.id, ing(seeded_session, "spaghetti"))
     recipe = _imported_pasta(
         seeded_session, web_user.id, "Pasta Night", "https://example.com/core-loop-pasta"
     )
@@ -765,7 +790,11 @@ def test_shopping_page_adds_ticked_items_at_package_size(
     seeded_session.expire_all()
     pasta = ing(seeded_session, "spaghetti")
     assert get_or_create_item(seeded_session, web_user.id, pasta).quantity == pytest.approx(454)
-    purchase = _events(seeded_session, web_user.id, pasta.id)[0]
+    purchase = next(
+        event
+        for event in _events(seeded_session, web_user.id, pasta.id)
+        if event.reason == EventReason.PURCHASE
+    )
     assert purchase.event_confidence == INFERRED_PURCHASE_CONFIDENCE
     assert purchase.source_ref.startswith("shopping:")
 
@@ -778,6 +807,7 @@ def test_shopping_page_adds_ticked_items_at_package_size(
 def test_two_ticked_lines_use_the_plural_button(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
+    _counted(seeded_session, web_user.id, ing(seeded_session, "spaghetti"))
     recipe = _imported_pasta(
         seeded_session, web_user.id, "Plural Pasta", "https://example.com/core-loop-plural"
     )
@@ -799,6 +829,7 @@ def test_two_ticked_lines_use_the_plural_button(
 def test_a_bad_unit_on_a_ticked_line_adds_nothing(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
+    _counted(seeded_session, web_user.id, ing(seeded_session, "spaghetti"))
     recipe = _imported_pasta(
         seeded_session, web_user.id, "Bad Unit Pasta", "https://example.com/core-loop-bad-unit"
     )
@@ -830,12 +861,18 @@ def test_a_bad_unit_on_a_ticked_line_adds_nothing(
             PantryItem.user_id == web_user.id, PantryItem.ingredient_id == pasta.id
         )
     )
-    assert row is None
+    assert row is not None
+    assert row.quantity == pytest.approx(0)
+    assert not any(
+        event.reason == EventReason.PURCHASE
+        for event in _events(seeded_session, web_user.id, pasta.id)
+    )
 
 
 def test_manual_lines_and_skips_survive_the_page_rebuild(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
+    _counted(seeded_session, web_user.id, ing(seeded_session, "spaghetti"))
     recipe = _imported_pasta(
         seeded_session, web_user.id, "Skip Pasta", "https://example.com/core-loop-skip"
     )
@@ -881,6 +918,8 @@ def test_shopping_page_names_unidentified_recipe_lines(
 ) -> None:
     flour = ing(seeded_session, "all-purpose flour")
     pasta = ing(seeded_session, "spaghetti")
+    _counted(seeded_session, web_user.id, flour)
+    _counted(seeded_session, web_user.id, pasta)
     recipe = _recipe(
         seeded_session,
         web_user.id,
@@ -928,6 +967,7 @@ def test_ticking_an_unnamed_row_does_not_change_the_pantry(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
     flour = ing(seeded_session, "all-purpose flour")
+    _counted(seeded_session, web_user.id, flour)
     recipe = _recipe(
         seeded_session,
         web_user.id,
@@ -968,6 +1008,7 @@ def test_ticking_an_unnamed_row_does_not_change_the_pantry(
 def test_naming_a_ticked_unnamed_row_ticks_the_named_row(
     signed_in: TestClient, seeded_session: Session, web_user
 ) -> None:
+    _counted(seeded_session, web_user.id, ing(seeded_session, "ground beef"))
     recipe = _recipe(
         seeded_session, web_user.id, "Mystery stew", [("1 cup xyzzybroth", None, False)]
     )
@@ -1078,6 +1119,7 @@ def test_receipt_review_unticks_what_the_list_already_added(
 ) -> None:
     pasta = ing(seeded_session, "spaghetti")
     garlic = ing(seeded_session, "garlic")
+    _counted(seeded_session, web_user.id, pasta)
     recipe = _imported_pasta(
         seeded_session, web_user.id, "Receipt Pasta", "https://example.com/core-loop-receipt"
     )
@@ -1421,3 +1463,57 @@ def test_is_ignorable_matches_plain_water_and_serving_lines_only() -> None:
     assert is_ignorable("Rice, for serving")
     assert not is_ignorable("2 cups watercress")
     assert not is_ignorable("1 cup chicken stock")
+
+
+def test_an_untouched_ingredient_is_a_check_and_cooking_writes_no_event(
+    seeded_session: Session, owner: int
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    today, end = _week()
+    recipe = _recipe(
+        seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
+    )
+    _plan(seeded_session, owner, recipe, today)
+
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+    assert chicken.id not in {item.ingredient_id for item in listing.items}
+    rows = check_first_rows(seeded_session, owner, covers_from=today, covers_to=end)
+    assert [(row.ingredient.id, row.kind) for row in rows] == [(chicken.id, CheckKind.UNKNOWN)]
+
+    assert consume_for_recipe(
+        seeded_session, owner, {chicken.id: 200}, recipe_id=recipe.id
+    ) == []
+    assert _events(seeded_session, owner, chicken.id) == []
+
+
+def test_a_known_level_of_zero_is_still_a_buy_line(
+    seeded_session: Session, owner: int
+) -> None:
+    chicken = ing(seeded_session, "chicken thigh")
+    _counted(seeded_session, owner, chicken)
+    today, end = _week()
+    recipe = _recipe(
+        seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
+    )
+    _plan(seeded_session, owner, recipe, today)
+
+    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
+
+    assert [item.ingredient_id for item in listing.items if not item.is_skipped] == [chicken.id]
+
+
+def test_two_unknowns_are_nearly_there(seeded_session: Session, owner: int) -> None:
+    rice = ing(seeded_session, "white rice")
+    cream = ing(seeded_session, "heavy cream")
+    recipe = _recipe(
+        seeded_session,
+        owner,
+        "Rice cream",
+        [("200 g white rice", rice, False), ("200 g heavy cream", cream, False)],
+    )
+
+    suggestion = score_recipe(seeded_session, recipe, _pantry(seeded_session, owner))
+
+    assert suggestion.surface == Surface.NEARLY_THERE
+    assert suggestion.missing == []
+    assert suggestion.to_check == [rice, cream]

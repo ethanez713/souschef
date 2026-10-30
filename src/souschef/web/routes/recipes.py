@@ -24,7 +24,14 @@ from souschef.db import get_db
 from souschef.ingest.recipes.importers import ImportError_, import_from_url
 from souschef.ingest.recipes.jsonld import RawRecipe
 from souschef.ingest.recipes.paste import parse_pasted_recipe
-from souschef.models import CanonicalIngredient, Recipe, RecipeIngredient, RecipeSource, User
+from souschef.models import (
+    CanonicalIngredient,
+    MealPlanEntry,
+    Recipe,
+    RecipeIngredient,
+    RecipeSource,
+    User,
+)
 from souschef.models.ingredient import AliasSource, IngredientCategory
 from souschef.planning.suggest import by_surface, probably_gone_ids, suggest
 from souschef.web import auth
@@ -317,9 +324,21 @@ def _recipe_page(
     pantry = {v.ingredient.id: v for v in views}
     gone = probably_gone_ids(db, user.id, views, today)
     catalog = db.scalars(select(CanonicalIngredient.name).order_by(CanonicalIngredient.name)).all()
+    planned_on = db.scalars(
+        select(MealPlanEntry.plan_date)
+        .where(
+            MealPlanEntry.user_id == user.id,
+            MealPlanEntry.recipe_id == recipe.id,
+            MealPlanEntry.plan_date >= today,
+            MealPlanEntry.cooked_at.is_(None),
+            MealPlanEntry.skipped_at.is_(None),
+        )
+        .order_by(MealPlanEntry.plan_date)
+    ).all()
     return _render(
         request,
         "recipe_detail.html",
+        planned_on=planned_on,
         status_code=status_code,
         recipe=recipe,
         rows=rows,

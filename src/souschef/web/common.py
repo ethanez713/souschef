@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -220,6 +221,24 @@ def _receipt_label(status: object) -> str:
     }.get(str(key), str(key).replace("_", " "))
 
 
+_VULGAR = {
+    "1/2": "½", "1/3": "⅓", "2/3": "⅔", "1/4": "¼", "3/4": "¾",
+    "1/8": "⅛", "3/8": "⅜", "5/8": "⅝", "7/8": "⅞",
+}
+_TYPED_FRACTION = re.compile(r"\b(?:(\d+) )?([1-7]/[2348])\b")
+
+
+def _fractions(text: str) -> str:
+    # In the body font the space in "1 1/2" is too narrow to see, so it reads "11/2".
+    def glyph(match: re.Match[str]) -> str:
+        whole, fraction = match.groups()
+        if fraction not in _VULGAR:
+            return match.group(0)
+        return f"{whole or ''}{_VULGAR[fraction]}"
+
+    return _TYPED_FRACTION.sub(glyph, text or "")
+
+
 STATIC_DIR = WEB_DIR.parent / "static"
 
 
@@ -237,6 +256,7 @@ templates.env.filters["entry_amount"] = _entry_amount
 templates.env.filters["shop_qty"] = _shop_qty
 templates.env.filters["shop_need"] = _shop_need
 templates.env.filters["receipt_label"] = _receipt_label
+templates.env.filters["fractions"] = _fractions
 
 
 logconfig.configure()

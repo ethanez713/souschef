@@ -58,7 +58,7 @@
       <h2>Not tracked</h2>
       <ul class="plain">
         {% for line in not_tracked %}
-          <li>{{ line }}</li>
+          <li>{{ line|fractions }}</li>
         {% endfor %}
       </ul>
       <p class="meta">These lines aren’t in the pantry, so cooking doesn’t change them.</p>

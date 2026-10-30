@@ -26,7 +26,7 @@
   <form method="post" action="/shopping/item/{{ it.id }}/check" class="shop-item{{ ' checked' if it.is_checked }}"
         hx-post="/shopping/item/{{ it.id }}/check" hx-target="#shop-list" hx-select="#shop-list" hx-swap="outerHTML">
     <input type="hidden" name="checked" value="{{ '0' if it.is_checked else '1' }}">
-    {{ row(it.label, sub=('for ' ~ for_recipes) if for_recipes else '', lead=lead, value=amount if qty else '', name_sheet='shop-item-' ~ it.id) }}
+    {{ row(it.label|fractions, sub=('for ' ~ for_recipes) if for_recipes else '', lead=lead, value=amount if qty else '', name_sheet='shop-item-' ~ it.id) }}
   </form>
 </div>
 {% call sheet('shop-item-' ~ it.id, it.label, open=(amount_for == it.id or name_for == it.id)) %}

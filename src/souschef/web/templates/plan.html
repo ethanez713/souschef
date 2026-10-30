@@ -7,7 +7,8 @@
 {% macro day_row(day, today, entries) %}
 <div class="list-row plan-day{{ ' today' if day == today }}" id="d-{{ day.isoformat() }}" data-plan-day="{{ day.isoformat() }}"{% if day >= today %} data-drop{% endif %}>
   <span class="list-row-main">
-    <span class="list-row-title">{{ day.strftime('%a %-d %b') }}{% if day == today %} <span class="rel">Today</span>{% elif (day - today).days == 1 %} <span class="rel">Tomorrow</span>{% endif %}</span>
+    <span class="list-row-title">{{ day.strftime('%a %-d %b') }}</span>
+    {%- if day == today %}<span class="list-row-sub rel">Today</span>{% elif (day - today).days == 1 %}<span class="list-row-sub rel">Tomorrow</span>{% endif %}
   </span>
   {% if entries %}
   <div class="plan-meals">

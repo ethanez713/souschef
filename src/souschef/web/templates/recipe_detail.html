@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import plan_form, row, sheet, group_header, toast %}
+{% from "macros.html" import plan_form, row, sheet, group_header, toast, day_label %}
 {% set active = 'recipes' %}
 {% block title %}{{ recipe.title }} · SousChef{% endblock %}
 {% block content %}
@@ -12,6 +12,7 @@
     serves {{ recipe.servings }}
     {%- if recipe.total_minutes %} · {{ recipe.total_minutes }} min{% endif %}
     {%- if recipe.times_cooked %} · cooked {{ recipe.times_cooked }}×{% endif %}
+    {%- if planned_on %} · planned {% for d in planned_on %}{% set when = day_label(d, today)|string %}{{ when|lower if when in ('Today', 'Tomorrow') else when }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}
   </p>
 
   {% if cooked %}
@@ -56,7 +57,7 @@
   {% for line_row in rows %}
     {% set r = line_row.req %}
     {% if line_row.line and line_row.line.is_ignored %}
-      {{ row(line_row.raw, cls='ingredient-row') }}
+      {{ row(line_row.raw|fractions, cls='ingredient-row') }}
     {% elif r %}
       {% set v = pantry.get(r.ingredient.id) %}
       {% set have = v.quantity if v else 0 %}
@@ -80,7 +81,7 @@
           need <span class="num">{% if line_row.line and line_row.line.quantity is not none %}{{ line_row.line.quantity|quantity(r.ingredient, line_row.line.unit or none) }}{% else %}{{ r.quantity|quantity(r.ingredient) }}{% endif %}</span> · {% if have > 0 and not is_gone %}have <span class="num">{{ have|stock(r.ingredient) }}</span>{% else %}have none{% endif %}
         {%- endif -%}
       {%- endset %}
-      {{ row(r.raw_text, sub=sub, trail=chip, sheet='match-' ~ loop.index, cls='ingredient-row') }}
+      {{ row(r.raw_text|fractions, sub=sub, trail=chip, sheet='match-' ~ loop.index, cls='ingredient-row') }}
       {% call sheet('match-' ~ loop.index, 'Change match') %}
         <form method="post" action="/recipes/{{ recipe.id }}/match">
           <input type="hidden" name="raw_text" value="{{ r.raw_text }}">
@@ -93,7 +94,7 @@
       {% endcall %}
     {% else %}
       {% set chip %}<span class="badge warn">Needs naming</span>{% endset %}
-      {{ row(line_row.raw, trail=chip, sheet='match-' ~ loop.index, cls='ingredient-row') }}
+      {{ row(line_row.raw|fractions, trail=chip, sheet='match-' ~ loop.index, cls='ingredient-row') }}
       {% call sheet('match-' ~ loop.index, 'Needs naming') %}
         <form method="post" action="/recipes/{{ recipe.id }}/match">
           <input type="hidden" name="raw_text" value="{{ line_row.raw }}">

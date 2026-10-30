@@ -108,8 +108,7 @@ class Suggestion:
         else:
             base = f"Needs {self.missing_count} things"
         if self.unidentified:
-            noun = "line" if self.unidentified == 1 else "lines"
-            return f"{base} · {self.unidentified} {noun} not identified"
+            return f"{base} · {self.unidentified} needs naming"
         return base
 
 

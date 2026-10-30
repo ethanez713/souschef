@@ -3561,7 +3561,7 @@ def test_pages_follow_the_signed_in_unit_system(
     assert 'have <span class="num">1 lb</span>' in recipe_page
 
     shopping = signed_in.get("/shopping").text
-    assert "1 × 1 lb" in shopping
+    assert "1 box" in shopping
     assert "needs 1 lb" in shopping
     assert "needs 1 lb" not in _outside_sheets(shopping)
     assert "454 g" not in shopping
@@ -3582,7 +3582,7 @@ def test_pages_follow_the_signed_in_unit_system(
     assert 'have <span class="num">454 g</span>' in recipe_page
 
     shopping = signed_in.get("/shopping").text
-    assert "1 × 454 g" in shopping
+    assert "1 box" in shopping
     assert "needs 454 g" in shopping
     assert "needs 454 g" not in _outside_sheets(shopping)
 

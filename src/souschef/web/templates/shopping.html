@@ -19,7 +19,7 @@
   {% set shown_unit = amount_unit %}
 {% else %}
   {% set shown_amount = '{:g}'.format(it.purchase_qty) if it.purchase_qty is not none else '' %}
-  {% set shown_unit = it.purchase_unit or '' %}
+  {% set shown_unit = it|shop_unit %}
 {% endif %}
 {% set needs_name = it.ingredient_id is none and it.source.value == 'recipe' %}
 <div class="shop-row">

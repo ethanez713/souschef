@@ -640,7 +640,7 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
         [("200 g spaghetti", pasta, False), ("1 cup xyzzybroth", None, False)],
     )
     suggestion = score_recipe(seeded_session, stocked, pantry)
-    assert suggestion.reason == "You have everything named · 1 line not identified"
+    assert suggestion.reason == "You have everything named · 1 needs naming"
 
     two = _recipe(
         seeded_session,
@@ -653,7 +653,7 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
         ],
     )
     assert score_recipe(seeded_session, two, pantry).reason == (
-        "You have everything named · 2 lines not identified"
+        "You have everything named · 2 needs naming"
     )
 
     short = _recipe(
@@ -667,7 +667,7 @@ def test_readiness_names_unidentified_lines_and_ignores_optional_ones(
         ],
     )
     missing = score_recipe(seeded_session, short, pantry)
-    assert missing.reason == "Just needs chicken thigh · 1 line not identified"
+    assert missing.reason == "Just needs chicken thigh · 1 needs naming"
 
     garnish = _recipe(
         seeded_session,

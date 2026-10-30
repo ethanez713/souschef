@@ -31,6 +31,7 @@ from souschef.core.units import (
 )
 from souschef.models import CanonicalIngredient, EventReason, InventoryEvent, Recipe, User
 from souschef.models.base import Base
+from souschef.planning.next_step import recipe_readiness
 from souschef.planning.shopping import build_shopping_list, is_package_count
 
 PLAN_DAYS = 10
@@ -151,20 +152,44 @@ def _count_prefix(
     formatted = _format_for(qty, "count", ingredient, system, show_alt)
     if " dozen" in formatted:
         return formatted
-    noun = ingredient.count_noun
-    if noun and not _noun_names_the_ingredient(noun, ingredient.name):
+    # The amount keeps the count noun even when that noun is the food ("2 onions").
+    if ingredient.count_noun:
         return formatted
     return f"{_plain_amount(qty)}×"
 
 
-def _noun_names_the_ingredient(noun: str, name: str) -> bool:
-    """True when the count word is the food itself ("onion", "egg"), not "clove"."""
-    word = noun.casefold()
-    tokens = name.casefold().split()
-    if word in tokens:
-        return True
-    last = tokens[-1] if tokens else ""
-    return last == word or last.removesuffix("s") == word or word.removesuffix("s") == last
+def _package_noun(ingredient: object | None) -> str:
+    return (getattr(ingredient, "package_noun", None) or "").strip()
+
+
+def _one_count_package(ingredient: object | None) -> bool:
+    """A package that is one counted item, not a bag of several."""
+    if ingredient is None:
+        return False
+    qty = getattr(ingredient, "package_qty", None)
+    unit = (getattr(ingredient, "package_unit", None) or "").strip()
+    noun = (getattr(ingredient, "count_noun", None) or "").strip()
+    return bool(qty) and float(qty) == 1 and unit == "count" and bool(noun)
+
+
+def purchase_form_unit(item: object) -> str:
+    """The unit box word: the noun the row already shows, else the stored unit."""
+    unit = (getattr(item, "purchase_unit", None) or "").strip()
+    ingredient = getattr(item, "ingredient", None)
+    if ingredient is None:
+        return unit
+    if is_package_count(unit):
+        noun = _package_noun(ingredient)
+        if noun:
+            return noun
+        if _one_count_package(ingredient):
+            return (ingredient.count_noun or "").strip()
+        return unit
+    if unit in {"", "count"}:
+        noun = (getattr(ingredient, "count_noun", None) or "").strip()
+        if noun:
+            return noun
+    return unit
 
 
 def purchase_qty_text(item: object, *, system: str, show_alt: bool) -> str:
@@ -177,6 +202,15 @@ def purchase_qty_text(item: object, *, system: str, show_alt: bool) -> str:
     amount = float(qty)
     if is_package_count(unit):
         packages = int(round(amount))
+        # A container word is the thing you pick up ("1 bottle"), not the recipe measure.
+        noun = _package_noun(ingredient)
+        if noun:
+            return _format_for(
+                float(packages), "count", ingredient, system, show_alt, noun=noun, name=""
+            )
+        # One count per package is the item itself: "1 onion", not "1 × 1 onion".
+        if _one_count_package(ingredient):
+            return _format_for(float(packages), "count", ingredient, system, show_alt)
         if ingredient is not None and ingredient.package_qty and ingredient.package_unit:
             size = _format_for(
                 ingredient.package_qty,
@@ -269,6 +303,8 @@ templates.env.filters["form_unit"] = _form_unit
 templates.env.filters["entry_amount"] = _entry_amount
 templates.env.filters["shop_qty"] = _shop_qty
 templates.env.filters["shop_need"] = _shop_need
+templates.env.filters["shop_unit"] = purchase_form_unit
+templates.env.globals["recipe_readiness"] = recipe_readiness
 templates.env.filters["receipt_label"] = _receipt_label
 templates.env.filters["fractions"] = _fractions
 

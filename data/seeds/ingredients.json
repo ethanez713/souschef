@@ -2582,7 +2582,8 @@
         "white wine",
         "sauvignon blanc",
         "pinot grigio"
-      ]
+      ],
+      "package_noun": "bottle"
     },
     {
       "name": "dry red wine",
@@ -2598,7 +2599,8 @@
         "red wine",
         "cabernet",
         "merlot"
-      ]
+      ],
+      "package_noun": "bottle"
     }
   ]
 }

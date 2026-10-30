@@ -62,6 +62,13 @@ def readiness_line(missing: Sequence[str], unidentified: int = 0) -> Readiness:
         text = "Ready to cook"
         tone = "good"
     if unidentified > 0:
-        noun = "line" if unidentified == 1 else "lines"
-        text += f" · {unidentified} {noun} not identified"
+        text += f" · {unidentified} needs naming"
     return Readiness(text, tone)
+
+
+def recipe_readiness(suggestion: object) -> str:
+    """The recipes-list sub-line: named gaps, then unmatched lines."""
+    missing = getattr(suggestion, "missing", ()) or ()
+    names = [gap.ingredient.name for gap in missing]
+    unidentified = getattr(suggestion, "unidentified", 0) or 0
+    return readiness_line(names, int(unidentified)).text

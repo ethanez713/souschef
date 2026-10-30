@@ -131,16 +131,16 @@ def test_next_step_first_match(
     ("missing", "unidentified", "text", "tone"),
     [
         ([], 0, "Ready to cook", "good"),
-        ([], 1, "Ready to cook · 1 line not identified", "good"),
-        ([], 2, "Ready to cook · 2 lines not identified", "good"),
+        ([], 1, "Ready to cook · 1 needs naming", "good"),
+        ([], 2, "Ready to cook · 2 needs naming", "good"),
         (["garlic"], 0, "Missing 1: garlic", "warn"),
-        (["garlic", "onion"], 1, "Missing 2: garlic, onion · 1 line not identified", "warn"),
+        (["garlic", "onion"], 1, "Missing 2: garlic, onion · 1 needs naming", "warn"),
         (["a", "b", "c"], 0, "Missing 3: a, b, c", "warn"),
         (["a", "b", "c", "d"], 0, "Missing 4: a, b, c +1 more", "warn"),
         (
             ["a", "b", "c", "d", "e"],
             2,
-            "Missing 5: a, b, c +2 more · 2 lines not identified",
+            "Missing 5: a, b, c +2 more · 2 needs naming",
             "warn",
         ),
     ],
@@ -364,7 +364,7 @@ def test_an_unidentified_line_stays_on_the_readiness(
     page = signed_in.get("/").text
 
     assert _cook_anchors(page) == [(f"/recipes/{recipe.id}/cook?entry={entry.id}", "Cook")]
-    assert "Ready to cook · 1 line not identified" in page
+    assert "Ready to cook · 1 needs naming" in page
     _no_old_home(page)
 
 

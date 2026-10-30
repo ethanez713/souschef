@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from souschef.core.audit import build_audit
 from souschef.core.inventory import live_events, physical_of, set_level, void_events
-from souschef.core.units import NeedsPackage, UnitConversionError, to_base
+from souschef.core.units import InputUnitError, NeedsPackage, UnitConversionError, to_base
 from souschef.db import get_db
 from souschef.models import (
     CanonicalIngredient,
@@ -32,6 +32,7 @@ from souschef.planning.shopping import (
     NEEDS_NAMING_AISLE,
     ShoppingError,
     add_manual_item,
+    edited_purchase,
     live_list,
     requirements_for_audit,
     stock_ticked_items,
@@ -684,11 +685,15 @@ def edit_shopping_amount(
         return _amount_error(request, db, user, item.id, "Enter a unit.", amount, unit)
     if len(unit_text) > 32:
         return _amount_error(request, db, user, item.id, "Unit is too long.", amount, unit)
+    try:
+        purchase_qty, purchase_unit = edited_purchase(item.ingredient, parsed, unit_text)
+    except (NeedsPackage, InputUnitError) as exc:
+        return _amount_error(request, db, user, item.id, str(exc), amount, unit)
     previous_qty = "" if item.purchase_qty is None else str(item.purchase_qty)
     previous_unit = item.purchase_unit or ""
     previous_edited = "1" if item.amount_edited else "0"
-    item.purchase_qty = parsed
-    item.purchase_unit = unit_text
+    item.purchase_qty = purchase_qty
+    item.purchase_unit = purchase_unit
     item.amount_edited = True
     db.flush()
     return _shop_redirect(

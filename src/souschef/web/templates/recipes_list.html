@@ -1,12 +1,12 @@
 {% from "macros.html" import row, group_header %}
-{% set labels = {'cook_now': 'Ready', 'nearly_there': 'Missing 1–3', 'reach': 'Missing 4+'} %}
+{% set labels = {'cook_now': 'Ready', 'nearly_there': 'Missing 1–3', 'reach': 'Missing more'} %}
 {% for surface, items in grouped.items() %}
   {% if items %}
     {{ group_header(labels.get(surface|string, surface), items|length) }}
     {% for s in items %}
       {% set gaps = s.missing_count + s.unidentified %}
       {% set chip %}<span class="badge {{ 'good' if gaps == 0 else 'warn' }}">{{ 'Ready' if gaps == 0 else 'Missing ' ~ gaps }}</span>{% endset %}
-      {{ row(s.recipe.title, sub=s.reason, value=(s.recipe.total_minutes ~ ' min') if s.recipe.total_minutes else '', trail=chip, href='/recipes/' ~ s.recipe.id) }}
+      {{ row(s.recipe.title, sub=recipe_readiness(s), value=(s.recipe.total_minutes ~ ' min') if s.recipe.total_minutes else '', trail=chip, href='/recipes/' ~ s.recipe.id) }}
     {% endfor %}
   {% endif %}
 {% endfor %}

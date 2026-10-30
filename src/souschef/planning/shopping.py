@@ -622,6 +622,32 @@ def _manual_purchase(
     return ingredient, resolved.quantity, purchase_unit, None, resolved.quantity, purchase_unit
 
 
+def edited_purchase(
+    ingredient: CanonicalIngredient | None, amount: float, unit: str
+) -> tuple[float, str]:
+    """Stored purchase for a sheet edit of the word the row already shows.
+
+    A count noun ("onion") is a count. A package word ("can", "bottle") is that
+    many packages, so posting the prefilled word keeps the same base amount.
+    A measure keeps the spelling the form posted ("lb").
+    """
+    typed = unit.strip()
+    noun = ingredient.count_noun if ingredient is not None else None
+    if count_noun_measure(typed, noun):
+        return amount, "count"
+    if is_package_count(typed):
+        return amount, PACKAGE_COUNT_UNIT
+    resolved = resolve_entry(
+        amount,
+        typed,
+        package_qty=ingredient.package_qty if ingredient is not None else None,
+        package_unit=ingredient.package_unit if ingredient is not None else None,
+    )
+    if resolved.packages is not None:
+        return resolved.packages, PACKAGE_COUNT_UNIT
+    return resolved.quantity, resolved.unit or "count"
+
+
 def add_manual_item(
     session: Session,
     shopping_list: ShoppingList,

@@ -34,7 +34,7 @@ router = APIRouter()
 _RECIPE_GROUPS = (
     (Surface.COOK_NOW, "Ready"),
     (Surface.NEARLY_THERE, "Missing 1–3"),
-    (Surface.REACH, "Missing 4+"),
+    (Surface.REACH, "Missing more"),
 )
 
 # Past this many recipes the day sheet offers a filter. Fewer, and the list

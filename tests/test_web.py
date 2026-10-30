@@ -706,7 +706,9 @@ def test_audit_page_renders_with_nothing_planned(signed_in: TestClient) -> None:
 def test_receipts_page_renders(signed_in: TestClient) -> None:
     response = signed_in.get("/receipts")
     assert response.status_code == 200
-    assert "Photograph a receipt" in response.text
+    file_inputs = re.findall(r"<input[^>]*type=\"file\"[^>]*>", response.text)
+    assert len(file_inputs) == 2
+    assert sum("capture=" in tag for tag in file_inputs) == 1
 
 
 def test_nyt_cookie_is_stored_encrypted(

@@ -9,12 +9,26 @@
 
   <div class="card">
     <form method="post" action="/receipts/upload" enctype="multipart/form-data">
-      {# The label is the button: picking a photo uploads it, so scanning is one tap.
-         capture= opens the camera directly on Android. #}
-      <label class="btn primary block" for="img">{{ icon('camera', 16) }}Photograph a receipt</label>
+      {# Each label is a button and picking a photo uploads it. capture= opens the camera
+         directly on Android and hides the gallery, so a saved photo needs the second input. #}
+      <div class="actions">
+        <label class="btn primary" for="img">{{ icon('camera', 16) }}Take photo</label>
+        <label class="btn" for="img-file">Choose file</label>
+      </div>
       <input id="img" name="image" type="file" accept="image/*" capture="environment" hidden
-             onchange="if (this.files.length) this.form.submit()">
+             onchange="scanPicked(this)">
+      <input id="img-file" name="image" type="file" accept="image/*" hidden
+             onchange="scanPicked(this)">
     </form>
+    <script>
+    function scanPicked(input) {
+      if (!input.files.length) return;
+      input.form.querySelectorAll('input[type=file]').forEach(function (other) {
+        if (other !== input) other.disabled = true;
+      });
+      input.form.submit();
+    }
+    </script>
     <p class="note">
       Scanning runs on your own server. Nothing is sent anywhere else.
     </p>

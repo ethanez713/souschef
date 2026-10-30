@@ -3212,7 +3212,10 @@ def test_the_plan_row_has_a_servings_field(
 
     page = signed_in.get("/plan").text
     assert f'action="/plan/{entry.id}/servings"' in page
-    assert 'value="6"' in page
+    stepper = page.split(f'id="serv-{entry.id}"', 1)[1].split("</form>", 1)[0]
+    assert '<span class="num">6</span>' in stepper
+    assert 'name="servings" value="5"' in stepper
+    assert 'name="servings" value="7"' in stepper
 
 
 def test_servings_must_be_between_one_and_fifty(

@@ -1260,11 +1260,12 @@ def test_home_asks_about_uncooked_meals_from_the_last_week(
     page = signed_in.get("/")
 
     assert "<h1>Home</h1>" in page.text
-    assert "Did you cook these?" in page.text
+    assert "Did you cook this?" in page.text
     assert "Yesterday" in page.text
-    assert f'/recipes/{yesterday.id}/cook?entry={missed.id}' in page.text
+    assert f'action="/recipes/{yesterday.id}/cooked"' in page.text
+    assert f'name="entry_id" value="{missed.id}"' in page.text
     assert f'/plan/{missed.id}/skip' in page.text
-    assert f'/recipes/{ancient.id}/cook?entry={too_old.id}' not in page.text
+    assert f'name="entry_id" value="{too_old.id}"' not in page.text
     assert f'/plan/{too_old.id}/skip' not in page.text
     assert "Ate leftovers" not in page.text
     assert "Ancient Pasta" not in page.text
@@ -1289,8 +1290,8 @@ def test_plan_keeps_the_last_week_and_hides_older_meals(
 
     page = signed_in.get("/plan")
 
-    assert f'/recipes/{recent.id}/cook?entry={entry.id}' in page.text
-    assert f'/recipes/{ancient.id}/cook?entry={too_old.id}' not in page.text
+    assert f'name="entry_id" value="{entry.id}"' in page.text
+    assert f'name="entry_id" value="{too_old.id}"' not in page.text
 
 
 def test_skipping_a_past_meal_keeps_it_and_debits_nothing(
@@ -1327,11 +1328,11 @@ def test_skipping_a_past_meal_keeps_it_and_debits_nothing(
     assert get_or_create_item(seeded_session, web_user.id, pasta).quantity == pytest.approx(500)
 
     home = signed_in.get("/")
-    assert "Did you cook these?" not in home.text
+    assert "Did you cook this?" not in home.text
     plan = signed_in.get("/plan")
     assert "Skipped Pasta" in plan.text
     assert ">Skipped<" in plan.text
-    assert f'/recipes/{recipe.id}/cook?entry={entry.id}' not in plan.text
+    assert f'name="entry_id" value="{entry.id}"' not in plan.text
 
 
 def test_cook_preview_warns_names_untracked_lines_and_offers_the_past_week(

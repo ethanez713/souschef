@@ -21,7 +21,7 @@ from souschef.planning.suggest import (
     suggest,
 )
 from souschef.web import auth
-from souschef.web.common import PAST_DAYS, _change_toast, _horizon, _render
+from souschef.web.common import PAST_DAYS, _change_toast, _cook_toast, _horizon, _render
 from souschef.web.routes.shopping import shop_counts
 
 router = APIRouter()
@@ -57,6 +57,7 @@ def render_home(
     user: User,
     *,
     changed: int = 0,
+    cooked_cook: int = 0,
     form_error: str = "",
 ) -> HTMLResponse:
     today, horizon_end = _horizon()
@@ -156,6 +157,7 @@ def render_home(
         step=step,
         tomorrow_title=_meal_title(tomorrow_entry) if tomorrow_entry is not None else "",
         change=_change_toast(db, user, changed),
+        cook_toast=_cook_toast(db, user, cooked_cook, "/"),
         form_error=form_error,
     )
 
@@ -164,7 +166,8 @@ def render_home(
 def dashboard(
     request: Request,
     changed: int = 0,
+    cooked_cook: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    return render_home(request, db, user, changed=changed)
+    return render_home(request, db, user, changed=changed, cooked_cook=cooked_cook)

@@ -395,3 +395,36 @@ def _step_from_shopping(shop_html: str) -> str | None:
     if basket:
         return f"Add {int(basket.group(1))} to the pantry"
     return "You're set"
+
+
+def test_cooked_from_home_debits_in_one_tap_and_undo_returns_home(
+    signed_in: TestClient, seeded_session: Session, web_user: User
+) -> None:
+    pasta = seeded_session.scalar(
+        select(CanonicalIngredient).where(CanonicalIngredient.name == "spaghetti")
+    )
+    record_event(seeded_session, web_user.id, pasta, reason=EventReason.PURCHASE, delta=900.0)
+    recipe = _recipe(seeded_session, web_user, "One Tap Pasta", ["1 pound spaghetti"])
+    yesterday = date.today() - timedelta(days=1)
+    entry = _plan(seeded_session, web_user, recipe, yesterday)
+    seeded_session.commit()
+
+    cooked = signed_in.post(
+        f"/recipes/{recipe.id}/cooked",
+        data={"entry_id": str(entry.id), "servings": "1",
+              "cooked_on": yesterday.isoformat(), "next": "/"},
+    )
+
+    assert cooked.status_code == 303
+    assert cooked.headers["location"].startswith("/?cooked_cook=")
+    home = signed_in.get(cooked.headers["location"]).text
+    assert "Cooked One Tap Pasta" in home
+    assert "Did you cook this?" not in home
+    undo = re.search(r'action="(/recipes/\d+/cooks/\d+/undo)"', home)
+    assert undo is not None
+
+    undone = signed_in.post(undo.group(1), data={"next": "/"})
+
+    assert undone.status_code == 303
+    assert undone.headers["location"] == "/"
+    assert "Did you cook this?" in signed_in.get("/").text

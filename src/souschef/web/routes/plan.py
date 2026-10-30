@@ -21,6 +21,7 @@ from souschef.web.common import (
     MAX_SERVINGS,
     PAST_DAYS,
     PLAN_DAYS,
+    _cook_toast,
     _default_servings,
     _horizon,
     _owned,
@@ -208,6 +209,7 @@ def plan_page(
     request: Request,
     skipped: int = 0,
     blocked: int = 0,
+    cooked_cook: int = 0,
     user: User = Depends(auth.current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
@@ -238,6 +240,7 @@ def plan_page(
         today=today,
         has_meals=any(by_day.values()),
         past_days=[day for day in shown if day < today and by_day[day]],
+        cook_toast=_cook_toast(db, user, cooked_cook, "/plan"),
         recipe_groups=groups,
         show_recipe_filter=sum(len(options) for _, options in groups) > _FILTER_AFTER,
         week_end=week_end,

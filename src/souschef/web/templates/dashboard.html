@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Home · SousChef{% endblock %}
 {% from "icons.html" import icon %}
-{% from "macros.html" import day_label, group_header, row, toast %}
+{% from "macros.html" import day_label, did_you_cook, group_header, row, toast %}
 {% set active = 'home' %}
 {% block content %}
 <main id="main">
@@ -10,21 +10,9 @@
 
   {% if form_error %}<div class="notice bad">{{ icon('triangle-alert', 16) }}<div>{{ form_error }}</div></div>{% endif %}
   {% if change %}{{ toast(change.message, '/pantry/undo/' ~ change.event_id, return_to='/') }}{% endif %}
+  {% if cook_toast %}{{ toast(cook_toast.message, cook_toast.undo, return_to=cook_toast.return_to) }}{% endif %}
 
-  {% if past_meals %}
-    {{ group_header('Did you cook these?') }}
-    {% for e in past_meals %}
-      {% set title %}<a href="/recipes/{{ e.recipe.id }}">{{ e.recipe.title }}</a>{% endset %}
-      {% set trail %}
-        <a class="btn small" href="/recipes/{{ e.recipe.id }}/cook?entry={{ e.id }}">Cooked</a>
-        <form method="post" action="/plan/{{ e.id }}/skip" class="inline">
-          <input type="hidden" name="next" value="/">
-          <button class="btn small" type="submit">Skipped</button>
-        </form>
-      {% endset %}
-      {{ row(title, sub=day_label(e.plan_date, today), trail=trail) }}
-    {% endfor %}
-  {% endif %}
+  {{ did_you_cook(past_meals, today, '/') }}
 
   <section class="card tonight" aria-labelledby="tonight-label">
     <h2 class="tonight-label" id="tonight-label">Tonight</h2>

@@ -17,7 +17,7 @@
 <main id="main">
   <h1>Receipt</h1>
   <p class="meta">
-    {{ receipt.store_name or 'Receipt' }}
+    {% if receipt.store_name %}{{ receipt.store_name }} · {% endif %}{{ receipt.created_at.strftime('%a %-d %b') }}
     {%- if receipt.status == 'applied' %} · Added to the pantry{% endif %}
   </p>
 

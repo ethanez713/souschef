@@ -18,9 +18,6 @@
     {% endfor %}
   </section>
 {% endfor %}
-{% if staples %}
-  {{ row('Always have (' ~ staples ~ ')', href='/settings', cls='pantry-always') }}
-{% endif %}
 {% if out %}
   <section class="row-group" style="--unit-chars: {{ unit_chars }}">
     {{ group_header('Out') }}
@@ -28,6 +25,10 @@
       {{ pantry_card(v, freshness, query, amount='0') }}
     {% endfor %}
   </section>
+{% endif %}
+{% if staples %}
+  {% set chevron %}{{ icon('chevron-right', 18) }}{% endset %}
+  {{ row('Always have (' ~ staples ~ ')', trail=chevron, href='/settings', cls='pantry-always') }}
 {% endif %}
 {% if not by_location and not out and not staples %}
   <div class="empty">

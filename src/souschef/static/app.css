@@ -83,6 +83,20 @@ h2 {
 h3 { font-size: var(--fs-title-3); line-height: var(--lh-title-3); letter-spacing: var(--tr-title-3); margin: 0; }
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .page-head h1 { margin-bottom: 0; }
+.sync-badge {
+  margin-left: auto; margin-right: var(--sp-2);
+  font-size: var(--fs-caption); font-variant-numeric: tabular-nums; color: var(--text-muted);
+  white-space: nowrap;
+}
+.install-nudge {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  margin: var(--sp-3) 0 0;
+}
+.install-nudge[hidden] { display: none; }
+main[data-offline] .page-head,
+main[data-offline] .list-row,
+main[data-offline] .list-row-trail { flex-wrap: wrap; }
+main[data-offline] button[data-offline-locked] { white-space: normal; height: auto; text-align: center; }
 .head-action {
   display: inline-flex; align-items: center; gap: var(--sp-15); flex: none;
   min-height: 44px; padding: 0 var(--sp-2);

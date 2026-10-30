@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import HTTPException, Request
@@ -325,6 +325,11 @@ THEMES = ("light", "dark", "auto")
 def _theme(request: Request) -> str:
     chosen = request.cookies.get(THEME_COOKIE, "")
     return chosen if chosen in THEMES else "light"
+
+
+def page_generated_at() -> str:
+    # The offline banner quotes this on a cached shopping or pantry page.
+    return datetime.now(UTC).isoformat()
 
 
 def _render(request: Request, template: str, *, status_code: int = 200, **context) -> HTMLResponse:

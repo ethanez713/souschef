@@ -19,6 +19,7 @@
 <script src="{{ static_url('htmx.min.js') }}" defer></script>
 <script src="{{ static_url('picker.js') }}" defer></script>
 <script src="{{ static_url('add.js') }}" defer></script>
+<script type="module" src="/static/list-page.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -38,6 +39,7 @@
 {# A missing route never resolves an account, so its error page has no tab bar. #}
 <header class="topbar">
   <a class="brand" href="/">SousChef</a>
+  <p id="sync-badge" class="sync-badge" role="status" hidden></p>
   {% if user %}
   <a class="btn ghost iconbtn settings-gear" href="/settings" aria-label="Settings" title="Settings">{{ icon('settings', 18) }}</a>
   {% endif %}
@@ -47,7 +49,7 @@
 
 <script>
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 document.addEventListener("click", function (event) {
   var opener = event.target.closest("[data-sheet]");

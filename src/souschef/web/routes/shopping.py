@@ -58,6 +58,7 @@ from souschef.web.common import (
     _render,
     _sync_shopping,
     add_form_units,
+    page_generated_at,
     purchase_qty_text,
 )
 from souschef.web.routes.recipes import NameMatchError, assign_named_match
@@ -556,6 +557,7 @@ def _render_shopping(
         amount_unit=amount_unit,
         name_error=name_error,
         name_for=name_for,
+        generated_at=page_generated_at(),
     )
 
 

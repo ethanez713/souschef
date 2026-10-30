@@ -3484,7 +3484,23 @@ def test_service_worker_cache_was_bumped_with_the_css_change() -> None:
     from pathlib import Path
 
     worker = (Path(__file__).parent.parent / "src/souschef/static/sw.js").read_text()
-    assert "souschef-shell-v10" in worker
+    assert "souschef-shell-v11" in worker
+
+
+def test_service_worker_is_served_at_the_site_root(client: TestClient) -> None:
+    response = client.get("/sw.js")
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
+    assert "souschef-shell-v11" in response.text
+    base = (Path(__file__).parent.parent / "src/souschef/web/templates/base.html").read_text()
+    assert "register('/sw.js')" in base
+
+
+def test_shopping_and_pantry_record_when_they_were_rendered(signed_in: TestClient) -> None:
+    for path in ("/shopping", "/pantry"):
+        page = signed_in.get(path).text
+        assert 'data-generated-at="' in page
+        assert 'data-generated-at=""' not in page
 
 
 def test_pages_follow_the_signed_in_unit_system(

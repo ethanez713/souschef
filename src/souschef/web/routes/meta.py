@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -11,10 +11,22 @@ from souschef.config import get_settings
 from souschef.db import get_db
 from souschef.models import CanonicalIngredient
 from souschef.web.common import (
+    STATIC_DIR,
     log,
 )
 
 router = APIRouter()
+
+
+@router.get("/sw.js")
+def service_worker() -> FileResponse:
+    # A worker served under /static/ cannot control pages. no-cache so a bumped
+    # shell is noticed on the next visit.
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="text/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @router.get("/manifest.webmanifest")

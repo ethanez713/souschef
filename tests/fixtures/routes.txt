@@ -19,6 +19,7 @@ GET /settings
 GET /settings/{rest:path}
 GET /share
 GET /shopping
+GET /sw.js
 POST /pantry/add
 POST /pantry/undo/{event_id}
 POST /pantry/{ingredient_id}/check

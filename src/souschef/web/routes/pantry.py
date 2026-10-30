@@ -51,6 +51,7 @@ from souschef.web.common import (
     _safe_next,
     _sync_shopping,
     add_form_units,
+    page_generated_at,
 )
 
 router = APIRouter()
@@ -250,6 +251,7 @@ def _pantry_page(
         change=_stock_change(db, user, changed),
         note=_pantry_note(db, user, floor=floor, cleared=cleared, staple=staple),
         staples=staples,
+        generated_at=page_generated_at(),
     )
 
 

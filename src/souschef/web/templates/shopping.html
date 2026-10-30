@@ -144,11 +144,15 @@
 {% endmacro %}
 
 {% block content %}
-<main id="main">
+<main id="main" data-generated-at="{{ generated_at }}">
   <div class="page-head">
     <h1>Shopping list</h1>
     <button type="button" class="btn" data-sheet="shop-add">+ Add</button>
   </div>
+  <p id="install-nudge" class="install-nudge" hidden>
+    <button type="button" class="btn" id="install-action">Install for offline use</button>
+    <button type="button" class="btn ghost" id="install-dismiss">Dismiss</button>
+  </p>
 
   <div id="shop-list">
   {% if shop_toast %}{{ toast(shop_toast.message, shop_toast.undo, shop_toast.extra_label, shop_toast.extra_action, '#shop-list', return_to=shop_toast.return_to, undo_fields=shop_toast.fields) }}{% endif %}

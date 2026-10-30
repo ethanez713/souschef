@@ -34,6 +34,7 @@ POST /plan/{entry_id}/remove
 POST /plan/{entry_id}/servings
 POST /plan/{entry_id}/skip
 POST /receipts/upload
+POST /receipts/{receipt_id}/add-line
 POST /receipts/{receipt_id}/apply
 POST /receipts/{receipt_id}/line/{line_id}
 POST /recipes

@@ -1,33 +1,39 @@
 {% extends "base.html" %}
 {% from "icons.html" import icon %}
+{% from "macros.html" import picker, sticky_bar %}
 {% set active = 'pantry' %}
 {% block title %}Review receipt · SousChef{% endblock %}
+
+{% macro skipped(lines) %}
+{% if lines %}
+  <details class="receipt-skipped">
+    <summary>{{ lines|length }} skipped line{{ '' if lines|length == 1 else 's' }}</summary>
+    {% for line in lines %}<p class="receipt-raw">{{ line.raw_text }}</p>{% endfor %}
+  </details>
+{% endif %}
+{% endmacro %}
+
 {% block content %}
 <main id="main">
-  <h1>Check this scan</h1>
+  <h1>Receipt</h1>
   <p class="meta">
     {{ receipt.store_name or 'Receipt' }}
-    {%- if receipt.ocr_confidence %} · scan quality <span class="num">{{ (receipt.ocr_confidence * 100)|round|int }}%</span>{% endif %}
-    {% if receipt.status == 'applied' %}
-      · Already added to the pantry. This scan can't be edited.
-    {% else %}
-      · Tick the lines you actually bought, then apply. Unticked edits are kept.
-    {% endif %}
+    {%- if receipt.status == 'applied' %} · Added to the pantry{% endif %}
   </p>
 
   {% if already %}
     <div class="notice spaced">
       {{ icon('triangle-alert', 16) }}
-      <div>This photo was already applied, so it was not scanned again.</div>
+      <div>This photo was already added, so it was not scanned again.</div>
     </div>
   {% endif %}
   {% if error %}
     <div class="notice bad spaced">{{ icon('triangle-alert', 16) }}<div>{{ error }}</div></div>
   {% endif %}
-  {% if receipt.ocr_confidence and receipt.ocr_confidence < 0.75 %}
+  {% if receipt.ocr_confidence and receipt.ocr_confidence < 0.75 and receipt.status != 'applied' %}
     <div class="notice spaced">
       {{ icon('triangle-alert', 16) }}
-      <div>This scan came out poorly. Check each line carefully, or retake the photo in better light.</div>
+      <div>The photo was hard to read. Check each line, or retake it in better light.</div>
     </div>
   {% endif %}
 
@@ -42,101 +48,98 @@
     {% endif %}
     <div>
       {% if receipt.status == 'applied' %}
-        <div class="spaced">
         {% for line in lines %}
-          <div class="card">
-            <code>{{ line.raw_text }}</code>
-            <p class="meta">
-              {% if line.is_confirmed and line.ingredient %}{{ line.ingredient.name }}
-              {% elif line.ingredient %}{{ line.ingredient.name }} · not added
-              {% else %}not added{% endif %}
-              {% if line.parsed_quantity %}
-                {% if line.ingredient %}
-                  · <span class="num">{{ line.parsed_quantity|quantity(line.ingredient, line.parsed_unit or none) }}</span>
-                {% else %}
-                  · {{ line.parsed_quantity }} {{ line.parsed_unit or '' }}
-                {% endif %}
-              {% endif %}
-            </p>
+          <div class="receipt-line">
+            <div class="receipt-main">
+              <span class="receipt-raw">{{ line.raw_text }}</span>
+              <span class="receipt-match">
+                {%- if line.ingredient %}{{ line.ingredient.name }}{% if not line.is_confirmed %} · not added{% endif %}{% else %}not added{% endif -%}
+              </span>
+            </div>
+            {% if line.parsed_quantity and line.ingredient %}
+              <span class="num">{{ line.parsed_quantity|quantity(line.ingredient, line.parsed_unit or none) }}</span>
+            {% endif %}
           </div>
         {% else %}
           <p class="muted">No food lines on this scan.</p>
         {% endfor %}
-        </div>
-        {% if ignored %}
-          <details class="card">
-            <summary>
-              {% if ignored|length == 1 %}1 line looks like store or payment text
-              {% else %}{{ ignored|length }} lines look like store or payment text{% endif %}
-            </summary>
-            {% for line in ignored %}<p class="meta"><code>{{ line.raw_text }}</code></p>{% endfor %}
-          </details>
-        {% endif %}
+        {{ skipped(ignored) }}
         <div class="actions"><a class="btn primary" href="/pantry">Go to pantry</a></div>
       {% else %}
-        <form method="post" action="/receipts/{{ receipt.id }}/apply">
-          <div class="review-head" aria-hidden="true">
-            <span>Line</span>
-            <span>Ingredient</span>
-            <span class="line-amt"><span>Amount</span><span>Unit</span></span>
-            <span>Add</span>
-          </div>
-          <div class="spaced review-lines">
+        <form method="post" action="/receipts/{{ receipt.id }}/apply" data-receipt-form>
           {% for line in lines %}
-            <div class="card line">
-              <div class="line-raw">
-                <code title="{{ line.raw_text }}">{{ line.raw_text }}</code>
-                {% if line.match_confidence < 0.88 %}
-                  <span class="badge warn">needs a look</span>
-                {% endif %}
-              </div>
-              <div class="field line-ing">
-                <label for="ing{{ line.id }}">Ingredient</label>
-                <select id="ing{{ line.id }}" name="ingredient_{{ line.id }}">
-                  <option value="">— not food / skip —</option>
-                  {% for ing in ingredients %}
-                    <option value="{{ ing.id }}" {{ 'selected' if ing.id == line.ingredient_id }}>{{ ing.name }}</option>
-                  {% endfor %}
-                </select>
-              </div>
-              <div class="line-amt">
-                <div class="field">
-                  <label for="qty{{ line.id }}">Amount</label>
-                  <input id="qty{{ line.id }}" name="quantity_{{ line.id }}" type="number" step="any" inputmode="decimal"
-                         value="{{ line.parsed_quantity or '' }}">
-                </div>
-                <div class="field">
-                  <label for="unit{{ line.id }}">Unit</label>
-                  <input id="unit{{ line.id }}" name="unit_{{ line.id }}" value="{{ line.parsed_unit or '' }}" placeholder="g / oz / count">
-                </div>
-              </div>
-              <label class="check-line">
-                <input type="checkbox" name="confirmed_{{ line.id }}" {{ 'checked' if line.is_confirmed }}>
-                <span>Add this to the pantry</span>
+            <div class="receipt-line" data-receipt-line>
+              <label class="receipt-tick">
+                <input type="checkbox" name="confirmed_{{ line.id }}" {{ 'checked' if line.is_confirmed }}
+                       aria-label="Add {{ line.raw_text }}">
               </label>
-              {% if list_notes.get(line.id) %}
-                <p class="meta">{{ list_notes[line.id] }}</p>
-              {% endif %}
+              <div class="receipt-main">
+                <span class="receipt-raw" title="{{ line.raw_text }}">{{ line.raw_text }}</span>
+                {{ picker('ingredient_' ~ line.id, 'Item', 'ingredient', line.ingredient_id or '',
+                          dialog='pick-line-' ~ line.id,
+                          shown=(line.ingredient.name if line.ingredient else 'Pick item')) }}
+                {% if list_notes.get(line.id) %}<span class="receipt-note">{{ list_notes[line.id] }}</span>{% endif %}
+              </div>
+              <div class="receipt-amt">
+                <input class="qty" name="quantity_{{ line.id }}" type="number" step="any" inputmode="decimal"
+                       value="{{ '{:g}'.format(line.parsed_quantity) if line.parsed_quantity else '' }}"
+                       aria-label="Amount for {{ line.raw_text }}">
+                <input class="receipt-unit" name="unit_{{ line.id }}" value="{{ line.parsed_unit or '' }}"
+                       placeholder="unit" aria-label="Unit for {{ line.raw_text }}">
+              </div>
             </div>
           {% else %}
             <p class="muted">No food lines on this scan.</p>
           {% endfor %}
-          </div>
-          {% if lines %}
-            <div class="actions">
-              <button class="primary" type="submit">Apply ticked lines to pantry</button>
+
+          <details class="receipt-add"{% if not lines %} open{% endif %}>
+            <summary>{{ icon('plus', 16) }}Add a line</summary>
+            <div class="receipt-line">
+              <div class="receipt-main">
+                {{ picker('new_ingredient', 'Item', 'ingredient', '', dialog='pick-new-line', shown='Pick item') }}
+              </div>
+              <div class="receipt-amt">
+                <input class="qty" name="new_quantity" type="number" step="any" inputmode="decimal"
+                       aria-label="Amount for the added line">
+                <input class="receipt-unit" name="new_unit" placeholder="unit" aria-label="Unit for the added line">
+              </div>
             </div>
-          {% endif %}
-        </form>
-        {% if ignored %}
-          <details class="card">
-            <summary>
-              {% if ignored|length == 1 %}1 line looks like store or payment text
-              {% else %}{{ ignored|length }} lines look like store or payment text{% endif %}
-            </summary>
-            {% for line in ignored %}<p class="meta"><code>{{ line.raw_text }}</code></p>{% endfor %}
+            <button type="submit" formaction="/receipts/{{ receipt.id }}/add-line">Add line</button>
           </details>
-        {% endif %}
+
+          {% call sticky_bar() %}
+            {% set ticked = lines|selectattr('is_confirmed')|selectattr('ingredient_id')|list|length %}
+            <button class="primary" type="submit" data-receipt-apply>{{ 'Add %d to pantry'|format(ticked) if ticked else 'Add to pantry' }}</button>
+          {% endcall %}
+        </form>
+        {{ skipped(ignored) }}
+        <script>
+        (function () {
+          var form = document.querySelector("[data-receipt-form]");
+          if (!form) return;
+          var button = form.querySelector("[data-receipt-apply]");
+          function count() {
+            var n = 0;
+            form.querySelectorAll("[data-receipt-line]").forEach(function (line) {
+              var tick = line.querySelector('input[type="checkbox"]');
+              var item = line.querySelector('input[type="hidden"]');
+              if (tick.checked && item && item.value) n += 1;
+            });
+            if (form.querySelector('input[name="new_ingredient"]').value) n += 1;
+            button.textContent = n ? "Add " + n + " to pantry" : "Add to pantry";
+            button.disabled = n === 0;
+          }
+          // Choosing an item is vouching for the line, so it ticks the row.
+          form.addEventListener("change", function (event) {
+            var line = event.target.closest("[data-receipt-line]");
+            if (line && event.target.type === "hidden" && event.target.value) {
+              line.querySelector('input[type="checkbox"]').checked = true;
+            }
+            count();
+          });
+          count();
+        })();
+        </script>
       {% endif %}
     </div>
   </div>

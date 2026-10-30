@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
@@ -96,7 +97,6 @@ def _review_receipt(
     list_notes: dict[int, str] = {}
     if owner is not None and receipt.status != ReceiptStatus.APPLIED:
         list_notes = _untick_stocked_lines(db, owner, receipt)
-    ingredients = db.scalars(select(CanonicalIngredient).order_by(CanonicalIngredient.name)).all()
     visible = [line for line in receipt.lines if not line.is_ignored]
     ignored = [line for line in receipt.lines if line.is_ignored]
     return _render(
@@ -106,7 +106,6 @@ def _review_receipt(
         receipt=receipt,
         lines=visible,
         ignored=ignored,
-        ingredients=ingredients,
         error=error,
         list_notes=list_notes,
         already=request.query_params.get("already") == "1",
@@ -169,6 +168,62 @@ def _save_receipt_lines(db: Session, receipt: Receipt, form) -> None:  # noqa: A
             line.parsed_unit = unit_raw
         line.is_confirmed = confirmed
     db.flush()
+
+
+def _add_manual_line(db: Session, receipt: Receipt, form) -> ReceiptLine | None:  # noqa: ANN001
+    """The review's "Add a line" fields as a ticked line, or None when they are empty."""
+    ingredient_raw = str(form.get("new_ingredient") or "").strip()
+    if not ingredient_raw:
+        return None
+    try:
+        ingredient = db.get(CanonicalIngredient, int(ingredient_raw))
+    except ValueError:
+        ingredient = None
+    if ingredient is None:
+        raise ReceiptError("Pick an item for the added line.")
+    quantity = None
+    quantity_raw = str(form.get("new_quantity") or "").strip()
+    if quantity_raw:
+        try:
+            quantity = float(quantity_raw)
+        except ValueError as exc:
+            raise ReceiptError("Amount for the added line isn't a number.") from exc
+        if not math.isfinite(quantity) or quantity <= 0:
+            raise ReceiptError("Amount for the added line has to be more than zero.")
+    unit = str(form.get("new_unit") or "").strip()[:32] or None
+    line = ReceiptLine(
+        receipt_id=receipt.id,
+        position=max((existing.position for existing in receipt.lines), default=-1) + 1,
+        raw_text=ingredient.name,
+        parsed_quantity=quantity,
+        parsed_unit=unit,
+        ingredient_id=ingredient.id,
+        match_confidence=1.0,
+        is_confirmed=True,
+    )
+    db.add(line)
+    receipt.lines.append(line)
+    db.flush()
+    return line
+
+
+@router.post("/receipts/{receipt_id}/add-line")
+async def add_receipt_line(
+    request: Request,
+    receipt_id: int,
+    user: User = Depends(auth.current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Saves the rows as edited, then adds the line, so nothing typed so far is lost."""
+    receipt = _owned(db, Receipt, receipt_id, user, "receipt")
+    form = await request.form()
+    try:
+        _save_receipt_lines(db, receipt, form)
+        if _add_manual_line(db, receipt, form) is None:
+            raise ReceiptError("Pick an item for the added line.")
+    except ReceiptError as exc:
+        return _review_receipt(request, db, receipt, error=str(exc), status_code=400)
+    return RedirectResponse(f"/receipts/{receipt_id}", status_code=303)
 
 
 @router.post("/receipts/upload")
@@ -347,6 +402,7 @@ async def apply_receipt_route(
     form = await request.form()
     try:
         _save_receipt_lines(db, receipt, form)
+        _add_manual_line(db, receipt, form)
         added, warnings = apply_receipt(db, receipt)
     except ReceiptError as exc:
         return _review_receipt(request, db, receipt, error=str(exc), status_code=400)

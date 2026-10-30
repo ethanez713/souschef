@@ -191,7 +191,8 @@
 <div class="sticky-bar">{{ caller() }}</div>
 {%- endmacro %}
 
-{% macro picker(name, label, kind, value='', submit='', dialog='') -%}
+{# `shown` is the text on the trigger when the submitted value is an id, not a name. #}
+{% macro picker(name, label, kind, value='', submit='', dialog='', shown='') -%}
 {%- set current = value|string if value else '' -%}
 {%- set sheet_id = dialog or ('picker-' ~ kind ~ '-' ~ name) -%}
 <div class="picker" data-picker-sheet="{{ sheet_id }}"{% if submit %} data-picker-submit="{{ submit }}"{% endif %}>
@@ -200,7 +201,7 @@
           {% if not current %}data-empty{% endif %}
           aria-haspopup="dialog" aria-controls="{{ sheet_id }}">
     <span class="picker-label">{{ label }}</span>
-    <span class="picker-choice" data-picker-value>{{ current or 'Choose' }}</span>
+    <span class="picker-choice" data-picker-value>{{ shown or current or 'Choose' }}</span>
   </button>
 </div>
 {% call sheet(sheet_id, label) %}

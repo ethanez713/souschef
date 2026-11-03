@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date
 from enum import StrEnum
 
 from sqlalchemy import func, select
@@ -29,7 +29,6 @@ from souschef.core.audit import AuditReason, build_audit
 from souschef.core.inventory import (
     INFERRED_PURCHASE_CONFIDENCE,
     known_ingredient_ids,
-    live_events,
     pantry_view,
     physical_of,
     record_event,
@@ -51,7 +50,6 @@ from souschef.core.units import (
 from souschef.models import (
     CanonicalIngredient,
     EventReason,
-    InventoryEvent,
     MealPlanEntry,
     PantryItem,
     Recipe,
@@ -424,7 +422,6 @@ def build_shopping_list(
     if include_restock:
         needs = add_restock_candidates(session, user_id, needs)
 
-    # Same row every time, so receipt review still sees the original build time.
     shopping_list = live_list(session, user_id)
     if shopping_list is None:
         shopping_list = ShoppingList(
@@ -521,12 +518,6 @@ def build_shopping_list(
 
 class ShoppingError(ValueError):
     """A shopping-list edit the page can show as a form message."""
-
-
-def _aware(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value
 
 
 def live_list(session: Session, user_id: int) -> ShoppingList | None:
@@ -884,28 +875,6 @@ def unnamed_recipe_lines(
             seen.add(key)
             lines.append((entry.recipe.id, entry.recipe.title, text))
     return lines
-
-
-def ingredients_stocked_since(
-    session: Session, user_id: int, start: datetime, end: datetime
-) -> set[int]:
-    """Ingredients bought from a shopping list between ``start`` and ``end`` inclusive.
-
-    A receipt reviewed in that window unticks those lines so the same shop is
-    not counted twice.
-    """
-    lower, upper = _aware(start), _aware(end)
-    rows = session.scalars(
-        live_events(user_id).where(
-            InventoryEvent.reason == EventReason.PURCHASE,
-            InventoryEvent.source_ref.like("shopping:%"),
-        )
-    ).all()
-    return {
-        event.ingredient_id
-        for event in rows
-        if event.occurred_at is not None and lower <= _aware(event.occurred_at) <= upper
-    }
 
 
 def requirements_for_audit(

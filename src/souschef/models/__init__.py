@@ -20,7 +20,6 @@ from souschef.models.planning import (
     ShoppingListItem,
     ShoppingListStatus,
 )
-from souschef.models.receipt import Receipt, ReceiptLine, ReceiptStatus
 from souschef.models.recipe import Cook, Recipe, RecipeIngredient, RecipeSource
 from souschef.models.settings import AppSetting, StoredCredential
 from souschef.models.user import Invite, User
@@ -39,9 +38,6 @@ __all__ = [
     "MealPlanEntry",
     "MealSlot",
     "PantryItem",
-    "Receipt",
-    "ReceiptLine",
-    "ReceiptStatus",
     "Recipe",
     "RecipeIngredient",
     "RecipeSource",

@@ -44,7 +44,6 @@ from souschef.planning.shopping import (
     add_manual_item,
     build_shopping_list,
     check_first_rows,
-    ingredients_stocked_since,
     stock_ticked_items,
     to_purchase_quantity,
     unnamed_recipe_lines,
@@ -56,10 +55,6 @@ def ing(session: Session, name: str) -> CanonicalIngredient:
     found = session.scalar(select(CanonicalIngredient).where(CanonicalIngredient.name == name))
     assert found is not None, name
     return found
-
-
-def _later() -> datetime:
-    return datetime.now(UTC) + timedelta(minutes=1)
 
 
 def _day(value: datetime) -> date:
@@ -199,53 +194,6 @@ def test_ticked_package_is_one_low_confidence_purchase_and_not_a_second(
     assert [
         event.reason for event in _events(seeded_session, owner, chicken.id)
     ] == [EventReason.MANUAL, EventReason.PURCHASE]
-
-
-def test_rebuild_keeps_when_the_list_was_built_and_drops_a_covered_item(
-    seeded_session: Session, owner: int
-) -> None:
-    chicken = ing(seeded_session, "chicken thigh")
-    _counted(seeded_session, owner, chicken)
-    today, end = _week()
-    recipe = _recipe(
-        seeded_session, owner, "Thighs", [("200 g chicken thigh", chicken, False)]
-    )
-    _plan(seeded_session, owner, recipe, today)
-    first = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
-    built_at = first.created_at
-    line = next(item for item in first.items if item.ingredient_id == chicken.id)
-    line.is_checked = True
-    seeded_session.flush()
-    stock_ticked_items(seeded_session, owner, first)
-
-    second = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
-
-    assert _day(second.created_at) == _day(built_at)
-    assert second.created_at == built_at
-    assert chicken.id not in {item.ingredient_id for item in second.items if not item.is_skipped}
-    assert ingredients_stocked_since(seeded_session, owner, second.created_at, _later()) == {
-        chicken.id
-    }
-
-
-def test_a_purchase_from_before_the_list_was_built_is_not_treated_as_this_shop(
-    seeded_session: Session, owner: int
-) -> None:
-    chicken = ing(seeded_session, "chicken thigh")
-    record_event(
-        seeded_session,
-        owner,
-        chicken,
-        reason=EventReason.PURCHASE,
-        delta=907,
-        unit="g",
-        source_ref="shopping:1",
-        occurred_at=datetime.now(UTC) - timedelta(days=1),
-    )
-    today, end = _week()
-    listing = build_shopping_list(seeded_session, owner, covers_from=today, covers_to=end)
-
-    assert ingredients_stocked_since(seeded_session, owner, listing.created_at, _later()) == set()
 
 
 def test_manual_item_with_no_catalog_match_lands_in_other_and_survives_rebuild(

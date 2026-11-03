@@ -212,6 +212,59 @@ def _at(day: int, hour: int = 12) -> str:
     return f"2026-09-{day:02d} {hour:02d}:00:00.000000"
 
 
+def _receipt_layout(inspector) -> dict[str, tuple]:  # noqa: ANN001
+    """Column names, reflected types, nullability, and index names."""
+    layout = {}
+    for table in ("receipt", "receipt_line"):
+        columns = tuple(
+            (column["name"], str(column["type"]), column["nullable"])
+            for column in inspector.get_columns(table)
+        )
+        indexes = tuple(index["name"] for index in inspector.get_indexes(table))
+        layout[table] = (columns, indexes)
+    return layout
+
+
+def _seed_receipt(engine) -> None:  # noqa: ANN001
+    stamp = _at(1)
+    with engine.begin() as conn:
+        conn.execute(text(
+            "INSERT INTO app_user (id, username, display_name, password_hash, is_admin, "
+            "is_active, session_epoch, created_at, updated_at) "
+            f"VALUES (1, 'jordan', 'Jordan', 'x', 1, 1, 0, '{stamp}', '{stamp}')"
+        ))
+        conn.execute(text(
+            "INSERT INTO canonical_ingredient (id, name, category, tracking_mode, base_unit, "
+            "is_staple, created_at, updated_at) "
+            f"VALUES (1, 'rice', 'GRAIN', 'BULK', 'g', 0, '{stamp}', '{stamp}')"
+        ))
+        conn.execute(text(
+            "INSERT INTO receipt (id, image_path, image_sha256, status, engine, store_name, "
+            "purchased_on, total_amount, ocr_confidence, raw_ocr, created_at, updated_at, "
+            "user_id) VALUES (1, 'receipts/abc.png', 'abc', 'UPLOADED', 'RAPIDOCR', 'Market', "
+            f"'2026-09-01', 12.5, 0.9, 'raw', '{stamp}', '{stamp}', 1)"
+        ))
+        conn.execute(text(
+            "INSERT INTO receipt_line (id, receipt_id, position, raw_text, ocr_confidence, "
+            "parsed_description, parsed_quantity, parsed_unit, parsed_price, ingredient_id, "
+            "match_confidence, is_ignored, is_confirmed) "
+            "VALUES (1, 1, 0, 'RICE 1KG', 0.8, 'rice', 1, 'kg', 3.5, 1, 0.9, 0, 1)"
+        ))
+        conn.execute(text(
+            "INSERT INTO inventory_event (id, ingredient_id, reason, delta, resulting_quantity, "
+            "event_confidence, occurred_at, source_ref, user_id) "
+            f"VALUES (1, 1, 'PURCHASE', 1000, 1000, 1.0, '{stamp}', 'receipt:1', 1)"
+        ))
+
+
+def _ledger_event(engine) -> dict:  # noqa: ANN001
+    with engine.connect() as conn:
+        row = conn.execute(text(
+            "SELECT * FROM inventory_event WHERE source_ref = 'receipt:1'"
+        )).mappings().one()
+    return dict(row)
+
+
 def _seed_before_beliefs(engine) -> None:  # noqa: ANN001
     stamp = _at(1)
     with engine.begin() as conn:
@@ -295,3 +348,70 @@ def test_beliefs_migration_voids_phantom_purchases_and_records_old_cooks(
     assert item["low"] < 700 < item["high"] == 775
     assert {"confidence", "cooks_since_confirmed"} <= restored
     assert not {"low", "high", "belief_at"} & restored
+
+
+def test_dropping_receipt_tables_leaves_the_ledger_event(
+    tmp_path: Path, monkeypatch
+) -> None:
+    data = tmp_path / "mig"
+    data.mkdir()
+    monkeypatch.setenv("SOUSCHEF_DATA_DIR", str(data))
+
+    from souschef.config import get_settings
+    from souschef.db import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+    try:
+        config = Config("alembic.ini")
+        command.upgrade(config, "f6c9d0a41e72")
+        engine = create_engine(f"sqlite+pysqlite:///{data / 'souschef.db'}")
+        _seed_receipt(engine)
+        before = _ledger_event(engine)
+        command.upgrade(config, "head")
+        names = set(inspect(engine).get_table_names())
+        after = _ledger_event(engine)
+        engine.dispose()
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+    assert "receipt" not in names
+    assert "receipt_line" not in names
+    assert after == before
+    assert after["source_ref"] == "receipt:1"
+
+
+def test_downgrade_recreates_empty_receipt_tables(
+    tmp_path: Path, monkeypatch
+) -> None:
+    data = tmp_path / "mig"
+    data.mkdir()
+    monkeypatch.setenv("SOUSCHEF_DATA_DIR", str(data))
+
+    from souschef.config import get_settings
+    from souschef.db import reset_engine
+
+    get_settings.cache_clear()
+    reset_engine()
+    try:
+        config = Config("alembic.ini")
+        command.upgrade(config, "f6c9d0a41e72")
+        engine = create_engine(f"sqlite+pysqlite:///{data / 'souschef.db'}")
+        before = _receipt_layout(inspect(engine))
+        _seed_receipt(engine)
+        command.upgrade(config, "head")
+        command.downgrade(config, "f6c9d0a41e72")
+        restored = _receipt_layout(inspect(engine))
+        with engine.connect() as conn:
+            receipt_rows = conn.execute(text("SELECT COUNT(*) FROM receipt")).scalar_one()
+            line_rows = conn.execute(text("SELECT COUNT(*) FROM receipt_line")).scalar_one()
+        engine.dispose()
+    finally:
+        reset_engine()
+        get_settings.cache_clear()
+
+    assert "receipt" in restored and "receipt_line" in restored
+    assert receipt_rows == 0
+    assert line_rows == 0
+    assert restored == before

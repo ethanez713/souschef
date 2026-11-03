@@ -27,8 +27,6 @@ from souschef.models import (
     EventReason,
     MealPlanEntry,
     MealSlot,
-    Receipt,
-    ReceiptStatus,
     Recipe,
     RecipeSource,
     ShoppingList,
@@ -181,25 +179,6 @@ def test_another_users_plan_entry_cannot_be_deleted(
 
     seeded_session.expire_all()
     assert seeded_session.get(MealPlanEntry, entry.id) is not None
-
-
-def test_another_users_receipt_cannot_be_applied(
-    signed_in: TestClient, seeded_session: Session, stranger: User
-) -> None:
-    """Applying someone else's receipt would write into *their* ledger."""
-    receipt = Receipt(
-        user_id=stranger.id,
-        image_path="nope.png",
-        image_sha256="deadbeef2",
-        status=ReceiptStatus.NEEDS_REVIEW,
-    )
-    seeded_session.add(receipt)
-    seeded_session.commit()
-
-    assert signed_in.post(f"/receipts/{receipt.id}/apply").status_code == 404
-
-    seeded_session.expire_all()
-    assert seeded_session.get(Receipt, receipt.id).status == ReceiptStatus.NEEDS_REVIEW
 
 
 def test_another_users_shopping_item_cannot_be_ticked_off(

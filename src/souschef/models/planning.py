@@ -57,7 +57,7 @@ class MealPlanEntry(Base, OwnedMixin, TimestampMixin):
 class ShoppingListStatus(enum.StrEnum):
     DRAFT = "draft"  # still being assembled; audit may not have run
     ACTIVE = "active"  # finalized, you're shopping it
-    COMPLETED = "completed"  # reconciled against a receipt
+    COMPLETED = "completed"
     ARCHIVED = "archived"
 
 

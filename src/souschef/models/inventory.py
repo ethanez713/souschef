@@ -23,7 +23,7 @@ class StorageLocation(enum.StrEnum):
 
 
 class EventReason(enum.StrEnum):
-    PURCHASE = "purchase"  # from a receipt or manual add
+    PURCHASE = "purchase"  # a manual add or a ticked shopping line
     COOK = "cook"  # debited by cooking a recipe
     MANUAL = "manual"  # user corrected the level directly
     WASTE = "waste"
@@ -129,13 +129,13 @@ class InventoryEvent(Base, OwnedMixin):
         ForeignKey("cook.id", ondelete="SET NULL"), index=True
     )
 
-    # How sure we are of *this* event. A receipt line matched at 0.6 produces a
-    # less trustworthy purchase than a manually keyed one.
+    # How sure we are of *this* event. A guessed amount makes a less trustworthy
+    # event than a counted one.
     event_confidence: Mapped[float] = mapped_column(Float, default=1.0)
 
     occurred_at: Mapped[datetime] = mapped_column(default=utcnow, index=True)
 
-    # Provenance: "receipt:12", "recipe:44", "user". Enough to trace any number
+    # Provenance: "shopping:7", "recipe:44", "user". Enough to trace any number
     # on screen back to the thing that caused it.
     source_ref: Mapped[str | None] = mapped_column(String(64))
     note: Mapped[str | None] = mapped_column(String(300))

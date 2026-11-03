@@ -1,6 +1,6 @@
 """The account a kitchen belongs to.
 
-Pantry, recipes, plan, shopping list and receipts hang off one user. The
+Pantry, recipes, plan and shopping list hang off one user. The
 ingredient catalog is shared reference data.
 """
 

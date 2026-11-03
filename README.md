@@ -3,8 +3,7 @@
 [![CI](https://github.com/ethanez713/souschef/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/souschef/actions/workflows/ci.yml)
 
 A weekly cooking planner that tracks your pantry, suggests recipes you can
-actually cook, builds the shopping list, and updates itself from a photo of the
-receipt.
+actually cook, and builds the shopping list.
 
 ## The idea
 
@@ -31,9 +30,7 @@ target is a five-item check instead of an eighty-item audit.
 2. **Check** — the pre-shop audit asks about the few genuinely ambiguous items.
 3. **Shop** — a list grouped by aisle, rounded to real package sizes ("1 × 907 g
    chicken thighs", not "680 g of chicken"), each line saying which meal it's for.
-4. **Scan** — photograph the receipt; matched line items are proposed for review.
-   Nothing touches the pantry until you confirm.
-5. **Cook** — tap "I cooked this" and levels are debited.
+4. **Cook** — tap "I cooked this" and levels are debited.
 
 <table>
   <tr>
@@ -49,16 +46,14 @@ target is a five-item check instead of an eighty-item audit.
   <tr>
     <td width="33%"><img src="docs/screenshots/pantry.png" alt="Pantry"></td>
     <td width="33%"><img src="docs/screenshots/cook.png" alt="Cook"></td>
-    <td width="33%"><img src="docs/screenshots/receipt.png" alt="Receipt scan"></td>
   </tr>
   <tr>
     <td valign="top"><b>Pantry.</b> Every level is a belief with a confidence. One tap confirms it, edits it or marks it gone.</td>
     <td valign="top"><b>Cook.</b> Each ingredient's debit is shown and editable before the cook is logged, with a warning where the recipe uses more than the pantry is believed to hold.</td>
-    <td valign="top"><b>Receipt scan.</b> Local OCR of a receipt photo. Lines that match the catalog are proposed with amounts, and nothing reaches the pantry until it is ticked and applied.</td>
   </tr>
 </table>
 
-Invented demo data in a throwaway database, from [`scripts/demo_data.py`](scripts/demo_data.py). The receipt is a rendered image of an invented receipt, scanned through the real upload.
+Invented demo data in a throwaway database, from [`scripts/demo_data.py`](scripts/demo_data.py).
 
 ## Running it
 
@@ -99,7 +94,7 @@ headers are allowed; the proxy sets Host to the `ts.net` name.
 
 ### Accounts
 
-One account, one kitchen: pantry, recipes, plan, shopping list, receipts and
+One account, one kitchen: pantry, recipes, plan, shopping list and
 the NYT cookie. The ingredient catalog is shared reference data about food.
 
 The **Always have** list (`CanonicalIngredient.is_staple`) and **ingredients
@@ -110,7 +105,6 @@ typed in by hand** live on that catalog. Write to them directly.
 ```bash
 souschef backup           # snapshot the database, keeping the last 14
 souschef restore          # list snapshots; pass one to roll back to it
-souschef scan photo.jpg   # dry-run OCR on a receipt, changes nothing
 souschef rebuild          # recompute pantry levels by replaying the ledger
 souschef config           # show effective configuration
 souschef users            # list accounts
@@ -121,11 +115,10 @@ souschef users            # list accounts
 | Path | What |
 |---|---|
 | `data/souschef.db` | Everything: pantry, ledger, recipes, plans, accounts |
-| `data/receipts/` | Receipt photos, stripped of EXIF on upload |
 | `data/backups/` | Snapshots from `souschef backup` |
 | `~/.config/souschef/` | The encryption key, deliberately not in the data directory |
 
-`SOUSCHEF_DATA_DIR` moves the first three elsewhere.
+`SOUSCHEF_DATA_DIR` moves the first two elsewhere.
 
 ```bash
 souschef backup
@@ -139,10 +132,9 @@ first; the database it replaces is kept beside it as `souschef.db.replaced`.
 
 ### Backing it with something other than this machine
 
-Receipt images and snapshots are written through a small storage interface
+Snapshots are written through a small storage interface
 (`src/souschef/storage/`), and the local filesystem is the only backend today. A
-Google Drive backend is one class implementing that interface: blobs live in
-Drive, and the database rides along as a `souschef backup` snapshot.
+Google Drive backend is one class implementing that interface.
 
 What will not work is putting the live SQLite file on a synced drive. SQLite
 needs byte-range locks and an fsync that means something, and a sync client
@@ -161,7 +153,7 @@ Matching never strips a word the catalog itself uses, so "canned crushed
 tomatoes" can't quietly degrade to fresh "tomatoes", and it splits product from
 preparation at the comma, which is the only thing separating "tomatoes, diced"
 from "diced tomatoes". Every correction you make is written to an alias table, so
-each receipt from a given store needs less fixing than the last.
+the same wording resolves exactly the next time.
 
 **The ledger** (`core/inventory.py`). Nothing writes a level directly; every
 change appends an event first. State is always reconstructible, "why does it
@@ -171,13 +163,6 @@ think I have three onions?" is answerable, and undo is free.
 the probability the belief is wrong *in a way that flips the buy decision*, times
 the cost of being wrong. Being short an ingredient costs more than buying a
 spare, so the two directions are weighted differently.
-
-**Receipts** (`ingest/`). OCR runs locally — receipts are transaction data, so
-they never leave the machine, and the cloud fallback needs explicit per-receipt
-consent. The parser reassembles OCR fragments into rows, repairs the O/zero
-confusion that turns "8 OZ" into eighty ounces, merges the weight row that
-receipts print under weighed goods, and filters out subtotals and payment lines
-before anything reaches the matcher.
 
 ## Recipes and NYT Cooking
 
@@ -201,13 +186,11 @@ id that is also returned in the `X-Request-ID` header — so a page that
 misbehaved can be traced to every line it produced:
 
 ```
-2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.ocr: OCR receipt.png: 40 boxes -> 14 lines, confidence 0.95, 0.8s
-2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.receipt: Receipt 1 (SUPERGROCER): 9 items, 8 auto-matched, 1 need review
-2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.web: POST /receipts/upload -> 303 (1469ms)
+2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.web: GET /shopping -> 200 (126ms)
 ```
 
-Warnings are reserved for things worth acting on: an unreadable photo, a store
-the matcher hasn't learned, a catalog gap that blocked a unit conversion.
+Warnings are reserved for things worth acting on: a recipe page that could not
+be read, a catalog gap that blocked a unit conversion.
 `SOUSCHEF_LOG_LEVEL=DEBUG` for more.
 
 Credentials are scrubbed by the formatter before anything is written, so logs
@@ -218,8 +201,8 @@ the stored NYT cookie is worse than one that is plainly down.
 ## Testing
 
 ```bash
-./venv/bin/python -m pytest tests/ -q        # fast: no network, no models
-./venv/bin/python -m pytest tests/ -m slow   # loads the real OCR models
+./venv/bin/python -m pytest tests/ -q        # fast: no network
+./venv/bin/python -m pytest tests/ -m slow   # large fixtures and recorded network cassettes
 ```
 
 The regression suite is built from failures found by running against real data,
@@ -239,8 +222,7 @@ backups are one file, and tests run the identical engine.
 **No LLM in the core loop.** Ingredient parsing is a CPU-only CRF model and
 matching is deterministic. A matcher you can debug beats a model that's
 confidently wrong, and everything here has to run on a laptop while dinner is
-being planned. A cloud vision model is touched only as a fallback for receipts
-the local OCR can't read, and only with per-receipt consent.
+being planned.
 
 **Server-rendered HTML + HTMX.** One service, one language, no build step.
 

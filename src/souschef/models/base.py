@@ -36,7 +36,7 @@ class TimestampMixin:
 class OwnedMixin:
     """Marks a table as belonging to exactly one user.
 
-    Every row a user creates -- pantry levels, recipes, plans, receipts -- hangs
+    Every row a user creates -- pantry levels, recipes, plans -- hangs
     off this column, and every query that reads them must filter on it. The
     column is non-nullable on purpose: a nullable owner invites a query that
     forgets the filter and quietly returns another user's kitchen.

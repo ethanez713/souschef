@@ -44,9 +44,9 @@ class IngredientCategory(enum.StrEnum):
 class CanonicalIngredient(Base, TimestampMixin):
     """One real-world foodstuff, normalized.
 
-    Everything -- recipe lines, receipt lines, pantry rows -- resolves to one of
+    Everything -- recipe lines, shopping lines, pantry rows -- resolves to one of
     these. The unit-bridging fields are what let a recipe asking for "2 cups
-    flour" reconcile with a receipt reading "GOLD MEDAL AP FLOUR 5LB".
+    flour" reconcile with a pantry row counted in pounds.
     """
 
     __tablename__ = "canonical_ingredient"
@@ -118,7 +118,7 @@ class CanonicalIngredient(Base, TimestampMixin):
 class AliasSource(enum.StrEnum):
     SEED = "seed"  # shipped with the app
     RECIPE = "recipe"  # learned from a recipe ingredient line
-    RECEIPT = "receipt"  # learned from a receipt line (store abbreviations)
+    RECEIPT = "receipt"  # only on existing rows; kept so they still load
     MANUAL = "manual"  # the user explicitly corrected a match
 
 
@@ -126,8 +126,8 @@ class IngredientAlias(Base, TimestampMixin):
     """Free text seen in the wild, mapped to a canonical ingredient.
 
     This table is what stops the app being tedious. Every correction the user
-    makes -- "GV EVOO 25.5Z" is olive oil -- is remembered, so each receipt from
-    a given store needs less fixing than the one before it.
+    makes -- "EVOO" is olive oil -- is remembered, so the same wording resolves
+    exactly the next time.
     """
 
     __tablename__ = "ingredient_alias"

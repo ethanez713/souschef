@@ -2,10 +2,10 @@
 
 The database is deliberately not part of this. SQLite needs byte-range locks and
 an fsync that means something, which no cloud drive provides -- so it stays a
-local file, and everything else the app writes (receipt images, database
-snapshots) goes through the ``Storage`` interface below. Backing the app with
-Google Drive is then one class: blobs are stored remotely and the database rides
-along as a snapshot pushed by ``souschef backup``.
+local file, and everything else the app writes (database snapshots) goes
+through the ``Storage`` interface below. Backing the app with
+Google Drive is then one class: the database rides along as a snapshot pushed by
+``souschef backup``.
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ class StorageError(RuntimeError):
 def normalize_key(key: str) -> str:
     """Reject anything that could escape the storage root.
 
-    Keys reach here from the database (a receipt row names its own image), so a
-    tampered or corrupted row must not be able to address a path outside it.
+    A key may come from outside the code, so a tampered or corrupted one must not
+    be able to address a path outside it.
     """
     parts = key.split("/")
     if not key or key.startswith("/") or "\\" in key or any(p in ("", ".", "..") for p in parts):

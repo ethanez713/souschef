@@ -3,7 +3,7 @@
 The central problem: recipes speak in volume ("2 cups flour"), shops sell by
 mass ("5 LB FLOUR"), and some things are counted ("3 eggs"). These three
 vocabularies have to reconcile or nothing downstream works -- you cannot
-subtract a recipe from a pantry stocked by receipts otherwise.
+subtract a recipe from a pantry stocked in packages otherwise.
 
 Bridging them needs per-ingredient physical facts:
   * volume -> mass needs density (a cup of flour is 120 g; a cup of oil is 216 g)
@@ -63,7 +63,7 @@ PACK_WORDS = (
     "bunch", "head", "dozen", "loaf", "carton",
 )
 
-# Free-text unit spellings seen in recipes and on receipts, mapped to pint names.
+# Free-text unit spellings seen in recipes, mapped to pint names.
 _UNIT_ALIASES = {
     "": BASE_COUNT,
     "ct": BASE_COUNT,

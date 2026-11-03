@@ -204,7 +204,6 @@
     <pre id="shop-plain" class="shop-plain" hidden>{{ copy_text }}</pre>
     <div class="actions no-print">
       <button type="button" data-copy-target="shop-plain">Copy list</button>
-      <a class="btn {{ 'primary' if to_get == 0 and not pending_stock }}" href="/receipts">{{ icon('camera', 16) }}Scan the receipt</a>
     </div>
   {% elif has_plan %}
     <p class="empty-line">Nothing to buy — the pantry covers this week’s plan.</p>

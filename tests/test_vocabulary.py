@@ -19,9 +19,6 @@ from souschef.models import (
     EventReason,
     MealPlanEntry,
     MealSlot,
-    Receipt,
-    ReceiptLine,
-    ReceiptStatus,
     RecipeSource,
 )
 
@@ -93,20 +90,13 @@ def kitchen(signed_in: TestClient, seeded_session: Session, web_user) -> dict[st
         occurred_at=stale,
     )
     get_or_create_item(seeded_session, web_user.id, cream).last_confirmed_at = stale
-    receipt = Receipt(
-        user_id=web_user.id, image_path="test.jpg", status=ReceiptStatus.NEEDS_REVIEW,
-        ocr_confidence=0.6,
-    )
-    seeded_session.add(receipt)
-    seeded_session.flush()
-    seeded_session.add(ReceiptLine(receipt_id=receipt.id, position=0, raw_text="MYSTERY 3.99"))
     seeded_session.commit()
-    return {"recipe": recipe.id, "receipt": receipt.id}
+    return {"recipe": recipe.id}
 
 
 PAGES = [
-    "/", "/recipes", "/plan", "/shopping", "/pantry", "/receipts", "/settings",
-    "/recipes/{recipe}", "/recipes/{recipe}/cook", "/receipts/{receipt}",
+    "/", "/recipes", "/plan", "/shopping", "/pantry", "/settings",
+    "/recipes/{recipe}", "/recipes/{recipe}/cook",
 ]
 
 
@@ -124,3 +114,5 @@ def test_no_page_uses_a_banned_phrase(
     ]
 
     assert found == []
+    assert 'href="/receipts' not in response.text
+    assert re.search(r"(?<!\w)receipts?(?!\w)", text, re.IGNORECASE) is None

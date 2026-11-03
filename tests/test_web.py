@@ -32,9 +32,6 @@ from souschef.models import (
     MealPlanEntry,
     MealSlot,
     PantryItem,
-    Receipt,
-    ReceiptLine,
-    ReceiptStatus,
     Recipe,
     RecipeIngredient,
     RecipeSource,
@@ -61,6 +58,15 @@ def test_home_needs_no_cookie(client: TestClient) -> None:
 def test_account_pages_are_gone(client: TestClient, path: str) -> None:
     assert client.get(path).status_code == 404
     assert client.post(path).status_code == 404
+
+
+def test_receipt_routes_are_gone(client: TestClient) -> None:
+    assert client.get("/receipts").status_code == 404
+    uploaded = client.post(
+        "/receipts/upload",
+        headers={"Origin": "http://127.0.0.1"},
+    )
+    assert uploaded.status_code == 404
 
 
 def test_a_foreign_host_is_refused(client: TestClient) -> None:
@@ -604,45 +610,6 @@ def test_checking_a_stale_item_is_a_404(
     assert 'class="toast"' in missing.text
 
 
-def test_applying_a_receipt_drops_the_covered_item_on_the_next_shop_page(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    _plan_pasta(seeded_session, web_user, "Receipt Shop", "https://example.com/receipt-shop")
-    assert "spaghetti" in signed_in.get("/shopping").text
-
-    spaghetti = ing(seeded_session, "spaghetti")
-    receipt = Receipt(
-        user_id=web_user.id,
-        image_path="spaghetti.png",
-        image_sha256="apply-covers-shop",
-        status=ReceiptStatus.NEEDS_REVIEW,
-    )
-    seeded_session.add(receipt)
-    seeded_session.flush()
-    line = ReceiptLine(
-        receipt_id=receipt.id,
-        position=0,
-        raw_text="SPAGHETTI",
-        parsed_quantity=500,
-        parsed_unit="g",
-        ingredient_id=spaghetti.id,
-    )
-    seeded_session.add(line)
-    seeded_session.commit()
-
-    applied = signed_in.post(
-        f"/receipts/{receipt.id}/apply",
-        data={
-            f"ingredient_{line.id}": str(spaghetti.id),
-            f"quantity_{line.id}": "500",
-            f"unit_{line.id}": "g",
-            f"confirmed_{line.id}": "on",
-        },
-    )
-    assert applied.status_code == 200
-    assert "spaghetti" not in signed_in.get("/shopping").text
-
-
 def test_an_audit_correction_drops_a_covered_item_on_the_next_shop_page(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -703,14 +670,6 @@ def test_correcting_a_recipe_match_puts_the_ingredient_on_the_next_shop_page(
     )
     assert corrected.status_code == 303
     assert "spaghetti" in signed_in.get("/shopping").text
-
-
-def test_receipts_page_renders(signed_in: TestClient) -> None:
-    response = signed_in.get("/receipts")
-    assert response.status_code == 200
-    file_inputs = re.findall(r"<input[^>]*type=\"file\"[^>]*>", response.text)
-    assert len(file_inputs) == 2
-    assert sum("capture=" in tag for tag in file_inputs) == 1
 
 
 def test_nyt_cookie_is_stored_encrypted(
@@ -821,7 +780,7 @@ def test_manifest_lists_a_maskable_icon_and_pages_link_the_touch_icon(
     assert '<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">' in page.text
 
 
-TOP_LEVEL_PAGES = ("/", "/recipes", "/plan", "/shopping", "/pantry", "/receipts", "/settings")
+TOP_LEVEL_PAGES = ("/", "/recipes", "/plan", "/shopping", "/pantry", "/settings")
 
 
 def test_top_level_pages_have_distinct_titles(signed_in: TestClient) -> None:
@@ -1440,117 +1399,6 @@ def test_one_audit_save_records_every_answer(
     assert _pantry_row(seeded_session, web_user, "eggs").quantity == 5
 
 
-def test_applying_a_receipt_saves_the_line_on_the_same_form(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    eggs = ing(seeded_session, "eggs")
-    receipt = Receipt(
-        user_id=web_user.id,
-        image_path="eggs.png",
-        image_sha256="apply-form",
-        status=ReceiptStatus.NEEDS_REVIEW,
-    )
-    seeded_session.add(receipt)
-    seeded_session.flush()
-    line = ReceiptLine(
-        receipt_id=receipt.id,
-        position=0,
-        raw_text="LG EGGS",
-        parsed_quantity=12,
-        parsed_unit="count",
-        ingredient_id=eggs.id,
-    )
-    seeded_session.add(line)
-    seeded_session.commit()
-
-    response = signed_in.post(
-        f"/receipts/{receipt.id}/apply",
-        data={
-            f"ingredient_{line.id}": str(eggs.id),
-            f"quantity_{line.id}": "6",
-            f"unit_{line.id}": "count",
-            f"confirmed_{line.id}": "on",
-        },
-    )
-    assert response.status_code == 200
-    assert "1 line added" in response.text
-    seeded_session.expire_all()
-    assert seeded_session.get(Receipt, receipt.id).status == ReceiptStatus.APPLIED
-    assert _pantry_row(seeded_session, web_user, "eggs").quantity == 6
-
-
-def test_applying_a_receipt_with_nothing_ticked_does_not_lock_it(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    eggs = ing(seeded_session, "eggs")
-    receipt = Receipt(
-        user_id=web_user.id,
-        image_path="eggs2.png",
-        image_sha256="apply-empty",
-        status=ReceiptStatus.NEEDS_REVIEW,
-    )
-    seeded_session.add(receipt)
-    seeded_session.flush()
-    seeded_session.add(
-        ReceiptLine(
-            receipt_id=receipt.id,
-            position=0,
-            raw_text="LG EGGS",
-            ingredient_id=eggs.id,
-        )
-    )
-    seeded_session.commit()
-
-    response = signed_in.post(f"/receipts/{receipt.id}/apply")
-    assert response.status_code == 400
-    assert "No lines were confirmed" in response.text
-    seeded_session.expire_all()
-    assert seeded_session.get(Receipt, receipt.id).status == ReceiptStatus.NEEDS_REVIEW
-    assert _pantry_row(seeded_session, web_user, "eggs") is None
-
-
-def test_uploading_an_applied_receipt_again_does_not_rescan_it(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
-    import io
-
-    from PIL import Image
-
-    from souschef.ingest.receipt_service import create_receipt
-
-    buffer = io.BytesIO()
-    Image.new("RGB", (2, 2), "white").save(buffer, format="PNG")
-    png = buffer.getvalue()
-
-    receipt = create_receipt(seeded_session, web_user.id, png, "receipt.png")
-    receipt.status = ReceiptStatus.APPLIED
-    seeded_session.add(
-        ReceiptLine(
-            receipt_id=receipt.id,
-            position=0,
-            raw_text="EGGS",
-            is_confirmed=True,
-            ingredient_id=ing(seeded_session, "eggs").id,
-        )
-    )
-    seeded_session.commit()
-
-    response = signed_in.post(
-        "/receipts/upload",
-        files={"image": ("receipt.png", png, "image/png")},
-    )
-    assert response.status_code == 303
-    assert response.headers["location"] == f"/receipts/{receipt.id}?already=1"
-    page = signed_in.get(response.headers["location"])
-    assert "already" in page.text.lower()
-
-    seeded_session.expire_all()
-    saved = seeded_session.get(Receipt, receipt.id)
-    assert saved.status == ReceiptStatus.APPLIED
-    assert [line.raw_text for line in saved.lines] == ["EGGS"]
-    assert saved.lines[0].is_confirmed
-
-
 def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
     signed_in: TestClient, seeded_session: Session, web_user: User
 ) -> None:
@@ -1595,9 +1443,7 @@ def test_a_wrong_recipe_match_can_be_corrected_on_the_recipe(
     assert "steak" not in signed_in.get("/shopping").text.casefold()
 
 
-def test_unknown_paths_and_the_wrong_method_render_html(
-    signed_in: TestClient, seeded_session: Session, web_user: User
-) -> None:
+def test_unknown_paths_and_the_wrong_method_render_html(signed_in: TestClient) -> None:
     missing = signed_in.get("/nope")
     assert missing.status_code == 404
     assert missing.headers["content-type"].startswith("text/html")
@@ -1611,18 +1457,6 @@ def test_unknown_paths_and_the_wrong_method_render_html(
     assert refresh.status_code == 303
     assert refresh.headers["location"] == "/pantry"
     assert signed_in.get("/settings/staples").headers["location"] == "/settings"
-
-    receipt = Receipt(
-        user_id=web_user.id,
-        image_path="eggs.png",
-        image_sha256="apply-get",
-        status=ReceiptStatus.NEEDS_REVIEW,
-    )
-    seeded_session.add(receipt)
-    seeded_session.commit()
-    applied = signed_in.get(f"/receipts/{receipt.id}/apply")
-    assert applied.status_code == 303
-    assert applied.headers["location"] == f"/receipts/{receipt.id}"
 
     wrong_method = signed_in.post("/")
     assert wrong_method.status_code == 405

@@ -257,17 +257,6 @@ def _shop_need(context: dict, item: object) -> str:
     return purchase_need_text(item, system=system, show_alt=show_alt)
 
 
-def _receipt_label(status: object) -> str:
-    key = getattr(status, "value", status)
-    return {
-        "uploaded": "Uploaded",
-        "ocr_running": "Scanning",
-        "needs_review": "Needs review",
-        "applied": "Added to the pantry",
-        "failed": "Couldn't scan",
-    }.get(str(key), str(key).replace("_", " "))
-
-
 _VULGAR = {
     "1/2": "½", "1/3": "⅓", "2/3": "⅔", "1/4": "¼", "3/4": "¾",
     "1/8": "⅛", "3/8": "⅜", "5/8": "⅝", "7/8": "⅞",
@@ -306,7 +295,6 @@ templates.env.filters["shop_need"] = _shop_need
 templates.env.filters["shop_unit"] = purchase_form_unit
 templates.env.globals["recipe_readiness"] = recipe_readiness
 templates.env.globals["readiness_chip"] = readiness_chip
-templates.env.filters["receipt_label"] = _receipt_label
 templates.env.filters["fractions"] = _fractions
 
 

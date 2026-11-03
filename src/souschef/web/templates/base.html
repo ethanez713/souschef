@@ -32,7 +32,6 @@
   <a href="/plan" class="{{ 'on' if active == 'plan' }}">{{ icon('calendar-days', 18) }}<span>Plan</span></a>
   <a href="/shopping" class="{{ 'on' if active == 'shopping' }}">{{ icon('shopping-basket', 18) }}<span>Shop</span></a>
   <a href="/pantry" class="{{ 'on' if active == 'pantry' }}">{{ icon('refrigerator', 18) }}<span>Pantry</span></a>
-  <a class="nav-extra {{ 'on' if request.url.path.startswith('/receipts') }}" href="/receipts">{{ icon('camera', 18) }}<span>Receipts</span></a>
   <a class="nav-extra {{ 'on' if request.url.path.startswith('/settings') }}" href="/settings">{{ icon('settings', 18) }}<span>Settings</span></a>
 </nav>
 {% endif %}

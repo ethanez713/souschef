@@ -97,12 +97,6 @@ main[data-offline] .page-head,
 main[data-offline] .list-row,
 main[data-offline] .list-row-trail { flex-wrap: wrap; }
 main[data-offline] button[data-offline-locked] { white-space: normal; height: auto; text-align: center; }
-.head-action {
-  display: inline-flex; align-items: center; gap: var(--sp-15); flex: none;
-  min-height: 44px; padding: 0 var(--sp-2);
-  font-size: var(--fs-body); font-weight: var(--fw-medium); color: var(--text-link); text-decoration: none;
-}
-.head-action:hover { color: var(--text-link); }
 .toolbar { display: flex; align-items: center; gap: var(--sp-2); margin: var(--sp-3) 0 var(--sp-2); }
 .toolbar .field { flex: 1; margin: 0; min-width: 0; }
 .toolbar > .btn { flex: none; padding: 0 var(--sp-4); }
@@ -411,7 +405,7 @@ ul.plain li { margin: var(--sp-1) 0; }
 .shop-item.checked .list-row-title { text-decoration: line-through; color: var(--text-muted); }
 details.basket > summary::after { font-size: var(--fs-micro); }
 
-/* ---------- receipts, misc ---------- */
+/* ---------- misc ---------- */
 
 code { background: var(--ink-wash); padding: 1px 5px; border-radius: var(--r-xs); color: var(--text-heading); overflow-wrap: anywhere; }
 .method p { margin-bottom: var(--sp-3); max-width: var(--prose-max); }
@@ -470,7 +464,7 @@ a:focus-visible {
 }
 .skip:focus, .skip:focus-visible { transform: none; top: var(--sp-2); }
 
-/* Phone tab bar stays five items. Receipts and Settings join the sidebar only. */
+/* Phone tab bar stays five items. Settings joins the sidebar only. */
 .tabbar a.nav-extra { display: none; }
 
 details.inline-fix { margin-top: var(--sp-2); }
@@ -481,37 +475,6 @@ details.inline-fix > summary {
 details.inline-fix > summary::after { content: none; }
 details.inline-fix .controls,
 .recipe-body form.controls { margin-top: var(--sp-3); }
-
-.review-photo { display: none; }
-.receipt-line {
-  display: flex; align-items: center; gap: var(--sp-2); min-height: 48px;
-  padding: var(--sp-1) 0; border-bottom: 1px solid var(--ink-rule);
-}
-.receipt-tick { flex: none; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-left: -10px; }
-.receipt-tick input { width: 20px; height: 20px; margin: 0; }
-.receipt-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-.receipt-raw {
-  font-size: var(--fs-body-sm); line-height: var(--lh-body-sm); color: var(--text-muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.receipt-match, .receipt-note { font-size: var(--fs-body-sm); line-height: var(--lh-body-sm); color: var(--text-muted); }
-.receipt-main .picker { margin: 0; }
-.receipt-main .picker-trigger {
-  min-height: 44px; padding: 0; justify-content: flex-start;
-  background: none; border: 0; box-shadow: none; color: var(--text-heading);
-}
-.receipt-main .picker-label { display: none; }
-.receipt-main .picker-choice { text-align: left; color: var(--text-heading); font-weight: var(--fw-medium); }
-.receipt-main .picker-trigger[data-empty] .picker-choice { color: var(--text-accent); }
-.receipt-amt { flex: none; display: flex; gap: var(--sp-1); }
-.receipt-amt .qty { width: 5ch; min-width: 0; text-align: right; }
-.receipt-unit { width: 6ch; min-width: 0; }
-.receipt-add, .receipt-skipped { margin-top: var(--sp-3); }
-.receipt-add > summary, .receipt-skipped > summary {
-  display: flex; align-items: center; gap: var(--sp-1); min-height: 44px;
-  color: var(--text-link); cursor: pointer;
-}
-.receipt-add > button { margin-top: var(--sp-2); }
 
 @media (min-width: 1200px) {
   .tabbar a.nav-extra { display: flex; }
@@ -532,21 +495,6 @@ details.inline-fix .controls,
   #pantry-list.pantry-grid > .notice,
   #pantry-list.pantry-grid > .empty,
   #pantry-list.pantry-grid > .pantry-always { grid-column: 1 / -1; }
-
-  /* 2 : 3.25 is about 38% of the content well for the photo. */
-  .review-layout {
-    display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3.25fr);
-    gap: var(--sp-5); align-items: start;
-  }
-  .review-photo {
-    display: block; position: sticky; top: 62px;
-    max-height: calc(100vh - 78px); overflow: auto;
-  }
-  .review-photo a { display: block; }
-  .review-photo img {
-    width: 100%; height: auto; display: block;
-    border-radius: var(--r-card); border: 1px solid var(--border-subtle);
-  }
 }
 
 @media print {

@@ -28,7 +28,6 @@ from souschef.web.routes import (
     pantry,
     pick,
     plan,
-    receipts,
     recipes,
     settings,
     shopping,
@@ -50,8 +49,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # Requests slower than this are logged as a warning. Everything here is a
-# handful of SQLite reads except receipt OCR, so a slow page means something
-# is wrong rather than merely busy.
+# handful of SQLite reads, so a slow page means something is wrong rather
+# than merely busy.
 SLOW_REQUEST_SECONDS = 3.0
 
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -195,6 +194,5 @@ app.include_router(recipes.router)
 app.include_router(cook.router)
 app.include_router(plan.router)
 app.include_router(shopping.router)
-app.include_router(receipts.router)
 app.include_router(settings.router)
 app.include_router(meta.router)

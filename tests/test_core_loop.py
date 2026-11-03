@@ -31,9 +31,6 @@ from souschef.models import (
     MealPlanEntry,
     MealSlot,
     PantryItem,
-    Receipt,
-    ReceiptLine,
-    ReceiptStatus,
     Recipe,
     RecipeIngredient,
     RecipeSource,
@@ -1112,125 +1109,6 @@ def test_naming_an_unnamed_row_matches_every_copy_of_the_line(
     ).all()
     assert any(alias.raw_text.casefold() == "xyzzybroth" for alias in learned)
     assert not any("cup" in alias.raw_text.casefold() for alias in learned)
-
-
-def test_receipt_review_unticks_what_the_list_already_added(
-    signed_in: TestClient, seeded_session: Session, web_user
-) -> None:
-    pasta = ing(seeded_session, "spaghetti")
-    garlic = ing(seeded_session, "garlic")
-    _counted(seeded_session, web_user.id, pasta)
-    recipe = _imported_pasta(
-        seeded_session, web_user.id, "Receipt Pasta", "https://example.com/core-loop-receipt"
-    )
-    _plan(seeded_session, web_user.id, recipe, date.today())
-    receipt = Receipt(
-        user_id=web_user.id,
-        image_path="test.jpg",
-        status=ReceiptStatus.NEEDS_REVIEW,
-        ocr_confidence=0.95,
-    )
-    seeded_session.add(receipt)
-    seeded_session.flush()
-    pasta_line = ReceiptLine(
-        receipt_id=receipt.id,
-        position=0,
-        raw_text="SPAGHETTI",
-        parsed_quantity=454,
-        parsed_unit="g",
-        ingredient_id=pasta.id,
-        match_confidence=0.95,
-        is_confirmed=True,
-    )
-    garlic_line = ReceiptLine(
-        receipt_id=receipt.id,
-        position=1,
-        raw_text="GARLIC",
-        parsed_quantity=1,
-        parsed_unit="count",
-        ingredient_id=garlic.id,
-        match_confidence=0.95,
-        is_confirmed=True,
-    )
-    seeded_session.add_all([pasta_line, garlic_line])
-    seeded_session.commit()
-
-    shop = signed_in.get("/shopping")
-    signed_in.post(
-        f"/shopping/item/{_item_id(shop.text, 'spaghetti')}/check", data={"checked": "1"}
-    )
-    assert signed_in.post("/shopping/stock").status_code == 303
-    signed_in.get("/shopping")
-    receipt.created_at = datetime.now(UTC)
-    seeded_session.commit()
-
-    review = signed_in.get(f"/receipts/{receipt.id}")
-
-    assert review.status_code == 200
-    assert f'name="confirmed_{pasta_line.id}" checked' not in review.text
-    assert "Already added from the shopping list, so this line stays unticked." in review.text
-    assert f'name="confirmed_{garlic_line.id}" checked' in review.text
-
-    seeded_session.expire_all()
-    before = get_or_create_item(seeded_session, web_user.id, pasta).quantity
-    applied = signed_in.post(
-        f"/receipts/{receipt.id}/apply",
-        data={
-            f"ingredient_{pasta_line.id}": str(pasta.id),
-            f"quantity_{pasta_line.id}": "454",
-            f"unit_{pasta_line.id}": "g",
-            f"ingredient_{garlic_line.id}": str(garlic.id),
-            f"quantity_{garlic_line.id}": "1",
-            f"unit_{garlic_line.id}": "count",
-            f"confirmed_{garlic_line.id}": "on",
-        },
-    )
-    assert applied.status_code == 200
-    seeded_session.expire_all()
-    assert get_or_create_item(seeded_session, web_user.id, pasta).quantity == pytest.approx(before)
-    assert get_or_create_item(seeded_session, web_user.id, garlic).quantity == pytest.approx(1)
-
-
-def test_a_line_bought_long_before_this_receipt_stays_ticked(
-    signed_in: TestClient, seeded_session: Session, web_user
-) -> None:
-    pasta = ing(seeded_session, "spaghetti")
-    record_event(
-        seeded_session,
-        web_user.id,
-        pasta,
-        reason=EventReason.PURCHASE,
-        delta=454,
-        unit="g",
-        source_ref="shopping:1",
-        occurred_at=datetime.now(UTC) - timedelta(days=30),
-    )
-    receipt = Receipt(
-        user_id=web_user.id,
-        image_path="earlier.jpg",
-        status=ReceiptStatus.NEEDS_REVIEW,
-        ocr_confidence=0.95,
-    )
-    seeded_session.add(receipt)
-    seeded_session.flush()
-    line = ReceiptLine(
-        receipt_id=receipt.id,
-        position=0,
-        raw_text="SPAGHETTI",
-        parsed_quantity=454,
-        parsed_unit="g",
-        ingredient_id=pasta.id,
-        match_confidence=0.95,
-        is_confirmed=True,
-    )
-    seeded_session.add(line)
-    seeded_session.commit()
-    signed_in.get("/shopping")
-
-    review = signed_in.get(f"/receipts/{receipt.id}")
-
-    assert f'name="confirmed_{line.id}" checked' in review.text
-    assert "Already added from the shopping list" not in review.text
 
 
 def test_home_asks_about_uncooked_meals_from_the_last_week(

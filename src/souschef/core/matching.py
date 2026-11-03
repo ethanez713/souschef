@@ -1,9 +1,8 @@
-"""Resolve free text to a canonical ingredient.
+"""Resolve a recipe line to a canonical ingredient.
 
-Three vocabularies arrive here and none of them agree:
+A recipe line and the name a cook types do not agree:
 
     recipe   "2 tablespoons extra-virgin olive oil, divided"
-    receipt  "GV EVOO 25.5Z          8.47 F"
     user     "olive oil"
 
 Matching runs cheapest-and-most-certain first: a correction the user made, then
@@ -13,7 +12,7 @@ used, so the UI can quietly accept strong matches and surface weak ones for
 review rather than writing a guess into the pantry.
 
 The alias table is the part that compounds. Each correction is written back, so
-the second receipt from a given store needs less fixing than the first.
+the next line written the same way needs no fixing.
 """
 
 from __future__ import annotations
@@ -97,126 +96,11 @@ _NOISE_WORDS = {
     "tbsp", "ml", "kg",
 }
 
-# Grocery-receipt shorthand. Stores compress aggressively and inconsistently, so
-# this is seeded with the common cases and grows via the learned alias table.
-_RECEIPT_ABBREVIATIONS = {
-    "evoo": "extra virgin olive oil",
-    "oo": "olive oil",
-    "chkn": "chicken",
-    "chk": "chicken",
-    "bnls": "boneless",
-    "skls": "skinless",
-    "brst": "breast",
-    "thgh": "thigh",
-    "grnd": "ground",
-    "gr": "ground",
-    "bf": "beef",
-    "prk": "pork",
-    "tom": "tomato",
-    "toms": "tomatoes",
-    "ptto": "potato",
-    "pot": "potato",
-    "onn": "onion",
-    "ong": "onion",
-    "yel": "yellow",
-    "rd": "red",
-    "grn": "green",
-    "wht": "white",
-    "chz": "cheese",
-    "chse": "cheese",
-    "shrd": "shredded",
-    "ched": "cheddar",
-    "mozz": "mozzarella",
-    "parm": "parmesan",
-    "yog": "yogurt",
-    "yogrt": "yogurt",
-    "mlk": "milk",
-    "btr": "butter",
-    "brd": "bread",
-    "eg": "eggs",
-    "egg": "eggs",
-    "lg": "large",
-    "org": "organic",
-    "veg": "vegetable",
-    "frz": "frozen",
-    "frzn": "frozen",
-    "fzn": "frozen",
-    "sze": "size",
-    "pkt": "packet",
-    "bnch": "bunch",
-    "swt": "sweet",
-    "ppr": "pepper",
-    "pep": "pepper",
-    "bll": "bell",
-    "gar": "garlic",
-    "gr lk": "green leaf",
-    "spin": "spinach",
-    "brocc": "broccoli",
-    "cauli": "cauliflower",
-    "mush": "mushrooms",
-    "musrm": "mushrooms",
-    "crm": "cream",
-    "hvy": "heavy",
-    "whip": "whipping",
-    "sc": "sauce",
-    "sauc": "sauce",
-    "sug": "sugar",
-    "flr": "flour",
-    "wtr": "water",
-    "jc": "juice",
-    "bnna": "banana",
-    "ban": "banana",
-    "appl": "apple",
-    "avo": "avocado",
-    "lmn": "lemon",
-    "lm": "lime",
-    "cil": "cilantro",
-    "pars": "parsley",
-    "sals": "salsa",
-    "tort": "tortillas",
-    "spag": "spaghetti",
-    "past": "pasta",
-    "ric": "rice",
-    # I and F are the same stroke once a receipt is creased.
-    "izn": "frozen",
-}
-
 # "long-grain" is a rice variety the catalog already names ("long grain rice",
 # "white rice"). Both words are in the catalog vocabulary, so the ordinary
 # noise strip keeps them, and "long grain white rice" then covers neither alias.
 _VARIETY_WORDS = frozenset({"long", "grain"})
 
-# Store brand prefixes that add nothing. Kept short and explicit; a wrong strip
-# is worse than a missed one.
-_BRAND_PREFIXES = {
-    "gv", "greatvalue", "great value", "kirkland", "ks", "signature select",
-    "market pantry", "good gather", "good & gather", "365", "simple truth",
-    "private selection", "trader joes", "tj", "essential everyday", "hy vee",
-    "wegmans", "safeway", "kroger", "heb", "publix", "aldi", "store brand",
-    "kraft", "clif",
-}
-
-_SIZE_TOKEN = re.compile(
-    r"\b\d+\.?\d*\s*(?:z|oz|ozs|lbs|lb|1bs|1b|ib|g|kg|ml|l|ct|pk|pc|qt|pt|gal|fz|floz)\b"
-    r"|(?<=[A-Za-z])\d+\s*(?:lbs|lb|1bs|1b|ib|ct|pk|oz|z)\b"
-    r"|(?<=[A-Za-z])I(?:LB|B)\b",
-    re.IGNORECASE,
-)
-# A trailing tax flag is glued to the price ("8.47F"), so the cents are not
-# always followed by a boundary. A unit is glued too ("2.34lb"); taking that
-# first letter leaves a stray token the food no longer matches. One letter,
-# and only when another letter does not follow. A leading dot (".29") is a
-# price whose dollar digit the scanner dropped.
-_PRICE = re.compile(r"\$?(?:\d+\.\d{2}|\.\d{2})(?!\d)(?:[A-Za-z](?![A-Za-z]))?")
-# UPCs are often glued to a one- or two-letter tax flag ("078742362690F").
-# The flag is not a word boundary, so a bare digit run would leave it behind
-# and the product would no longer match. The letters are only consumed when
-# a boundary follows them, so a word glued on ("040110BANANAS") stays intact.
-_PLU_CODE = re.compile(r"\b\d{4,14}(?!\d)[A-Za-z]{0,2}\b")
-# Tax flags are a trailing F or T. Any two letters would also eat a unit
-# ("24 OZ" lost the OZ and kept a stray 24).
-_TRAILING_FLAGS = re.compile(r"\s+(?:FT|TX|F|T)$", re.IGNORECASE)
-_BARE_NUMBER = re.compile(r"\b\d+\b")
 # A slash between words is "cornflour / corn starch", not a fat ratio ("80/20").
 _ALTERNATIVE_SPLIT = re.compile(
     r"(?<!\d)\s*/\s*(?!\d)|\s*,\s*or\s+|\s+or\s+",
@@ -225,55 +109,8 @@ _ALTERNATIVE_SPLIT = re.compile(
 _PAREN = re.compile(r"\(+([^)]*)\)+")
 _OR_NOTE = re.compile(r"or\s+(.+)$", re.IGNORECASE)
 
-# Receipt lines lead with a department or a flavor the catalog names without.
-# Applied only after prices and abbreviations are gone, and only as a rewrite
-# to a phrase the catalog already has -- not as a fuzzier score.
-_RECEIPT_PHRASES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bsalad\s+spinach\s+baby\b"), "baby spinach"),
-    (re.compile(r"\bspinach\s+baby\b"), "baby spinach"),
-    (re.compile(r"\bpasta\s+organic\s+spaghetti\b"), "spaghetti"),
-    (re.compile(r"\bpasta\s+spaghetti\b"), "spaghetti"),
-    (re.compile(r"\bfrozen\s+organic\s+spinach\b"), "frozen spinach"),
-    (re.compile(r"\bfrozen\s+organic\s+peas\b"), "frozen peas"),
-    (re.compile(r"\bpasta\s+sauce\s+organic\s+(?:vodka|bolognese)\b"), "pasta sauce"),
-    (re.compile(r"\bpasta\s+sauce\s+(?:vodka|bolognese)\b"), "pasta sauce"),
-    (re.compile(r"\bcrunchy\s+peanut\s+butter\b"), "peanut butter"),
-    (re.compile(r"\borange\s+original\s+from\s+concentra\w*\b"), "orange"),
-)
 _NON_ALNUM = re.compile(r"[^a-z0-9\s]+")
 _WS = re.compile(r"\s+")
-
-# A prepared or branded food can share a word with a staple ("peanut butter"
-# bar, "deviled" egg) and still be the wrong pantry item. It may be proposed.
-# It is not near-certain, so it must not start ticked.
-_PREPARED_WORDS = frozenset({
-    "bar", "bars", "chip", "chips", "cookie", "cookies", "deviled",
-    "brownie", "brownies", "snap", "snaps", "candy", "candies",
-    "burger", "burgers", "cracker", "crackers", "gyoza", "snack", "snacks",
-    "dip", "dips",
-})
-# Store brands add no identity. A product brand ("clif", "kraft") does: the
-# line is that company's food, not the staple it shares a word with.
-_STORE_BRAND_TOKENS = frozenset({
-    "gv", "great", "value", "greatvalue", "kirkland", "ks", "signature", "select",
-    "pantry", "gather", "365", "simple", "truth", "private", "selection",
-    "essential", "everyday", "hy", "vee", "wegmans", "safeway", "kroger",
-    "heb", "publix", "aldi", "tj", "trader", "joes", "store", "brand", "market",
-})
-_BLOCKING_BRANDS = frozenset(
-    token
-    for brand in _BRAND_PREFIXES
-    for token in brand.split()
-    if token not in _STORE_BRAND_TOKENS and token not in _NOISE_WORDS
-)
-
-# OCR substitutions that show up on thermal paper. An edit that is not one of
-# these is still distance 1, but a substitution outside the set is rejected so
-# "chips" cannot become a different food by one unlucky letter.
-_OCR_CONFUSIONS = frozenset({
-    frozenset("it"), frozenset("cg"), frozenset("uo"), frozenset("il"),
-    frozenset("0o"), frozenset("1l"), frozenset("1i"),
-})
 
 
 def normalize(text: str) -> str:
@@ -381,7 +218,7 @@ def _content_tokens(text: str) -> list[str]:
 
 
 def _token_forms(token: str) -> set[str]:
-    """The token plus the plural shapes recipes and receipts actually use."""
+    """The token plus the plural shapes recipe lines actually use."""
     forms = {token}
     if len(token) > 3 and token.endswith("ies"):
         forms.add(token[:-3] + "y")
@@ -395,9 +232,8 @@ def _token_forms(token: str) -> set[str]:
 def _token_covered(token: str, have: set[str], phrase: str) -> bool:
     """A query word is accounted for when the candidate spells it.
 
-    Receipt OCR sometimes jams the words together (``DICEDTOMATOES``). That
-    token is the candidate's own words concatenated, including a preparation
-    word the content filter would otherwise drop.
+    A token may be the candidate's own words written together, including a
+    preparation word the content filter would otherwise drop.
     """
     forms = _token_forms(token)
     if not forms.isdisjoint(have):
@@ -485,176 +321,6 @@ def strip_noise(text: str, protected: frozenset[str] = frozenset()) -> str:
     return " ".join(tokens)
 
 
-def _apply_receipt_phrases(text: str) -> str:
-    """Rewrite a cleaned line onto a phrase the catalog already names.
-
-    Kept off the collapse key. "pasta sauce vodka" and "pasta sauce bolognese"
-    are both tomato sauce, but they are different purchases: folding them into
-    one description made two sauces look like a quantity of 2.
-    """
-    for pattern, replacement in _RECEIPT_PHRASES:
-        text = pattern.sub(replacement, text)
-    return _WS.sub(" ", text).strip()
-
-
-def _repair_vocab(extra: frozenset[str] | None) -> set[str]:
-    words = set(_NOISE_WORDS)
-    words.update(_RECEIPT_ABBREVIATIONS)
-    for expanded in _RECEIPT_ABBREVIATIONS.values():
-        words.update(expanded.split())
-    if extra:
-        words.update(extra)
-    return {word for word in words if len(word) >= 4}
-
-
-def _ocr_edit_ok(left: str, right: str) -> bool:
-    """One OCR slip: a confusion substitution, or a single inserted letter."""
-    if abs(len(left) - len(right)) > 1 or left == right:
-        return False
-    if len(left) == len(right):
-        diffs = [pair for pair in zip(left, right, strict=True) if pair[0] != pair[1]]
-        return len(diffs) == 1 and frozenset(diffs[0]) in _OCR_CONFUSIONS
-    longer, shorter = (left, right) if len(left) > len(right) else (right, left)
-    return any(longer[:i] + longer[i + 1 :] == shorter for i in range(len(longer)))
-
-
-def _only_neighbor(token: str, vocab: set[str]) -> str | None:
-    found: str | None = None
-    for word in vocab:
-        if abs(len(word) - len(token)) > 1 or not _ocr_edit_ok(token, word):
-            continue
-        if found is not None:
-            return None
-        found = word
-    return found
-
-
-def _repairs_agree(left: tuple[str, str], right: tuple[str, str]) -> bool:
-    return all(a == b or _ocr_edit_ok(a, b) for a, b in zip(left, right, strict=True))
-
-
-def _split_ocr_token(token: str, vocab: set[str]) -> str | None:
-    """Break a jammed token into two catalog words ("brussels" + "sprouts").
-
-    "brussel" and "brussels" are one repair read at two cuts, so they agree.
-    Two cuts that name different foods do not, and the token stays as printed.
-    """
-    options: list[tuple[str, str]] = []
-    for cut in range(4, len(token) - 3):
-        left, right = token[:cut], token[cut:]
-        left_word = left if left in vocab else _only_neighbor(left, vocab)
-        right_word = right if right in vocab else _only_neighbor(right, vocab)
-        if not left_word or not right_word:
-            continue
-        pair = (left_word, right_word)
-        if pair not in options:
-            options.append(pair)
-    if not options or any(not _repairs_agree(options[0], other) for other in options[1:]):
-        return None
-    best = max(options, key=lambda pair: (len(pair[0]) + len(pair[1]), pair))
-    return f"{best[0]} {best[1]}"
-
-
-def _repair_ocr_token(token: str, vocab: set[str]) -> str:
-    if len(token) < 5 or token in vocab:
-        return token
-    neighbor = _only_neighbor(token, vocab)
-    if neighbor is not None:
-        return neighbor
-    if len(token) >= 10:
-        return _split_ocr_token(token, vocab) or token
-    return token
-
-
-def _repair_ocr_tokens(tokens: list[str], vocabulary: frozenset[str] | None) -> list[str]:
-    vocab = _repair_vocab(vocabulary)
-    repaired: list[str] = []
-    for token in tokens:
-        piece = _repair_ocr_token(token, vocab)
-        repaired.extend(piece.split())
-    return repaired
-
-
-# Digit/letter pairs that thermal-print OCR confuses. Restricted to the two
-# substitutions that are both common and low-risk: zero-for-O dominates real
-# receipts, and one-for-l is close behind. Adding 5/S, 8/B or 2/Z was tried and
-# reverted -- they fire on genuine quantities ("2.34 lb" became "z.34 lb") far
-# more often than they fix a word.
-_DIGIT_LETTER = str.maketrans({"0": "o", "1": "l"})
-_HAS_LETTER = re.compile(r"[a-zA-Z]")
-_HAS_DIGIT = re.compile(r"\d")
-
-
-def _repair_confusions(token: str) -> str:
-    """Undo digit-for-letter OCR errors inside a word-like token.
-
-    Deliberately conservative, and intended to run *after* prices, sizes and
-    item codes have been stripped -- corrupting a real quantity is worse than
-    leaving a garbled word for the fuzzy matcher to cope with. A token only
-    qualifies if letters clearly dominate and it carries no decimal point,
-    which rules out weights like "2.34" and codes like "412".
-    """
-    if not token or not _HAS_LETTER.search(token) or not _HAS_DIGIT.search(token):
-        return token
-    if "." in token or "/" in token:
-        return token
-    letters = sum(character.isalpha() for character in token)
-    digits = sum(character.isdigit() for character in token)
-    # Ties are repaired, not skipped: "EV00" is half digits and is exactly the
-    # case this exists for. Only a clear digit majority means "quantity".
-    if letters < digits:
-        return token
-    return token.translate(_DIGIT_LETTER)
-
-
-def _expand_receipt_tokens(text: str, vocabulary: frozenset[str] | None) -> list[str]:
-    """Prices and codes gone; abbreviations and OCR slips undone. No phrase rewrite."""
-    out = _PRICE.sub(" ", text.strip())
-    out = _TRAILING_FLAGS.sub("", out.rstrip())
-    out = _SIZE_TOKEN.sub(" ", out)
-    out = _PLU_CODE.sub(" ", out)
-    out = normalize(out)
-
-    expanded: list[str] = []
-    for token in (_repair_confusions(part) for part in out.split()):
-        expanded.extend(_RECEIPT_ABBREVIATIONS.get(token, token).split())
-    return [token for token in _repair_ocr_tokens(expanded, vocabulary) if len(token) > 1]
-
-
-def clean_receipt_line(text: str, vocabulary: frozenset[str] | None = None) -> str:
-    """Strip receipt furniture: prices, sizes, item codes, tax flags, brands.
-
-    Stops short of removing preparation words -- that decision needs the catalog
-    vocabulary, so it belongs to ``strip_noise``. Phrase rewrites that collapse
-    two products onto one catalog name are applied later, and only for matching.
-    """
-    tokens = _expand_receipt_tokens(text, vocabulary)
-    for brand in _BRAND_PREFIXES:
-        brand_tokens = brand.split()
-        if tokens[: len(brand_tokens)] == brand_tokens:
-            tokens = tokens[len(brand_tokens) :]
-            break
-    out = _BARE_NUMBER.sub(" ", " ".join(tokens))
-    return _WS.sub(" ", out).strip()
-
-
-def normalize_receipt_line(text: str, protected: frozenset[str] = frozenset()) -> str:
-    """Clean a receipt line all the way down to a product description."""
-    return strip_noise(clean_receipt_line(text, protected), protected)
-
-
-def _receipt_identity_tokens(text: str, vocabulary: frozenset[str] | None) -> list[str]:
-    """Words a pre-tick has to account for. Brands and prep words stay visible."""
-    return [
-        token
-        for token in _expand_receipt_tokens(text, vocabulary)
-        if token not in _NOISE_WORDS
-        and token not in _STORE_BRAND_TOKENS
-        and token not in _MEASURE_WORDS
-        and not _is_number(token)
-    ]
-
-
 def _alias_is_user(alias: IngredientAlias) -> bool:
     """True when a person confirmed the alias, not when the catalog shipped it.
 
@@ -669,8 +335,7 @@ class IngredientMatcher:
     """Matches text to canonical ingredients, caching the lookup tables.
 
     Built once per request/batch. The catalog is small enough (hundreds of rows)
-    that holding it in memory beats round-tripping per line, and a receipt has
-    dozens of lines to resolve at once.
+    that holding it in memory beats round-tripping per line.
     """
 
     def __init__(self, session: Session) -> None:
@@ -683,7 +348,6 @@ class IngredientMatcher:
         self._by_name: dict[str, int] = {}
         self._names: dict[int, str] = {}
         self._protected: frozenset[str] = frozenset()
-        self._phrase_tokens: dict[int, set[str]] = {}
         self._load()
 
     def _load(self) -> None:
@@ -694,7 +358,6 @@ class IngredientMatcher:
             self._by_name[key] = ing.id
             self._names[ing.id] = ing.name
             vocabulary.update(key.split())
-            self._phrase_tokens.setdefault(ing.id, set()).update(key.split())
 
         for alias in self.session.scalars(select(IngredientAlias)):
             existing = self._by_alias.get(alias.normalized_text)
@@ -707,15 +370,12 @@ class IngredientMatcher:
                 if owned is None or weight > owned[1]:
                     self._user_alias[alias.normalized_text] = (alias.ingredient_id, weight)
             vocabulary.update(alias.normalized_text.split())
-            self._phrase_tokens.setdefault(alias.ingredient_id, set()).update(
-                alias.normalized_text.split()
-            )
 
         # Any word the catalog itself uses is identity-bearing somewhere and is
         # never stripped as noise.
         self._protected = frozenset(vocabulary)
 
-    def _candidates(self, text: str, is_receipt: bool) -> list[str]:
+    def _candidates(self, text: str) -> list[str]:
         """Identity-preserving cleaned forms, richest first.
 
         Only forms that keep every catalog-meaningful word belong here, because
@@ -726,29 +386,22 @@ class IngredientMatcher:
         rather than trusted.
         """
         forms = [normalize(text)]
-        if is_receipt:
-            cleaned = clean_receipt_line(text, self._protected)
-            phrased = _apply_receipt_phrases(cleaned)
-            forms.append(cleaned)
-            forms.append(phrased)
-            forms.append(strip_noise(phrased, self._protected))
-        else:
-            # Head segment first: it isolates the product from its preparation,
-            # which is what separates "tomatoes, diced" from "diced tomatoes".
-            forms.append(strip_noise(head_segment(text), self._protected))
-            forms.append(strip_noise(text, self._protected))
-            # "kosher salt and freshly ground pepper" names two foods. The match
-            # is the first; a candidate cannot cover both, so the line would
-            # otherwise match nothing.
-            primary, separator, _rest = text.partition(" and ")
-            if separator:
-                forms.append(strip_noise(head_segment(primary), self._protected))
-            # Variety words are protected (they appear in "long grain rice"), so
-            # the noise strip cannot drop them. A second form without them lets
-            # "long-grain white rice" hit "white rice" exactly.
-            varied = strip_variety(forms[-1] if forms else "")
-            if varied:
-                forms.append(varied)
+        # Head segment first: it isolates the product from its preparation,
+        # which is what separates "tomatoes, diced" from "diced tomatoes".
+        forms.append(strip_noise(head_segment(text), self._protected))
+        forms.append(strip_noise(text, self._protected))
+        # "kosher salt and freshly ground pepper" names two foods. The match
+        # is the first; a candidate cannot cover both, so the line would
+        # otherwise match nothing.
+        primary, separator, _rest = text.partition(" and ")
+        if separator:
+            forms.append(strip_noise(head_segment(primary), self._protected))
+        # Variety words are protected (they appear in "long grain rice"), so
+        # the noise strip cannot drop them. A second form without them lets
+        # "long-grain white rice" hit "white rice" exactly.
+        varied = strip_variety(forms[-1] if forms else "")
+        if varied:
+            forms.append(varied)
 
         seen: set[str] = set()
         return [
@@ -785,39 +438,6 @@ class IngredientMatcher:
         if hit is not None:
             return hit
         return MatchResult(None, None, 0.0, MatchMethod.NONE)
-
-    def receipt_near_certain(self, text: str, ingredient_id: int) -> bool:
-        """True when every word on the line is the ingredient, not a product of it.
-
-        An automatic match is not enough to tick the box. "Crunchy peanut butter"
-        on a bar, and "deviled egg" from the deli, both share a staple's name.
-        """
-        tokens = _receipt_identity_tokens(text, self._protected)
-        if not tokens or any(token in _PREPARED_WORDS for token in tokens):
-            return False
-        if tokens[0] in _BLOCKING_BRANDS:
-            return False
-        covered: set[str] = set()
-        for word in self._phrase_tokens.get(ingredient_id, ()):
-            covered |= _token_forms(word)
-        if not all(_token_forms(token) & covered for token in tokens):
-            return False
-        # "sprouts" is a word of "brussels sprouts", and that is not the food.
-        # The line has to carry every content word of the canonical name.
-        name = normalize(self._names.get(ingredient_id, ""))
-        name_tokens = [
-            token
-            for token in name.split()
-            if token not in _NOISE_WORDS
-            and token not in _MEASURE_WORDS
-            and not _is_number(token)
-        ]
-        line_forms: set[str] = set()
-        for token in tokens:
-            line_forms |= _token_forms(token)
-        return bool(name_tokens) and all(
-            _token_forms(token) & line_forms for token in name_tokens
-        )
 
     def _fuzzy(self, cleaned: str) -> MatchResult:
         haystack: dict[str, int] = {k: v[0] for k, v in self._by_alias.items()}
@@ -885,16 +505,14 @@ class IngredientMatcher:
             top_id, top_name, round(top_score, 4), MatchMethod.FUZZY, tuple(best[1:])
         )
 
-    def match(self, text: str, *, is_receipt: bool = False) -> MatchResult:
+    def match(self, text: str) -> MatchResult:
         if not text or not text.strip():
             return MatchResult(None, None, 0.0, MatchMethod.NONE)
 
-        # Receipt lines don't carry "A or B". Trying that split on a register
-        # tape would invent foods from a department code.
-        phrases = [text] if is_receipt else alternatives(text)
+        phrases = alternatives(text)
         best_fuzzy: MatchResult | None = None
         for phrase in phrases:
-            candidates = self._candidates(phrase, is_receipt)
+            candidates = self._candidates(phrase)
             for candidate in candidates:
                 hit = self._hit(candidate)
                 if hit is not None:
@@ -903,14 +521,8 @@ class IngredientMatcher:
                 continue
             # The head of a recipe line is the product; the words after the comma
             # are preparation, and keeping them makes "tomatoes, diced" look like
-            # canned diced tomatoes. A receipt has no such split, so the fuzzy
-            # query is the line with prices and noise words removed.
-            if is_receipt:
-                cleaned = candidates[-1]
-            elif len(candidates) > 1:
-                cleaned = candidates[1]
-            else:
-                cleaned = candidates[0]
+            # canned diced tomatoes.
+            cleaned = candidates[1] if len(candidates) > 1 else candidates[0]
             fuzzy = self._fuzzy(cleaned)
             if fuzzy.is_match and (best_fuzzy is None or fuzzy.confidence > best_fuzzy.confidence):
                 best_fuzzy = fuzzy
@@ -923,18 +535,13 @@ class IngredientMatcher:
         ingredient_id: int,
         *,
         source: AliasSource = AliasSource.MANUAL,
-        is_receipt: bool = False,
     ) -> IngredientAlias:
         """Record that ``text`` means ``ingredient_id``.
 
-        Called whenever the user confirms or corrects a match. This is what makes
-        the next receipt from the same store cheaper to process.
+        Called whenever the user confirms or corrects a match, so the same wording
+        resolves exactly the next time.
         """
-        key = (
-            normalize_receipt_line(text, self._protected) if is_receipt else normalize(text)
-        )
-        if not key:
-            key = normalize(text)
+        key = normalize(text)
 
         existing = self.session.scalar(
             select(IngredientAlias).where(

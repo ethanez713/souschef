@@ -576,7 +576,7 @@ def assign_named_match(
 
     parsed_name = parse_line(raw_text).name.strip()
     if parsed_name and parsed_name.casefold() != raw_text.strip().casefold():
-        matcher.learn(parsed_name, ingredient.id, source=AliasSource.MANUAL, is_receipt=False)
+        matcher.learn(parsed_name, ingredient.id, source=AliasSource.MANUAL)
     for line in lines:
         line.ingredient_id = ingredient.id
         line.match_confidence = 1.0

@@ -23,7 +23,7 @@ from souschef.core.matching import (
 from souschef.models import CanonicalIngredient
 from souschef.models.ingredient import AliasSource
 
-# (text, expected canonical name, is_receipt)
+# (text, expected canonical name)
 RECIPE_CASES = [
     ("extra-virgin olive oil, divided", "olive oil"),
     ("2 cloves garlic, minced", "garlic"),
@@ -64,36 +64,6 @@ RECIPE_CASES = [
     ("2 tsp paprika", "paprika"),
 ]
 
-RECEIPT_CASES = [
-    ("GV EVOO 25.5Z          8.47 F", "olive oil"),
-    ("BNLS SKLS CHKN BRST  2.34 lb  11.68 F", "chicken breast"),
-    ("ORG YEL ONION 3LB  4.99", "yellow onion"),
-    ("GRND BF 80/20        6.49 F", "ground beef"),
-    ("SHRD MOZZ CHZ 8OZ    3.29 F", "mozzarella cheese"),
-    ("LG EGGS GRADE A 12CT 4.19", "eggs"),
-    ("HVY WHIP CRM 16OZ    4.49", "heavy cream"),
-    ("KRAFT PARM CHZ 8OZ   5.99 F", "parmesan cheese"),
-    ("BANANAS  1.24 lb  0.71", "banana"),
-    ("ORG BABY SPINACH 5OZ 3.99", "spinach"),
-    ("PASTA ORG SPAGHETTI", "spaghetti"),
-    ("SALAD SPINACH BABY 6OZ", "spinach"),
-    ("FZN ORGANIC SPINACH", "frozen spinach"),
-    ("ORANGE ORIGINAL FROM CONCENTRA", "orange"),
-    ("CLIF CRUNCHY PEANUT BUTTER", "peanut butter"),
-    ("PASTA SAUCE ORG VODKA", "tomato sauce"),
-    ("PASTA SAUCE BOLOGNESE 24 OZ", "tomato sauce"),
-    ("FZN ORGANIC PEAS", "frozen peas"),
-    ("IZN ORGANIC PEAS 661", "frozen peas"),
-    # One slipped letter, the confusions that show up on thermal paper.
-    ("PASIA ORG SPAGHETTI", "spaghetti"),
-    ("PASTA ORG SPAGHETII", "spaghetti"),
-    ("PASIA ORG SPACHETTI", "spaghetti"),
-    ("FZN URGANIC SPINACH", "frozen spinach"),
-    ("BRUSSELS SPROUIS 1LB", "brussels sprouts"),
-    ("BRUSSELSPROUIS 1LB", "brussels sprouts"),
-    ("BRUSSEISPROUTS1LB", "brussels sprouts"),
-]
-
 # The pairs that distinguish a preserved product from its fresh counterpart.
 # These share a token set and are separable only by word order and by refusing
 # to strip catalog-meaningful words.
@@ -118,12 +88,6 @@ def test_matches_recipe_lines(matcher: IngredientMatcher, text: str, expected: s
     result = matcher.match(text)
     assert result.name == expected, f"{text!r} -> {result.name!r}"
     assert result.confidence >= AUTO_ACCEPT
-
-
-@pytest.mark.parametrize(("text", "expected"), RECEIPT_CASES)
-def test_matches_receipt_lines(matcher: IngredientMatcher, text: str, expected: str) -> None:
-    result = matcher.match(text, is_receipt=True)
-    assert result.name == expected, f"{text!r} -> {result.name!r}"
 
 
 @pytest.mark.parametrize(("text", "expected"), CANNED_VS_FRESH_CASES)
@@ -177,14 +141,6 @@ def test_unmatchable_text_returns_no_match(matcher: IngredientMatcher) -> None:
 def test_a_shared_word_is_not_another_food(matcher: IngredientMatcher, text: str) -> None:
     """token_set_ratio scores a shared modifier as a perfect match."""
     assert not matcher.match(text).is_match
-
-
-def test_receipt_shorthand_does_not_match_on_one_shared_word(matcher: IngredientMatcher) -> None:
-    assert not matcher.match("JOE COFFEE MEDIUM ROAST GROUND", is_receipt=True).is_match
-    assert not matcher.match("PRG CHED SC", is_receipt=True).is_match
-    assert not matcher.match("RIDGE CUT POTATO CHIPS", is_receipt=True).is_match
-    for furniture in ("TOTAL", "TAX", "PURCHASE APPROVED", "ARC:00"):
-        assert not matcher.match(furniture, is_receipt=True).is_match, furniture
 
 
 def test_white_onion_is_not_silently_yellow(matcher: IngredientMatcher) -> None:
@@ -254,30 +210,6 @@ def test_a_recipe_learned_alias_does_not_outrank_the_catalog_name(
     matcher.learn("smoked paprika", paprika_id, source=AliasSource.RECIPE)
     seeded_session.flush()
     assert matcher.match_exact("smoked paprika").name == "smoked paprika"
-
-
-def test_frozen_abbreviation_matches_frozen_spinach(matcher: IngredientMatcher) -> None:
-    result = matcher.match("FZN ORGANIC SPINACH", is_receipt=True)
-    assert result.name == "frozen spinach"
-
-
-def test_learning_an_alias_makes_the_next_match_exact(
-    matcher: IngredientMatcher, seeded_session: Session
-) -> None:
-    """A correction must stick -- this is what stops receipts being tedious."""
-    weird = "SLIVERY GRN THING 4.99"
-    assert matcher.match(weird, is_receipt=True).name != "scallion"
-
-    scallion_id = matcher._by_name["scallion"]
-    matcher.learn(weird, scallion_id, source=AliasSource.MANUAL, is_receipt=True)
-    seeded_session.flush()
-
-    again = matcher.match(weird, is_receipt=True)
-    assert again.name == "scallion"
-    assert again.confidence == 1.0
-
-    # And it survives a fresh matcher built from the database.
-    assert IngredientMatcher(seeded_session).match(weird, is_receipt=True).name == "scallion"
 
 
 def test_learning_is_idempotent(matcher: IngredientMatcher, seeded_session: Session) -> None:

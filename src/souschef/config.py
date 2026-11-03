@@ -19,7 +19,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-SECRET_FIELDS = ("session_secret", "secret_key", "spoonacular_key", "vlm_api_key")
+SECRET_FIELDS = ("session_secret", "secret_key", "spoonacular_key")
 
 
 def _default_config_dir() -> Path:
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     db_path: Path | None = None
     storage_backend: str = "local"
 
-    # Blocks every outbound third-party call (NYT, Spoonacular, cloud VLM).
+    # Blocks every outbound third-party call (NYT, Spoonacular).
     # Off by default now that this is an app someone runs deliberately; the
     # test suite turns it on so a test can never hit a real service.
     no_external: bool = False
@@ -77,8 +77,6 @@ class Settings(BaseSettings):
 
     spoonacular_key: str = Field(default="", repr=False)
     spoonacular_daily_budget: int = 140  # free tier is ~150/day; leave headroom
-    vlm_api_key: str = Field(default="", repr=False)
-    vlm_model: str = "claude-sonnet-5"
 
     @field_validator("data_dir", "config_dir", mode="after")
     @classmethod

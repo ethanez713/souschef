@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from souschef.config import get_settings
 from souschef.storage import Storage
@@ -126,35 +125,6 @@ def cmd_restore(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_scan(args: argparse.Namespace) -> int:
-    """Scan a receipt image and print what was found, without touching the pantry."""
-    from souschef.db import session_scope
-    from souschef.ingest.ocr import run_ocr
-    from souschef.ingest.receipt import detect_store, detect_total, parse_receipt
-
-    path = Path(args.image)
-    if not path.is_file():
-        print(f"No such file: {path}", file=sys.stderr)
-        return 1
-
-    result = run_ocr(path)
-    with session_scope() as session:
-        lines = parse_receipt(result, session)
-
-        print(f"Store: {detect_store(result.lines) or 'unknown'}")
-        print(f"Total: {detect_total(result.lines) or 'unknown'}")
-        print(f"Scan quality: {result.mean_confidence:.0%}\n")
-
-        for line in lines:
-            if line.is_ignored if hasattr(line, "is_ignored") else line.is_noise:
-                continue
-            name = line.match.name if line.match and line.match.is_match else "NO MATCH"
-            flag = "ok  " if line.match and line.match.is_auto else "check"
-            amount = f"{line.quantity:g} {line.unit}" if line.quantity else "-"
-            print(f"  [{flag}] {amount:>12}  {line.raw_text[:38]:40} -> {name}")
-    return 0
-
-
 def cmd_rebuild(args: argparse.Namespace) -> int:
     """Recompute pantry levels by replaying the event ledger."""
     from sqlalchemy import select
@@ -262,10 +232,6 @@ def main(argv: list[str] | None = None) -> int:
     restore = sub.add_parser("restore", help="restore a snapshot (list them with no argument)")
     restore.add_argument("snapshot", nargs="?", default="")
     restore.set_defaults(func=cmd_restore)
-
-    scan = sub.add_parser("scan", help="dry-run OCR on a receipt image")
-    scan.add_argument("image")
-    scan.set_defaults(func=cmd_scan)
 
     serve = sub.add_parser("serve", help="run the web app")
     serve.add_argument("--host", default="127.0.0.1")

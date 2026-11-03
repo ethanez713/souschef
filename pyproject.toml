@@ -24,7 +24,6 @@ dependencies = [
     "pillow==13.0.0",
     "recipe-scrapers==15.11.0",
     "ingredient-parser-nlp==2.7.0",
-    "rapidocr-onnxruntime==1.4.4",
 ]
 
 [project.optional-dependencies]
@@ -48,11 +47,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-# Fast tests are the default. Anything touching OCR models, the network, or real
-# image corpora is marked and excluded from the default run.
+# Fast tests are the default. Anything touching the network or large fixtures
+# is marked and excluded from the default run.
 addopts = "-m 'not slow' --strict-markers"
 markers = [
-    "slow: needs OCR models, large fixtures, or recorded network cassettes",
+    "slow: needs large fixtures or recorded network cassettes",
     "external: hits a real third-party service; never runs in CI",
 ]
 

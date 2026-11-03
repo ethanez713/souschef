@@ -41,9 +41,8 @@ from souschef.models import (
     TrackingMode,
 )
 
-# A receipt line with no matcher score is stored at 0.5 (ingest/receipt_service).
 # A purchase we inferred — a ticked shopping line, or cooking more than the
-# ledger held — is a weaker claim than a scan, so it stays under that floor.
+# ledger held — is a weak claim, so it stays under 0.5.
 INFERRED_PURCHASE_CONFIDENCE = 0.35
 
 

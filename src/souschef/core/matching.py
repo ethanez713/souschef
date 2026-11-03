@@ -575,6 +575,38 @@ def _repair_ocr_tokens(tokens: list[str], vocabulary: frozenset[str] | None) -> 
     return repaired
 
 
+# Digit/letter pairs that thermal-print OCR confuses. Restricted to the two
+# substitutions that are both common and low-risk: zero-for-O dominates real
+# receipts, and one-for-l is close behind. Adding 5/S, 8/B or 2/Z was tried and
+# reverted -- they fire on genuine quantities ("2.34 lb" became "z.34 lb") far
+# more often than they fix a word.
+_DIGIT_LETTER = str.maketrans({"0": "o", "1": "l"})
+_HAS_LETTER = re.compile(r"[a-zA-Z]")
+_HAS_DIGIT = re.compile(r"\d")
+
+
+def _repair_confusions(token: str) -> str:
+    """Undo digit-for-letter OCR errors inside a word-like token.
+
+    Deliberately conservative, and intended to run *after* prices, sizes and
+    item codes have been stripped -- corrupting a real quantity is worse than
+    leaving a garbled word for the fuzzy matcher to cope with. A token only
+    qualifies if letters clearly dominate and it carries no decimal point,
+    which rules out weights like "2.34" and codes like "412".
+    """
+    if not token or not _HAS_LETTER.search(token) or not _HAS_DIGIT.search(token):
+        return token
+    if "." in token or "/" in token:
+        return token
+    letters = sum(character.isalpha() for character in token)
+    digits = sum(character.isdigit() for character in token)
+    # Ties are repaired, not skipped: "EV00" is half digits and is exactly the
+    # case this exists for. Only a clear digit majority means "quantity".
+    if letters < digits:
+        return token
+    return token.translate(_DIGIT_LETTER)
+
+
 def _expand_receipt_tokens(text: str, vocabulary: frozenset[str] | None) -> list[str]:
     """Prices and codes gone; abbreviations and OCR slips undone. No phrase rewrite."""
     out = _PRICE.sub(" ", text.strip())
@@ -582,10 +614,9 @@ def _expand_receipt_tokens(text: str, vocabulary: frozenset[str] | None) -> list
     out = _SIZE_TOKEN.sub(" ", out)
     out = _PLU_CODE.sub(" ", out)
     out = normalize(out)
-    from souschef.ingest.ocr import repair_confusions
 
     expanded: list[str] = []
-    for token in (repair_confusions(part) for part in out.split()):
+    for token in (_repair_confusions(part) for part in out.split()):
         expanded.extend(_RECEIPT_ABBREVIATIONS.get(token, token).split())
     return [token for token in _repair_ocr_tokens(expanded, vocabulary) if len(token) > 1]
 

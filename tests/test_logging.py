@@ -43,7 +43,7 @@ def test_scrub_removes_credentials(raw: str, must_not_contain: str) -> None:
 
 def test_scrub_leaves_ordinary_text_alone() -> None:
     for text in (
-        "OCR receipt.png: 40 boxes -> 14 lines, confidence 0.95",
+        "Saved pantry.csv: 40 rows, 14 updated",
         "GET /pantry -> 200 (12ms)",
         "Recipe 'Skillet Chicken': 9 ingredients",
     ):

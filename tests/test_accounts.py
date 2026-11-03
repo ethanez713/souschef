@@ -183,25 +183,6 @@ def test_another_users_plan_entry_cannot_be_deleted(
     assert seeded_session.get(MealPlanEntry, entry.id) is not None
 
 
-def test_another_users_receipt_is_not_readable(
-    signed_in: TestClient, seeded_session: Session, stranger: User
-) -> None:
-    receipt = Receipt(
-        user_id=stranger.id,
-        image_path="nope.png",
-        image_sha256="deadbeef",
-        status=ReceiptStatus.NEEDS_REVIEW,
-        store_name="SECRETMART",
-    )
-    seeded_session.add(receipt)
-    seeded_session.commit()
-
-    response = signed_in.get(f"/receipts/{receipt.id}")
-    assert response.status_code == 404
-    assert "SECRETMART" not in response.text
-    assert "SECRETMART" not in signed_in.get("/receipts").text
-
-
 def test_another_users_receipt_cannot_be_applied(
     signed_in: TestClient, seeded_session: Session, stranger: User
 ) -> None:

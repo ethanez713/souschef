@@ -1,8 +1,9 @@
 // Shell assets are fetched first and kept for offline. Navigations to /shopping and /pantry are
 // network-first, and the latest response is kept, so the installed app can
 // open that list and a read-only pantry when the server is unreachable.
-// No other page is cached.
-const SHELL = 'souschef-shell-v12';
+// No other page is cached; any other navigation that cannot reach the server goes to the
+// cached list, because the app reopens at its start URL (Home) after being killed.
+const SHELL = 'souschef-shell-v15';
 const ASSETS = [
   '/static/app.css', '/static/ds.css', '/static/fonts/fonts.css', '/static/htmx.min.js',
   '/static/list-sync.js', '/static/list-page.js',
@@ -10,7 +11,8 @@ const ASSETS = [
 const LIST_PATHS = ['/shopping', '/pantry'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
+  const fresh = ASSETS.map((path) => new Request(path, { cache: 'reload' }));
+  event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(fresh)).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -38,18 +40,42 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (request.mode !== 'navigate') return;
   const listPath = listPathOf(url);
-  if (listPath && request.mode === 'navigate') {
-    event.respondWith(networkFirst(request, listPath));
-  }
+  event.respondWith(listPath ? networkFirst(request, listPath) : listWhenUnreachable(request));
 });
+
+// `tailscale serve` stays up on the Windows host and answers 502 (504 on a hung upstream) while
+// the server itself is stopped. Keep in step with proxyAnsweredForStoppedServer in list-sync.js.
+function proxyAnsweredForStoppedServer(response) {
+  return response.status === 502 || response.status === 504;
+}
+
+async function listWhenUnreachable(request) {
+  let response;
+  try {
+    response = await fetch(request);
+    if (!proxyAnsweredForStoppedServer(response)) return response;
+  } catch (err) {
+    response = null;
+  }
+  const cache = await caches.open(SHELL);
+  if (await cache.match('/shopping')) return Response.redirect('/shopping', 302);
+  if (response) return response;
+  return Response.error();
+}
 
 // Pages link assets as app.css?v=<mtime>. Fetch first so a new version is never
 // shadowed, keep each response, and offline fall back to any cached version.
+// Modules (list-page.js and its imports) carry no ?v and the server sends no Cache-Control,
+// so the browser's HTTP cache would hand back a heuristically fresh old copy: revalidate.
 async function staticAsset(request) {
   const cache = await caches.open(SHELL);
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: 'no-cache' });
+    if (proxyAnsweredForStoppedServer(response)) {
+      return (await cache.match(request, { ignoreSearch: true })) || response;
+    }
     if (response.ok) {
       try {
         await cache.put(request, response.clone());
@@ -75,6 +101,11 @@ async function networkFirst(request, cacheKey) {
   const cache = await caches.open(SHELL);
   try {
     const response = await fetch(request);
+    if (proxyAnsweredForStoppedServer(response)) {
+      const cached = await cache.match(cacheKey);
+      if (cached) return cached;
+      return response;
+    }
     // A toast query must not replace the clean list the shop will open.
     if (response.ok && new URL(request.url).search === '') {
       try {

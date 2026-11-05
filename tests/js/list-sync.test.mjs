@@ -110,6 +110,14 @@ test("a healthz response means the server is reachable", async () => {
   assert.equal(seen.cache, "no-store");
 });
 
+test("the proxy's 502 for a stopped server is unreachable", async () => {
+  assert.equal(await serverAnswers(async () => ({ status: 502 }), 1000), false);
+});
+
+test("the proxy's 504 for a hung server is unreachable", async () => {
+  assert.equal(await serverAnswers(async () => ({ status: 504 }), 1000), false);
+});
+
 test("a health check that does not answer is unreachable", async () => {
   const fetchImpl = (_url, { signal }) =>
     new Promise((_resolve, reject) => {

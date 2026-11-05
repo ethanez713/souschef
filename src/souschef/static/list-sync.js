@@ -88,13 +88,19 @@ function clockTime(generatedAt) {
   return `${hours}:${minutes} ${suffix}`;
 }
 
-// Any HTTP response counts. A degraded /healthz is still the server answering.
+// `tailscale serve` stays up on the Windows host and answers 502 (504 on a hung
+// upstream) while the server itself is stopped. Keep in step with sw.js.
+export function proxyAnsweredForStoppedServer(status) {
+  return status === 502 || status === 504;
+}
+
+// A degraded /healthz (503) is still the server answering.
 export async function serverAnswers(fetchImpl, timeoutMs = HEALTH_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    await fetchImpl("/healthz", { signal: controller.signal, cache: "no-store" });
-    return true;
+    const response = await fetchImpl("/healthz", { signal: controller.signal, cache: "no-store" });
+    return !proxyAnsweredForStoppedServer(response.status);
   } catch {
     return false;
   } finally {

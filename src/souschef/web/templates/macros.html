@@ -56,7 +56,7 @@
         <button class="btn small" type="submit">Skipped</button>
       </form>
     {% endset %}
-    {{ row(title, sub=day_label(e.plan_date, today), trail=trail) }}
+    {{ row(title, sub=day_label(e.plan_date, today), trail=trail, cls='cooked-check') }}
   {% endfor %}
 {% endif %}
 {%- endmacro %}

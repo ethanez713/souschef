@@ -3,7 +3,7 @@
 // open that list and a read-only pantry when the server is unreachable.
 // No other page is cached; any other navigation that cannot reach the server goes to the
 // cached list, because the app reopens at its start URL (Home) after being killed.
-const SHELL = 'souschef-shell-v16';
+const SHELL = 'souschef-shell-v17';
 const ASSETS = [
   '/static/app.css', '/static/ds.css', '/static/fonts/fonts.css', '/static/htmx.min.js',
   '/static/list-sync.js', '/static/list-page.js',

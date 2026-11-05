@@ -144,7 +144,8 @@ a.tonight-title:hover { color: var(--text-heading); }
 .tonight-ready.good { color: var(--jade-600); }
 .tonight-ready.warn { color: var(--amber-600); }
 .tonight-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.tonight .list-row-title a { display: inline-flex; align-items: center; min-height: 44px; }
+.tonight .list-row-title a,
+.cooked-check .list-row-title a { display: inline-flex; align-items: center; min-height: 44px; }
 
 /* Swipeable recipe rows: bleed to the screen edge so a half card peeks. */
 .carousel {

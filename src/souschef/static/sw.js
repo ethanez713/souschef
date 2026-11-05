@@ -3,7 +3,7 @@
 // open that list and a read-only pantry when the server is unreachable.
 // No other page is cached; any other navigation that cannot reach the server goes to the
 // cached list, because the app reopens at its start URL (Home) after being killed.
-const SHELL = 'souschef-shell-v15';
+const SHELL = 'souschef-shell-v16';
 const ASSETS = [
   '/static/app.css', '/static/ds.css', '/static/fonts/fonts.css', '/static/htmx.min.js',
   '/static/list-sync.js', '/static/list-page.js',
@@ -51,18 +51,31 @@ function proxyAnsweredForStoppedServer(response) {
   return response.status === 502 || response.status === 504;
 }
 
+// The page's /healthz probe uses the same 3 s (HEALTH_TIMEOUT_MS in list-sync.js). With the
+// laptop asleep the connection hangs instead of failing, and the app would sit on its splash
+// screen. The network is only abandoned when there is a cached copy to show instead.
+const REACH_TIMEOUT_MS = 3000;
+
+function fetchOrGiveUp(request, init, hasFallback) {
+  if (!hasFallback) return fetch(request, init);
+  let timer;
+  const giveUp = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('server unreachable')), REACH_TIMEOUT_MS);
+  });
+  return Promise.race([fetch(request, init), giveUp]).finally(() => clearTimeout(timer));
+}
+
 async function listWhenUnreachable(request) {
-  let response;
+  const cache = await caches.open(SHELL);
+  const haveList = Boolean(await cache.match('/shopping'));
+  let response = null;
   try {
-    response = await fetch(request);
+    response = await fetchOrGiveUp(request, undefined, haveList);
     if (!proxyAnsweredForStoppedServer(response)) return response;
   } catch (err) {
-    response = null;
+    if (!haveList) throw err;
   }
-  const cache = await caches.open(SHELL);
-  if (await cache.match('/shopping')) return Response.redirect('/shopping', 302);
-  if (response) return response;
-  return Response.error();
+  return haveList ? Response.redirect('/shopping', 302) : response;
 }
 
 // Pages link assets as app.css?v=<mtime>. Fetch first so a new version is never
@@ -71,11 +84,10 @@ async function listWhenUnreachable(request) {
 // so the browser's HTTP cache would hand back a heuristically fresh old copy: revalidate.
 async function staticAsset(request) {
   const cache = await caches.open(SHELL);
+  const cached = await cache.match(request, { ignoreSearch: true });
   try {
-    const response = await fetch(request, { cache: 'no-cache' });
-    if (proxyAnsweredForStoppedServer(response)) {
-      return (await cache.match(request, { ignoreSearch: true })) || response;
-    }
+    const response = await fetchOrGiveUp(request, { cache: 'no-cache' }, Boolean(cached));
+    if (proxyAnsweredForStoppedServer(response)) return cached || response;
     if (response.ok) {
       try {
         await cache.put(request, response.clone());
@@ -85,7 +97,6 @@ async function staticAsset(request) {
     }
     return response;
   } catch (err) {
-    const cached = await cache.match(request, { ignoreSearch: true });
     if (cached) return cached;
     throw err;
   }
@@ -99,13 +110,10 @@ function listPathOf(url) {
 
 async function networkFirst(request, cacheKey) {
   const cache = await caches.open(SHELL);
+  const cached = await cache.match(cacheKey);
   try {
-    const response = await fetch(request);
-    if (proxyAnsweredForStoppedServer(response)) {
-      const cached = await cache.match(cacheKey);
-      if (cached) return cached;
-      return response;
-    }
+    const response = await fetchOrGiveUp(request, undefined, Boolean(cached));
+    if (proxyAnsweredForStoppedServer(response)) return cached || response;
     // A toast query must not replace the clean list the shop will open.
     if (response.ok && new URL(request.url).search === '') {
       try {
@@ -116,7 +124,6 @@ async function networkFirst(request, cacheKey) {
     }
     return response;
   } catch (err) {
-    const cached = await cache.match(cacheKey);
     if (cached) return cached;
     throw err;
   }

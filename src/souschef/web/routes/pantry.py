@@ -113,7 +113,7 @@ def _group_pantry(views: list) -> tuple[dict[str, list], list, int]:
     Out is known stock at zero (a remainder under one base unit counts as zero
     on screen). An ingredient touched only by cooking is unknown and is omitted.
     """
-    grouped = {name: [] for name in _SECTION_ORDER}
+    grouped: dict[str, list] = {name: [] for name in _SECTION_ORDER}
     staples = 0
     out: list = []
     for view in views:

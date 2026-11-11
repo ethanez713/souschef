@@ -169,7 +169,9 @@ def _one_count_package(ingredient: object | None) -> bool:
     qty = getattr(ingredient, "package_qty", None)
     unit = (getattr(ingredient, "package_unit", None) or "").strip()
     noun = (getattr(ingredient, "count_noun", None) or "").strip()
-    return bool(qty) and float(qty) == 1 and unit == "count" and bool(noun)
+    if not qty:
+        return False
+    return float(qty) == 1 and unit == "count" and bool(noun)
 
 
 def purchase_form_unit(item: object) -> str:

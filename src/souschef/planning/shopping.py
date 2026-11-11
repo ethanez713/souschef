@@ -383,6 +383,7 @@ def check_first_rows(
         view = views.get(candidate.ingredient.id)
         if view is None or not view.is_known:
             continue
+        driven: tuple[str, ...]
         if candidate.reason == AuditReason.NEAR_RESTOCK:
             driven = ("running low",)
         else:

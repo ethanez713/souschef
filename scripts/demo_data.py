@@ -135,6 +135,29 @@ STOCK = [
     ("3 tbsp butter", 3, 14, 1.0),
     ("6 cups chicken broth", 1, 50, 0.6),
     ("1 tsp ground cumin", 10, 150, 0.8),
+    ("2 (15 oz) cans black beans", 1, 10, 1.0),
+    ("1 (14 oz) can crushed tomatoes", 2, 15, 1.0),
+    ("1 (28 oz) can whole tomatoes", 1, 15, 1.0),
+    ("1 cup shredded cheddar", 2, 8, 1.0),
+    ("1/4 cup feta", 2, 8, 1.0),
+    ("1 red onion", 2, 5, 1.0),
+    ("1 shallot", 2, 6, 1.0),
+    ("1 tbsp grated ginger", 4, 20, 0.7),
+    ("1/2 cup dry white wine", 3, 45, 0.6),
+]
+# Fresh things last seen used up. A known zero goes straight onto the list; only stock the
+# app is unsure of reaches the pre-shop check.
+USED_UP = [
+    "1 1/2 lb boneless chicken",
+    "1 yellow onion",
+    "1 lemon",
+    "1 avocado",
+    "1 lime",
+    "1 red bell pepper",
+    "1 lb cremini",
+    "1/2 cup sour cream",
+    "8 corn tortillas",
+    "1 cup baby spinach",
 ]
 PLAN = [
     "Chicken tikka masala",
@@ -177,6 +200,18 @@ def main() -> None:
                 event_confidence=confidence,
                 occurred_at=now - timedelta(days=days_ago),
             )
+        for prefix in USED_UP:
+            line = next(x for x in lines if x.raw_text.startswith(prefix))
+            if line.ingredient is None:
+                raise SystemExit(f"demo recipe line did not resolve: {prefix!r}")
+            record_event(
+                db,
+                user.id,
+                line.ingredient,
+                reason=EventReason.MANUAL,
+                level=0.0,
+                occurred_at=now - timedelta(days=2),
+            )
         for offset, title in enumerate(PLAN):
             recipe: Recipe = recipes[title]
             db.add(
@@ -192,7 +227,7 @@ def main() -> None:
         build_shopping_list(db, user.id, covers_from=today, covers_to=today + timedelta(days=6))
     print(
         f"demo data: {len(RECIPES)} recipes, {len(STOCK)} pantry purchases, "
-        f"{len(PLAN)} planned dinners"
+        f"{len(USED_UP)} used up, {len(PLAN)} planned dinners"
     )
 
 

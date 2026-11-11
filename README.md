@@ -2,63 +2,63 @@
 
 [![CI](https://github.com/ethanez713/souschef/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanez713/souschef/actions/workflows/ci.yml)
 
-A weekly cooking planner that tracks your pantry, suggests recipes you can
-actually cook, and builds the shopping list.
+**A weekly meal planner that knows what is in your kitchen, and knows how sure it is.**
+It suggests what you can cook, builds the shopping list, and before you shop asks you to
+check only the few things it cannot be sure of.
 
 ## The idea
 
-Most pantry apps demand a complete, accurate inventory as the price of
-admission. That just moves the drudgery — you still audit everything, you just
-do it in an app.
+Most pantry apps demand a complete, accurate inventory as the price of admission. That
+just moves the drudgery: you still audit everything, you just do it in an app.
 
-SousChef assumes its inventory is **wrong, and knows how wrong**. Every level
-is a best guess inside a range that widens with time and with each meal cooked. Before you
-shop, it asks you to physically check only the handful of items where the
-uncertainty would actually change what you buy:
+SousChef assumes its inventory is **wrong, and knows how wrong**. Every level is a best
+guess inside a range that widens with time and with each meal cooked. Before a shop it
+asks about the handful of items where being wrong would change what you buy:
 
-> Recipes need about 118 ml of heavy cream. Best guess: 400 ml, but that could be
-> anywhere from 20 ml to 780 ml. **5% sure.**
+> **heavy cream** · have 1 cup? · for Chicken tikka masala &nbsp; `Still right`
 
-Everything else stays silent. Confidently stocked, confidently empty, or not
-needed this week — none of those are worth walking to the cupboard for. The
-target is a five-item check instead of an eighty-item audit.
-
-## The weekly loop
-
-1. **Plan** — pick meals from Cook now / Nearly there / Bigger shop, ranked by
-   what you have, what's about to expire, and what you haven't cooked lately.
-2. **Check** — the pre-shop audit asks about the few genuinely ambiguous items.
-3. **Shop** — a list grouped by aisle, rounded to real package sizes ("1 × 907 g
-   chicken thighs", not "680 g of chicken"), each line saying which meal it's for.
-4. **Cook** — tap "I cooked this" and levels are debited.
+Everything else stays silent. Confidently stocked, confidently empty, or not needed this
+week: none of those are worth walking to the cupboard for. The target is a five-item
+check, not an eighty-item audit.
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/screenshots/tonight.png" alt="Tonight"></td>
-    <td width="33%"><img src="docs/screenshots/before-you-shop.png" alt="Before you shop"></td>
+    <td width="33%"><img src="docs/screenshots/home.png" alt="Home"></td>
+    <td width="33%"><img src="docs/screenshots/check-first.png" alt="Check first"></td>
     <td width="33%"><img src="docs/screenshots/shopping-list.png" alt="Shopping list"></td>
   </tr>
   <tr>
-    <td valign="top"><b>Tonight.</b> Planned dinners first, then every recipe ranked by how many ingredients are missing.</td>
-    <td valign="top"><b>Before you shop.</b> It asks only about the items whose uncertainty would change the list, each with a best guess, its range and how sure it is.</td>
-    <td valign="top"><b>Shopping list.</b> Grouped by aisle and rounded to package sizes, each line naming the meal it is for. Recipe lines the catalog cannot name come first.</td>
+    <td valign="top"><b>Home.</b> Tonight's dinner, what it is missing, and how many levels are worth a look before the next shop.</td>
+    <td valign="top"><b>Check first.</b> Six questions, not a full audit. One tap confirms a level; a wrong one takes the real amount.</td>
+    <td valign="top"><b>Shopping list.</b> Grouped by aisle, rounded to package sizes, each line naming the meal it is for.</td>
   </tr>
   <tr>
-    <td width="33%"><img src="docs/screenshots/pantry.png" alt="Pantry"></td>
+    <td width="33%"><img src="docs/screenshots/plan.png" alt="Plan"></td>
     <td width="33%"><img src="docs/screenshots/cook.png" alt="Cook"></td>
+    <td width="33%"><img src="docs/screenshots/pantry.png" alt="Pantry"></td>
   </tr>
   <tr>
-    <td valign="top"><b>Pantry.</b> Every level is a belief with a confidence. One tap confirms it, edits it or marks it gone.</td>
-    <td valign="top"><b>Cook.</b> Each ingredient's debit is shown and editable before the cook is logged, with a warning where the recipe uses more than the pantry is believed to hold.</td>
+    <td valign="top"><b>Plan.</b> The next ten days, and one button to shop for them.</td>
+    <td valign="top"><b>Cook.</b> What the recipe will take from the pantry, adjustable before it is logged.</td>
+    <td valign="top"><b>Pantry.</b> Every level is a belief. The markers show which ones the app is unsure of.</td>
   </tr>
 </table>
 
-Invented demo data in a throwaway database, from [`scripts/demo_data.py`](scripts/demo_data.py).
+Captured on a phone from invented demo data: [`scripts/demo_data.py`](scripts/demo_data.py)
+fills a throwaway database.
 
-## Running it
+## The weekly loop
 
-It runs on your own machine. There is no server to rent, no domain to point, and
-nothing about it that assumes a network beyond the one you are sitting on.
+1. **Plan** meals, ranked by what you have, what is about to expire and what you have not
+   cooked lately.
+2. **Check** the few genuinely uncertain items.
+3. **Shop** a list grouped by aisle and rounded to real package sizes ("1 × 2 lb chicken
+   thighs", not "680 g of chicken").
+4. **Cook**, and the pantry is debited for you.
+
+## Run it
+
+It runs on your own machine: no server to rent, no account, no sign-in.
 
 ```bash
 python3 -m venv venv && ./venv/bin/pip install -e '.[dev]'
@@ -67,80 +67,10 @@ python3 -m venv venv && ./venv/bin/pip install -e '.[dev]'
 ./venv/bin/souschef serve     # http://127.0.0.1:8000
 ```
 
-`init` generates the key the app needs and writes it to `~/.config/souschef/`,
-mode 0600 — nothing to export and nothing left in a shell history. `secret_key`
-encrypts the stored NYT cookie. Deleting it costs one re-paste of that cookie.
-
-There is no sign-in. Every request acts as the one account. The first request
-creates it when the database has none.
-
-`souschef config` prints where everything ended up. `SOUSCHEF_NO_EXTERNAL=true`
-blocks every outbound call, for a run that provably cannot reach a third party.
-
-### From your phone
-
-Run Tailscale on the machine that hosts SousChef and on the phone, then
-`tailscale serve --bg --https=443 http://127.0.0.1:8000`. The phone reaches
-`https://<machine>.<tailnet>.ts.net` over a real certificate, which is what
-installing the app, the service worker, the share target and the clipboard
-need. The server stays bound to loopback. `souschef serve` refuses any other
-`--host`: other devices reach it through `tailscale serve`, which proxies to
-loopback and presents the tailnet name.
-
-A request is answered only when its Host is loopback or a `*.ts.net` name, so a
-public DNS name pointed at the machine is refused. A state-changing request
-whose `Origin` names a different host is refused too. Tailscale's `X-Forwarded-*`
-headers are allowed; the proxy sets Host to the `ts.net` name.
-
-### Accounts
-
-One account, one kitchen: pantry, recipes, plan, shopping list and
-the NYT cookie. The ingredient catalog is shared reference data about food.
-
-The **Always have** list (`CanonicalIngredient.is_staple`) and **ingredients
-typed in by hand** live on that catalog. Write to them directly.
-
-### Other commands
-
-```bash
-souschef backup           # snapshot the database, keeping the last 14
-souschef restore          # list snapshots; pass one to roll back to it
-souschef rebuild          # recompute pantry levels by replaying the ledger
-souschef config           # show effective configuration
-souschef users            # list accounts
-```
-
-## Where your data lives
-
-| Path | What |
-|---|---|
-| `data/souschef.db` | Everything: pantry, ledger, recipes, plans, accounts |
-| `data/backups/` | Snapshots from `souschef backup` |
-| `~/.config/souschef/` | The encryption key, deliberately not in the data directory |
-
-`SOUSCHEF_DATA_DIR` moves the first two elsewhere.
-
-```bash
-souschef backup
-souschef restore                                        # list what there is
-souschef restore backups/souschef-20260818T193000Z.db   # roll back to one
-```
-
-Snapshots go through SQLite's backup API rather than a file copy, which would
-risk a torn read mid-write. Restore replaces the live database, so stop the app
-first; the database it replaces is kept beside it as `souschef.db.replaced`.
-
-### Backing it with something other than this machine
-
-Snapshots are written through a small storage interface
-(`src/souschef/storage/`), and the local filesystem is the only backend today. A
-Google Drive backend is one class implementing that interface.
-
-What will not work is putting the live SQLite file on a synced drive. SQLite
-needs byte-range locks and an fsync that means something, and a sync client
-gives it neither — you get silent corruption rather than an error. The keys stay
-out of the data directory for a related reason: a key that syncs to a third
-party is a key you have given away.
+To try it with the demo kitchen in the screenshots, follow the header of
+[`scripts/demo_data.py`](scripts/demo_data.py). To use it from your phone, put Tailscale
+in front of it; that, backups, logs and where the data lives are in
+[docs/RUNNING.md](docs/RUNNING.md).
 
 ## How it works
 
@@ -179,37 +109,6 @@ Cookies expire; paste a fresh one when imports start failing.
 Any other recipe site works too, via schema.org markup with `recipe-scrapers` as
 a fallback.
 
-## Logs
-
-Everything goes to stdout in the terminal running the app, tagged with a request
-id that is also returned in the `X-Request-ID` header — so a page that
-misbehaved can be traced to every line it produced:
-
-```
-2026-07-27T11:35:29-0400 INFO  [31ce7e26] souschef.web: GET /shopping -> 200 (126ms)
-```
-
-Warnings are reserved for things worth acting on: a recipe page that could not
-be read, a catalog gap that blocked a unit conversion.
-`SOUSCHEF_LOG_LEVEL=DEBUG` for more.
-
-Credentials are scrubbed by the formatter before anything is written, so logs
-are safe to paste into an issue. `/healthz` returns 503 rather than 200 when the
-encryption key is missing — an app that looks healthy while unable to decrypt
-the stored NYT cookie is worse than one that is plainly down.
-
-## Testing
-
-```bash
-./venv/bin/python -m pytest tests/ -q        # fast: no network
-./venv/bin/python -m pytest tests/ -m slow   # large fixtures and recorded network cassettes
-```
-
-The regression suite is built from failures found by running against real data,
-not from sampling easy cases. Several were silent — a discarded line item, a
-tenfold quantity error, a re-imported recipe reading back as "you have
-everything" — and none would have raised an exception.
-
 ## Choices worth knowing
 
 **No server.** It runs where your kitchen is. Renting a VM for a household meal
@@ -231,6 +130,17 @@ present — otherwise every recipe looks unmakeable and every list runs ten item
 long. Things you genuinely re-buy weekly are *not* staples, however basic they
 feel; flagging pasta as a staple means a pasta recipe never tells you to buy
 pasta.
+
+## Testing
+
+```bash
+./venv/bin/python -m pytest tests/ -q        # fast: no network
+./venv/bin/python -m pytest tests/ -m slow   # large fixtures and recorded network cassettes
+```
+
+The regression suite is built from failures found by running against real data. Several
+were silent (a discarded line item, a tenfold quantity error) and none raised an
+exception.
 
 ## License
 
